@@ -14,7 +14,6 @@
 
 import gc
 import json
-from typing import Optional
 
 import av
 import fire
@@ -49,8 +48,13 @@ def vllm_infer(
     dataset_dir: str = "data",
     media_dir: Optional[str] = None,
     template: str = "default",
+<<<<<<< HEAD
     cutoff_len: int = 31744,
     max_samples: Optional[int] = None,
+=======
+    cutoff_len: int = 2048,
+    max_samples: int | None = None,
+>>>>>>> eceec8ab ([deps] goodbye python 3.9 (#9677))
     vllm_config: str = "{}",
     save_name: str = "generated_predictions.jsonl",
     temperature: float = 0.95,
@@ -59,9 +63,9 @@ def vllm_infer(
     max_new_tokens: int = 1024,
     repetition_penalty: float = 1.0,
     skip_special_tokens: bool = True,
-    default_system: Optional[str] = None,
+    default_system: str | None = None,
     enable_thinking: bool = True,
-    seed: Optional[int] = None,
+    seed: int | None = None,
     pipeline_parallel_size: int = 1,
     image_max_pixels: int = 28*28*1280,
     image_min_pixels: int = 1*28*28,
