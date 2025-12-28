@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "llamafactory"
-requires-python = ">=3.9.0"
+requires-python = "==3.10.*"
 dynamic = [
     "version",
     "dependencies",
@@ -19,7 +19,7 @@ dynamic = [
 ]
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py310"
 line-length = 119
 indent-width = 4
 
@@ -84,12 +84,23 @@ conflicts = [
         { extra = "torch-npu" },
         { extra = "vllm" },
     ],
-    [
-        { extra = "torch-npu" },
-        { extra = "sglang" },
-    ],
-    [
-        { extra = "vllm" },
-        { extra = "sglang" },
-    ],
 ]
+
+[[tool.uv.index]]
+name = "torch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "torch-cu128" }
+torchvision = { index = "torch-cu128" }
+torchaudio = { index = "torch-cu128" }
+flash-attn = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.0.post2/flash_attn-2.8.0.post2+cu12torch2.7cxx11abiFALSE-cp310-cp310-linux_x86_64.whl" }
+
+# Extra build hooks for flash-attn
+[tool.uv.extra-build-dependencies]
+flash-attn = [{ requirement = "torch", match-runtime = true }]
+
+# Skip CUDA build for flash-attn (use cached wheel)
+[tool.uv.extra-build-variables]
+flash-attn = { FLASH_ATTENTION_SKIP_CUDA_BUILD = "TRUE" }
