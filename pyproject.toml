@@ -4,7 +4,6 @@ build-backend = "hatchling.build"
 
 [project]
 name = "llamafactory"
-<<<<<<< HEAD
 requires-python = "==3.10.*"
 dynamic = [
     "version",
@@ -17,15 +16,6 @@ dynamic = [
     "license",
     "keywords",
     "classifiers"
-=======
-dynamic = ["version"]
-description = "Unified Efficient Fine-Tuning of 100+ LLMs"
-readme = "README.md"
-license = "Apache-2.0"
-requires-python = ">=3.11.0"
-authors = [
-    { name = "hiyouga", email = "hiyouga@buaa.edu.cn" }
->>>>>>> a1b1931b ([breaking] migrate from setuptools to uv (#9673))
 ]
 keywords = [
     "AI",
@@ -53,7 +43,7 @@ classifiers = [
 ]
 dependencies = [
     # core deps
-    "torch>=2.4.0",
+    "torch==2.7.0",
     "torchvision>=0.19.0",
     "torchaudio>=2.4.0",
     "transformers>=4.51.0,<=4.57.1,!=4.52.0,!=4.57.0",
@@ -62,6 +52,7 @@ dependencies = [
     "peft>=0.14.0,<=0.17.1",
     "trl>=0.18.0,<=0.24.0",
     "torchdata>=0.10.0,<=0.11.0",
+    "flash-attn",
     # gui
     "gradio>=4.38.0,<=5.50.0",
     "matplotlib>=3.7.0",
@@ -172,7 +163,6 @@ indent-style = "space"
 docstring-code-format = true
 skip-magic-trailing-comma = false
 line-ending = "auto"
-<<<<<<< HEAD
 
 [tool.uv]
 conflicts = [
@@ -204,5 +194,3 @@ flash-attn = [{ requirement = "torch", match-runtime = true }]
 # Skip CUDA build for flash-attn (use cached wheel)
 [tool.uv.extra-build-variables]
 flash-attn = { FLASH_ATTENTION_SKIP_CUDA_BUILD = "TRUE" }
-=======
->>>>>>> a1b1931b ([breaking] migrate from setuptools to uv (#9673))
