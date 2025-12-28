@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "Unified Efficient Fine-Tuning of 100+ LLMs"
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.11.0"
+requires-python = "==3.11.0"
 authors = [
     { name = "hiyouga", email = "hiyouga@buaa.edu.cn" }
 ]
@@ -38,7 +38,7 @@ classifiers = [
 ]
 dependencies = [
     # core deps
-    "torch>=2.4.0",
+    "torch==2.7.0",
     "torchvision>=0.19.0",
     "torchaudio>=2.4.0",
     "transformers>=4.51.0,<=4.57.1,!=4.52.0,!=4.57.0",
@@ -47,6 +47,7 @@ dependencies = [
     "peft>=0.14.0,<=0.17.1",
     "trl>=0.18.0,<=0.24.0",
     "torchdata>=0.10.0,<=0.11.0",
+    "flash-attn",
     # gui
     "gradio>=4.38.0,<=5.50.0",
     "matplotlib>=3.7.0",
@@ -153,3 +154,22 @@ indent-style = "space"
 docstring-code-format = true
 skip-magic-trailing-comma = false
 line-ending = "auto"
+
+[[tool.uv.index]]
+name = "torch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "torch-cu128" }
+torchvision = { index = "torch-cu128" }
+torchaudio = { index = "torch-cu128" }
+flash-attn = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.1/flash_attn-2.8.1+cu12torch2.7cxx11abiFALSE-cp311-cp311-linux_x86_64.whl" }
+
+# Extra build hooks for flash-attn
+[tool.uv.extra-build-dependencies]
+flash-attn = [{ requirement = "torch", match-runtime = true }]
+
+# Skip CUDA build for flash-attn (use cached wheel)
+[tool.uv.extra-build-variables]
+flash-attn = { FLASH_ATTENTION_SKIP_CUDA_BUILD = "TRUE" }
