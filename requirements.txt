@@ -37,3 +37,5 @@ av
 librosa
 # yanked
 propcache!=0.4.0
+#
+numba
