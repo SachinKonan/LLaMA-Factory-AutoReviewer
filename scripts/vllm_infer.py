@@ -48,7 +48,7 @@ def vllm_infer(
     dataset: str = "alpaca_en_demo",
     dataset_dir: str = "data",
     template: str = "default",
-    cutoff_len: int = 2048,
+    cutoff_len: int = 20000,
     max_samples: Optional[int] = None,
     vllm_config: str = "{}",
     save_name: str = "generated_predictions.jsonl",
@@ -113,7 +113,7 @@ def vllm_infer(
         "enable_lora": model_args.adapter_name_or_path is not None,
     }
     if template_obj.mm_plugin.__class__.__name__ != "BasePlugin":
-        engine_args["limit_mm_per_prompt"] = {"image": 4, "video": 2, "audio": 2}
+        engine_args["limit_mm_per_prompt"] = {"image": 400, "video": 2, "audio": 2}
 
     if isinstance(model_args.vllm_config, dict):
         engine_args.update(model_args.vllm_config)
@@ -143,6 +143,10 @@ def vllm_infer(
     all_prompts, all_preds, all_labels = [], [], []
     need_video_kwargs = _need_video_kwargs(template)
 
+    # Debug: print dataset info
+    print(f"DEBUG: Total samples in dataset: {len(train_dataset)}")
+    print(f"DEBUG: limit_mm_per_prompt: {engine_args.get('limit_mm_per_prompt', 'not set')}")
+
     # Add batch process to avoid the issue of too many files opened
     for i in tqdm(range(0, len(train_dataset), batch_size), desc="Processing batched inference"):
         vllm_inputs, prompts, labels = [], [], []
@@ -151,11 +155,27 @@ def vllm_infer(
         for j in range(len(batch["input_ids"])):
             if batch["images"][j] is not None:
                 image = batch["images"][j]
-                multi_modal_data = {
-                    "image": template_obj.mm_plugin._regularize_images(
-                        image, image_max_pixels=image_max_pixels, image_min_pixels=image_min_pixels
-                    )["images"]
-                }
+                num_images = len(image) if isinstance(image, list) else 1
+                # Count <image> placeholders in input_ids by decoding
+                input_text = tokenizer.decode(batch["input_ids"][j], skip_special_tokens=False)
+                num_placeholders = input_text.count("<image>") + input_text.count("<|image_pad|>")
+
+                if num_images != num_placeholders and num_placeholders > 0:
+                    print(f"DEBUG: Sample {i+j}: {num_images} images vs {num_placeholders} placeholders - truncating images")
+                    if isinstance(image, list):
+                        image = image[:num_placeholders]
+                    # If single image but no placeholder, skip this sample's images
+                    elif num_placeholders == 0:
+                        image = []
+
+                if not image:
+                    multi_modal_data = None
+                else:
+                    multi_modal_data = {
+                        "image": template_obj.mm_plugin._regularize_images(
+                            image, image_max_pixels=image_max_pixels, image_min_pixels=image_min_pixels
+                        )["images"]
+                    }
             elif batch["videos"][j] is not None:
                 video_metadata, video_metadata_kwargs = None, None
                 video = batch["videos"][j]
