@@ -150,20 +150,9 @@ def vllm_infer(
     all_prompts, all_preds, all_labels = [], [], []
     need_video_kwargs = _need_video_kwargs(template)
 
-    # Debug: print dataset info (flush=True ensures output appears in logs immediately)
-    print(f"DEBUG: Total samples in dataset: {len(train_dataset)}", flush=True)
-    print(f"DEBUG: limit_mm_per_prompt: {engine_args.get('limit_mm_per_prompt', 'not set')}", flush=True)
-    print(f"DEBUG: image_mismatch_mode: {image_mismatch_mode}", flush=True)
-
-    # Validate image_mismatch_mode
-    if image_mismatch_mode not in ("crop", "skip"):
-        raise ValueError(f"image_mismatch_mode must be 'crop' or 'skip', got '{image_mismatch_mode}'")
-
-    # Track mismatch statistics
-    total_samples = 0
-    skipped_samples = 0
-    cropped_samples = 0
-
+    # Debug: print dataset info
+    print(f"DEBUG: Total samples in dataset: {len(train_dataset)}")
+    print(f"DEBUG: limit_mm_per_prompt: {engine_args.get('limit_mm_per_prompt', 'not set')}")
     # Add batch process to avoid the issue of too many files opened
     for i in tqdm(range(0, len(train_dataset), batch_size), desc="Processing batched inference"):
         vllm_inputs, prompts, labels = [], [], []
@@ -178,25 +167,15 @@ def vllm_infer(
                 num_images = len(image) if isinstance(image, list) else 1
                 # Count <image> placeholders in input_ids by decoding
                 input_text = tokenizer.decode(batch["input_ids"][j], skip_special_tokens=False)
-                num_image_tags = input_text.count("<image>") + input_text.count("<|image_pad|>")
+                num_placeholders = input_text.count("<image>") + input_text.count("<|image_pad|>")
 
-                if num_images != num_image_tags:
-                    if image_mismatch_mode == "skip":
-                        # Skip this sample entirely
-                        print(f"DEBUG: Sample {i+j}: {num_images} images vs {num_image_tags} placeholders - SKIPPING", flush=True)
-                        skipped_samples += 1
-                        skip_this_sample = True
-                    elif image_mismatch_mode == "crop" and num_image_tags > 0:
-                        # Crop images to match placeholders
-                        print(f"DEBUG: Sample {i+j}: {num_images} images vs {num_image_tags} placeholders - CROPPING to {num_image_tags}", flush=True)
-                        cropped_samples += 1
-                        if isinstance(image, list):
-                            image = image[:num_image_tags]
-                        elif num_image_tags == 0:
-                            image = []
-
-                if skip_this_sample:
-                    continue
+                if num_images != num_placeholders and num_placeholders > 0:
+                    print(f"DEBUG: Sample {i+j}: {num_images} images vs {num_placeholders} placeholders - truncating images")
+                    if isinstance(image, list):
+                        image = image[:num_placeholders]
+                    # If single image but no placeholder, skip this sample's images
+                    elif num_placeholders == 0:
+                        image = []
 
                 if not image:
                     multi_modal_data = None
