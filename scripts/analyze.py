@@ -3,7 +3,8 @@
 Analyze prediction results from grid search experiments.
 
 Usage:
-    python scripts/analyze.py --runs "iclr_text_binary_20480_base,iclr_text_binary_20480_finetuned"
+    python scripts/analyze.py --dir grid_searchv2
+    python scripts/analyze.py --dir grid_searchv2 --indicators binary,citation
 """
 
 import argparse
@@ -22,120 +23,11 @@ from sklearn.metrics import (
 )
 
 
-def extract_binary_label(text: str) -> str | None:
-    """Extract accept/reject from label text (handles both simple and structured formats).
-
-    Formats supported:
-    - Simple: "Accept", "Reject"
-    - Structured: "...Final Decision: Accept" or "...Final Decision: Reject"
-    """
-    text = text.strip()
-
-    # First try: "Final Decision: X" format (norm_reviews/reviews datasets)
-    match = re.search(r"Final Decision:\s*(Accept|Reject)", text, re.IGNORECASE)
+def extract_boxed_answer(text: str) -> str | None:
+    """Extract answer from \\boxed{...} format."""
+    match = re.search(r"\\boxed\{([^}]+)\}", text)
     if match:
-        ans = match.group(1).lower()
-        return "accepted" if ans == "accept" else "rejected"
-
-    # Second try: simple format (base datasets)
-    text_lower = text.lower()
-    if text_lower in ["accept", "accepted"]:
-        return "accepted"
-    if text_lower in ["reject", "rejected"]:
-        return "rejected"
-
-    return None
-
-
-def extract_binary_answer(text: str) -> str | None:
-    """Extract accept/reject from prediction text (lowercase)."""
-    # Matches: Accept, Accepted, Acceptance, Reject, Rejected, Rejection
-    match = re.search(r"(Accept|Reject)(ed|ance|ion)?", text, re.IGNORECASE)
-    if match:
-        ans = match.group(1).lower()
-        return "accepted" if ans == "accept" else "rejected"
-    return None
-
-
-def extract_multiclass_label(text: str) -> str | None:
-    """Extract multiclass label (handles both simple and structured formats).
-
-    Returns: rejected, poster, spotlight, oral (lowercase)
-    """
-    text = text.strip()
-
-    # First try: "Final Decision: X" format (norm_reviews/reviews datasets)
-    match = re.search(r"Final Decision:\s*(Reject|Poster|Spotlight|Oral)", text, re.IGNORECASE)
-    if match:
-        ans = match.group(1).lower()
-        return "rejected" if ans == "reject" else ans
-
-    # Second try: simple format (base datasets)
-    text_lower = text.lower()
-    if text_lower in ["reject", "rejected"]:
-        return "rejected"
-    if text_lower in ["poster", "spotlight", "oral"]:
-        return text_lower
-
-    return None
-
-
-def extract_multiclass_answer(text: str) -> str | None:
-    """Extract multiclass answer (lowercase): reject, poster, spotlight, oral."""
-    # Matches: Accept/Accepted/Acceptance, Reject/Rejected/Rejection, Poster, Oral, Spotlight
-    match = re.search(r"(Accept|Reject|Poster|Oral|Spotlight)(ed|ance|ion)?", text, re.IGNORECASE)
-    if match:
-        ans = match.group(1).lower()
-        # Map accept -> poster (default accepted category)
-        if ans == "accept":
-            return "poster"
-        elif ans == "reject":
-            return "rejected"
-        else:
-            return ans  # poster, oral, spotlight
-    return None
-
-
-def multiclass_to_binary(label: str) -> str:
-    """Map multiclass label to binary: poster/oral/spotlight -> accepted, rejected -> rejected."""
-    if label in ["poster", "oral", "spotlight"]:
-        return "accepted"
-    return "rejected"
-
-
-def extract_citation_answer(text: str) -> float | None:
-    """Extract numeric citation value (format: 0.XX percentile)."""
-    text = text.strip()
-
-    # First try: if text starts with a number, use that (finetuned model)
-    first_match = re.match(r"^(\d+\.?\d*)", text)
-    if first_match:
-        try:
-            val = float(first_match.group())
-            if 0 <= val <= 1:
-                return val
-        except ValueError:
-            pass
-
-    # Second try: find all percentile-like numbers (0.XX) and take the last one
-    # This handles base model outputs like "percentile of 0.75"
-    matches = re.findall(r"\b(0\.\d+)\b", text)
-    if matches:
-        try:
-            return float(matches[-1])  # Take last match
-        except ValueError:
-            pass
-
-    # Third try: find any decimal number between 0 and 1
-    matches = re.findall(r"(\d+\.\d+)", text)
-    for m in reversed(matches):  # Check from end
-        try:
-            val = float(m)
-            if 0 <= val <= 1:
-                return val
-        except ValueError:
-            pass
-
+        return match.group(1).strip()
     return None
 
 
@@ -166,42 +58,87 @@ def get_dataset_size(dataset_name: str, data_dir: str = "data") -> int | None:
         return len(json.load(f))
 
 
-def get_dataset_base(run_name: str) -> str:
-    """Extract dataset base name from run name (remove _base or _finetuned suffix)."""
-    if run_name.endswith("_base"):
-        return run_name[:-5]
-    elif run_name.endswith("_finetuned"):
-        return run_name[:-10]
-    return run_name
+def discover_results(results_dir: Path) -> dict[str, list[tuple[str, str, Path]]]:
+    """
+    Discover all result files in the directory.
+
+    Returns dict mapping task_type -> list of (dataset_name, run_name, path).
+    run_name is like "base" or "finetuned2871".
+    """
+    results = {"binary": [], "multiclass": [], "citation": []}
+
+    if not results_dir.exists():
+        print(f"Warning: {results_dir} does not exist")
+        return results
+
+    for subdir in sorted(results_dir.iterdir()):
+        if not subdir.is_dir():
+            continue
+
+        dataset_name = subdir.name
+
+        # Determine task type from directory name
+        if "binary" in dataset_name:
+            task_type = "binary"
+        elif "multiclass" in dataset_name:
+            task_type = "multiclass"
+        elif "citation" in dataset_name:
+            task_type = "citation"
+        else:
+            print(f"Warning: Could not determine task type for {dataset_name}, skipping")
+            continue
+
+        # Find all jsonl files in this subdir
+        for jsonl_file in sorted(subdir.glob("*.jsonl")):
+            run_name = jsonl_file.stem  # "base" or "finetuned2871"
+            results[task_type].append((dataset_name, run_name, jsonl_file))
+
+    return results
+
+
+def multiclass_to_binary(label: str) -> str:
+    """Map multiclass label to binary: poster/oral/spotlight -> accepted, reject -> rejected."""
+    label_lower = label.lower()
+    if label_lower in ["poster", "oral", "spotlight"]:
+        return "accepted"
+    if label_lower in ["reject", "rejected"]:
+        return "rejected"
+    return label_lower
 
 
 def analyze_binary_results(
-    run_names: list[str], results_dir: str = "results/grid_search", data_dir: str = "data"
+    result_files: list[tuple[str, str, Path]], data_dir: str = "data"
 ) -> pd.DataFrame:
     """Analyze binary classification results."""
     results = []
 
-    for run_name in run_names:
-        path = Path(results_dir) / f"{run_name}.jsonl"
+    for dataset_name, run_name, path in result_files:
         if not path.exists():
             print(f"  Warning: {path} not found, skipping")
             continue
 
         df = load_jsonl(str(path))
-        # Extract labels (handles both simple "Accept"/"Reject" and "Final Decision: X" formats)
-        df["label_clean"] = df["label"].apply(extract_binary_label)
-        df["pred_extracted"] = df["predict"].apply(extract_binary_answer)
+        df["label_clean"] = df["label"].apply(extract_boxed_answer)
+        df["pred_extracted"] = df["predict"].apply(extract_boxed_answer)
+
+        # Normalize to accepted/rejected
+        df["label_clean"] = df["label_clean"].apply(
+            lambda x: "accepted" if x and x.lower() in ["accept", "accepted"]
+            else ("rejected" if x and x.lower() in ["reject", "rejected"] else None)
+        )
+        df["pred_extracted"] = df["pred_extracted"].apply(
+            lambda x: "accepted" if x and x.lower() in ["accept", "accepted"]
+            else ("rejected" if x and x.lower() in ["reject", "rejected"] else None)
+        )
 
         # Filter to rows where both label and prediction are extractable
         df_valid = df[df["pred_extracted"].notna() & df["label_clean"].notna()].copy()
 
         test_size = len(df)
-        num_labels_extracted = df["label_clean"].notna().sum()
         test_num_extracted = len(df_valid)
 
         # Get train size
-        dataset_base = get_dataset_base(run_name)
-        train_size = get_dataset_size(f"{dataset_base}_train", data_dir)
+        train_size = get_dataset_size(f"{dataset_name}_train", data_dir)
 
         if test_num_extracted > 0:
             y_true = df_valid["label_clean"].tolist()
@@ -223,7 +160,8 @@ def analyze_binary_results(
 
         results.append(
             {
-                "run_name": run_name,
+                "dataset": dataset_name,
+                "run": run_name,
                 "accuracy": accuracy,
                 "precision": precision,
                 "recall": recall,
@@ -243,35 +181,48 @@ def analyze_binary_results(
 
 
 def analyze_multiclass_results(
-    run_names: list[str], results_dir: str = "results/grid_search", data_dir: str = "data"
+    result_files: list[tuple[str, str, Path]], data_dir: str = "data"
 ) -> pd.DataFrame:
     """Analyze multiclass results. Accuracy uses 4 classes, precision/recall/f1 use binary mapping."""
     results = []
 
-    for run_name in run_names:
-        path = Path(results_dir) / f"{run_name}.jsonl"
+    for dataset_name, run_name, path in result_files:
         if not path.exists():
             print(f"  Warning: {path} not found, skipping")
             continue
 
         df = load_jsonl(str(path))
-        # Extract labels (handles both simple and "Final Decision: X" formats)
-        df["label_clean"] = df["label"].apply(extract_multiclass_label)
-        df["pred_extracted"] = df["predict"].apply(extract_multiclass_answer)
+        df["label_clean"] = df["label"].apply(extract_boxed_answer)
+        df["pred_extracted"] = df["predict"].apply(extract_boxed_answer)
+
+        # Normalize multiclass labels
+        valid_classes = ["reject", "rejected", "poster", "spotlight", "oral"]
+        df["label_clean"] = df["label_clean"].apply(
+            lambda x: x.lower() if x and x.lower() in valid_classes else None
+        )
+        df["pred_extracted"] = df["pred_extracted"].apply(
+            lambda x: x.lower() if x and x.lower() in valid_classes else None
+        )
+
+        # Normalize "rejected" -> "reject" for consistency
+        df["label_clean"] = df["label_clean"].apply(
+            lambda x: "reject" if x == "rejected" else x
+        )
+        df["pred_extracted"] = df["pred_extracted"].apply(
+            lambda x: "reject" if x == "rejected" else x
+        )
 
         # Filter to rows where both label and prediction are extractable
         df_valid = df[df["pred_extracted"].notna() & df["label_clean"].notna()].copy()
 
         test_size = len(df)
-        num_labels_extracted = df["label_clean"].notna().sum()
         test_num_extracted = len(df_valid)
 
         # Get train size
-        dataset_base = get_dataset_base(run_name)
-        train_size = get_dataset_size(f"{dataset_base}_train", data_dir)
+        train_size = get_dataset_size(f"{dataset_name}_train", data_dir)
 
         if test_num_extracted > 0:
-            # Multiclass accuracy (4 classes: rejected, poster, spotlight, oral)
+            # Multiclass accuracy (4 classes: reject, poster, spotlight, oral)
             y_true_multi = df_valid["label_clean"].tolist()
             y_pred_multi = df_valid["pred_extracted"].tolist()
             accuracy_multi = accuracy_score(y_true_multi, y_pred_multi)
@@ -296,7 +247,8 @@ def analyze_multiclass_results(
 
         results.append(
             {
-                "run_name": run_name,
+                "dataset": dataset_name,
+                "run": run_name,
                 "accuracy_4class": accuracy_multi,
                 "accuracy_binary": accuracy_binary,
                 "precision": precision,
@@ -316,50 +268,35 @@ def analyze_multiclass_results(
     return results_df
 
 
-def extract_citation_label(text: str) -> float | None:
-    """Extract citation score from label (handles 'Citation Score: X.XX' format)."""
-    text = text.strip()
-
-    # First try: direct float conversion
-    try:
-        return float(text)
-    except ValueError:
-        pass
-
-    # Second try: find "Citation Score: X.XX" pattern
-    match = re.search(r"Citation Score:\s*(\d+\.?\d*)", text)
-    if match:
-        try:
-            return float(match.group(1))
-        except ValueError:
-            pass
-
-    # Third try: find last 0.XX number
-    matches = re.findall(r"\b(0\.\d+)\b", text)
-    if matches:
-        try:
-            return float(matches[-1])
-        except ValueError:
-            pass
-
-    return None
-
-
 def analyze_citation_results(
-    run_names: list[str], results_dir: str = "results/grid_search", data_dir: str = "data"
+    result_files: list[tuple[str, str, Path]], data_dir: str = "data"
 ) -> pd.DataFrame:
     """Analyze citation prediction results (regression metrics)."""
     results = []
 
-    for run_name in run_names:
-        path = Path(results_dir) / f"{run_name}.jsonl"
+    for dataset_name, run_name, path in result_files:
         if not path.exists():
             print(f"  Warning: {path} not found, skipping")
             continue
 
         df = load_jsonl(str(path))
-        df["label_clean"] = df["label"].apply(extract_citation_label)
-        df["pred_extracted"] = df["predict"].apply(extract_citation_answer)
+        df["label_clean"] = df["label"].apply(extract_boxed_answer)
+        df["pred_extracted"] = df["predict"].apply(extract_boxed_answer)
+
+        # Convert to float
+        def to_float(x):
+            if x is None:
+                return None
+            try:
+                val = float(x)
+                if 0 <= val <= 1:
+                    return val
+            except ValueError:
+                pass
+            return None
+
+        df["label_clean"] = df["label_clean"].apply(to_float)
+        df["pred_extracted"] = df["pred_extracted"].apply(to_float)
 
         # Filter to extractable predictions AND labels
         df_valid = df[df["pred_extracted"].notna() & df["label_clean"].notna()].copy()
@@ -368,8 +305,7 @@ def analyze_citation_results(
         test_num_extracted = len(df_valid)
 
         # Get train size
-        dataset_base = get_dataset_base(run_name)
-        train_size = get_dataset_size(f"{dataset_base}_train", data_dir)
+        train_size = get_dataset_size(f"{dataset_name}_train", data_dir)
 
         if test_num_extracted > 0:
             y_true = df_valid["label_clean"]
@@ -382,7 +318,8 @@ def analyze_citation_results(
 
         results.append(
             {
-                "run_name": run_name,
+                "dataset": dataset_name,
+                "run": run_name,
                 "mae": mae,
                 "mse": mse,
                 "train_size": train_size,
@@ -395,20 +332,30 @@ def analyze_citation_results(
     return results_df
 
 
+def sort_results(df: pd.DataFrame) -> pd.DataFrame:
+    """Sort results by dataset name, then base before finetuned."""
+    if df.empty:
+        return df
+
+    df = df.copy()
+    # Sort key: (dataset, 0 if base else 1, run_name)
+    df["_sort_key"] = df.apply(
+        lambda row: (row["dataset"], 0 if row["run"] == "base" else 1, row["run"]),
+        axis=1
+    )
+    df = df.sort_values("_sort_key").drop(columns=["_sort_key"])
+    return df
+
+
 def print_results(df: pd.DataFrame, title: str) -> None:
-    """Print results dataframe as formatted table, sorted by base/finetuned."""
-    print(f"\n{'=' * 80}")
+    """Print results dataframe as formatted table."""
+    print(f"\n{'=' * 100}")
     print(f" {title}")
-    print("=" * 80)
+    print("=" * 100)
     if df.empty:
         print("  No results found")
     else:
-        # Add sort key: base comes before finetuned
-        df = df.copy()
-        df["_sort_key"] = df["run_name"].apply(
-            lambda x: (0 if "_base" in x else 1, x)
-        )
-        df = df.sort_values("_sort_key").drop(columns=["_sort_key"])
+        df = sort_results(df)
         print(df.to_string(index=False))
     print()
 
@@ -416,37 +363,64 @@ def print_results(df: pd.DataFrame, title: str) -> None:
 def main():
     parser = argparse.ArgumentParser(description="Analyze prediction results from grid search")
     parser.add_argument(
-        "--runs", type=str, required=True, help="Comma-separated list of run names"
+        "--dir", type=str, required=True, help="Directory name under results/ to scan (e.g., grid_searchv2)"
     )
     parser.add_argument(
-        "--results_dir", type=str, default="results/grid_search", help="Results directory"
+        "--indicators", type=str, default=None,
+        help="Comma-separated list of indicators to show (binary,multiclass,citation). Default: all"
     )
     parser.add_argument("--data_dir", type=str, default="data", help="Data directory")
+    parser.add_argument(
+        "--csv", action="store_true",
+        help="Save results as CSV files in results/{dir}/"
+    )
     args = parser.parse_args()
 
-    run_names = [r.strip() for r in args.runs.split(",")]
+    results_dir = Path("results") / args.dir
 
-    # Group by task type
-    binary_runs = [r for r in run_names if "binary" in r]
-    multiclass_runs = [r for r in run_names if "multiclass" in r]
-    citation_runs = [r for r in run_names if "citation" in r]
+    # Parse indicators filter
+    if args.indicators:
+        indicators = [i.strip().lower() for i in args.indicators.split(",")]
+    else:
+        indicators = ["binary", "multiclass", "citation"]
+
+    # Discover all results
+    discovered = discover_results(results_dir)
 
     all_results = {}
 
-    if binary_runs:
-        binary_df = analyze_binary_results(binary_runs, args.results_dir, args.data_dir)
+    if "binary" in indicators and discovered["binary"]:
+        binary_df = analyze_binary_results(discovered["binary"], args.data_dir)
+        binary_df = sort_results(binary_df)
         print_results(binary_df, "BINARY CLASSIFICATION RESULTS")
         all_results["binary"] = binary_df
+        if args.csv and not binary_df.empty:
+            csv_path = results_dir / "binary_results.csv"
+            binary_df.to_csv(csv_path, index=False)
+            print(f"Saved: {csv_path}")
 
-    if multiclass_runs:
-        multiclass_df = analyze_multiclass_results(multiclass_runs, args.results_dir, args.data_dir)
+    if "multiclass" in indicators and discovered["multiclass"]:
+        multiclass_df = analyze_multiclass_results(discovered["multiclass"], args.data_dir)
+        multiclass_df = sort_results(multiclass_df)
         print_results(multiclass_df, "MULTICLASS RESULTS (mapped to Accept/Reject)")
         all_results["multiclass"] = multiclass_df
+        if args.csv and not multiclass_df.empty:
+            csv_path = results_dir / "multiclass_results.csv"
+            multiclass_df.to_csv(csv_path, index=False)
+            print(f"Saved: {csv_path}")
 
-    if citation_runs:
-        citation_df = analyze_citation_results(citation_runs, args.results_dir, args.data_dir)
+    if "citation" in indicators and discovered["citation"]:
+        citation_df = analyze_citation_results(discovered["citation"], args.data_dir)
+        citation_df = sort_results(citation_df)
         print_results(citation_df, "CITATION PREDICTION RESULTS")
         all_results["citation"] = citation_df
+        if args.csv and not citation_df.empty:
+            csv_path = results_dir / "citation_results.csv"
+            citation_df.to_csv(csv_path, index=False)
+            print(f"Saved: {csv_path}")
+
+    if not any(all_results.values()):
+        print(f"No results found in {results_dir}")
 
     return all_results
 
