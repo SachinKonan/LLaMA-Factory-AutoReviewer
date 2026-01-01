@@ -47,8 +47,9 @@ def vllm_infer(
     adapter_name_or_path: str = None,
     dataset: str = "alpaca_en_demo",
     dataset_dir: str = "data",
+    media_dir: Optional[str] = None,
     template: str = "default",
-    cutoff_len: int = 20000,
+    cutoff_len: int = 31744,
     max_samples: Optional[int] = None,
     vllm_config: str = "{}",
     save_name: str = "generated_predictions.jsonl",
@@ -66,11 +67,17 @@ def vllm_infer(
     image_min_pixels: int = 32 * 32,
     video_fps: float = 2.0,
     video_maxlen: int = 128,
-    batch_size: int = 1024,
+    batch_size: int = 64,
+    image_mismatch_mode: str = "skip",
 ):
     r"""Perform batch generation using vLLM engine, which supports tensor parallelism.
 
     Usage: python vllm_infer.py --model_name_or_path meta-llama/Llama-2-7b-hf --template llama --dataset alpaca_en_demo
+
+    Args:
+        image_mismatch_mode: How to handle mismatch between number of images and <image> tags.
+            - "crop": Crop images list to match the number of <image> tags (default)
+            - "skip": Skip samples where image count doesn't match tag count
     """
     if pipeline_parallel_size > get_device_count():
         raise ValueError("Pipeline parallel size should be smaller than the number of gpus.")
@@ -81,6 +88,7 @@ def vllm_infer(
             adapter_name_or_path=adapter_name_or_path,
             dataset=dataset,
             dataset_dir=dataset_dir,
+            media_dir=media_dir,
             template=template,
             cutoff_len=cutoff_len,
             max_samples=max_samples,
@@ -143,9 +151,19 @@ def vllm_infer(
     all_prompts, all_preds, all_labels = [], [], []
     need_video_kwargs = _need_video_kwargs(template)
 
-    # Debug: print dataset info
-    print(f"DEBUG: Total samples in dataset: {len(train_dataset)}")
-    print(f"DEBUG: limit_mm_per_prompt: {engine_args.get('limit_mm_per_prompt', 'not set')}")
+    # Debug: print dataset info (flush=True ensures output appears in logs immediately)
+    print(f"DEBUG: Total samples in dataset: {len(train_dataset)}", flush=True)
+    print(f"DEBUG: limit_mm_per_prompt: {engine_args.get('limit_mm_per_prompt', 'not set')}", flush=True)
+    print(f"DEBUG: image_mismatch_mode: {image_mismatch_mode}", flush=True)
+
+    # Validate image_mismatch_mode
+    if image_mismatch_mode not in ("crop", "skip"):
+        raise ValueError(f"image_mismatch_mode must be 'crop' or 'skip', got '{image_mismatch_mode}'")
+
+    # Track mismatch statistics
+    total_samples = 0
+    skipped_samples = 0
+    cropped_samples = 0
 
     # Add batch process to avoid the issue of too many files opened
     for i in tqdm(range(0, len(train_dataset), batch_size), desc="Processing batched inference"):
@@ -153,20 +171,33 @@ def vllm_infer(
         batch = train_dataset[i : min(i + batch_size, len(train_dataset))]
 
         for j in range(len(batch["input_ids"])):
+            total_samples += 1
+            skip_this_sample = False
+
             if batch["images"][j] is not None:
                 image = batch["images"][j]
                 num_images = len(image) if isinstance(image, list) else 1
                 # Count <image> placeholders in input_ids by decoding
                 input_text = tokenizer.decode(batch["input_ids"][j], skip_special_tokens=False)
-                num_placeholders = input_text.count("<image>") + input_text.count("<|image_pad|>")
+                num_image_tags = input_text.count("<image>") + input_text.count("<|image_pad|>")
 
-                if num_images != num_placeholders and num_placeholders > 0:
-                    print(f"DEBUG: Sample {i+j}: {num_images} images vs {num_placeholders} placeholders - truncating images")
-                    if isinstance(image, list):
-                        image = image[:num_placeholders]
-                    # If single image but no placeholder, skip this sample's images
-                    elif num_placeholders == 0:
-                        image = []
+                if num_images != num_image_tags:
+                    if image_mismatch_mode == "skip":
+                        # Skip this sample entirely
+                        print(f"DEBUG: Sample {i+j}: {num_images} images vs {num_image_tags} placeholders - SKIPPING", flush=True)
+                        skipped_samples += 1
+                        skip_this_sample = True
+                    elif image_mismatch_mode == "crop" and num_image_tags > 0:
+                        # Crop images to match placeholders
+                        print(f"DEBUG: Sample {i+j}: {num_images} images vs {num_image_tags} placeholders - CROPPING to {num_image_tags}", flush=True)
+                        cropped_samples += 1
+                        if isinstance(image, list):
+                            image = image[:num_image_tags]
+                        elif num_image_tags == 0:
+                            image = []
+
+                if skip_this_sample:
+                    continue
 
                 if not image:
                     multi_modal_data = None
@@ -244,9 +275,14 @@ def vllm_infer(
         for text, pred, label in zip(all_prompts, all_preds, all_labels):
             f.write(json.dumps({"prompt": text, "predict": pred, "label": label}, ensure_ascii=False) + "\n")
 
-    print("*" * 70)
-    print(f"{len(all_prompts)} total generated results have been saved at {save_name}.")
-    print("*" * 70)
+    print("*" * 70, flush=True)
+    print(f"Total samples processed: {total_samples}", flush=True)
+    if skipped_samples > 0:
+        print(f"Samples skipped (image/tag mismatch): {skipped_samples}", flush=True)
+    if cropped_samples > 0:
+        print(f"Samples with cropped images: {cropped_samples}", flush=True)
+    print(f"{len(all_prompts)} total generated results have been saved at {save_name}.", flush=True)
+    print("*" * 70, flush=True)
 
 
 if __name__ == "__main__":
