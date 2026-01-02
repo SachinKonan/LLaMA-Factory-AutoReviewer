@@ -58,16 +58,22 @@ class CustomGRPOTrainer(GRPOTrainer):
         reward_weights: Optional[list[float]] = None,
     ) -> None:
         # Build GRPOConfig from finetuning_args and training_args
-        # Note: TRL 0.15.0 has limited GRPO parameters compared to newer versions
         grpo_config = GRPOConfig(
-            # GRPO-specific parameters (TRL 0.15.0 compatible)
+            # GRPO-specific parameters (TRL 0.18+ compatible)
             beta=finetuning_args.grpo_beta,
+            num_iterations=finetuning_args.grpo_num_iterations,
+            epsilon=finetuning_args.grpo_epsilon,
+            scale_rewards=finetuning_args.grpo_scale_rewards,
+            loss_type=finetuning_args.grpo_loss_type,
             temperature=finetuning_args.grpo_temperature,
             max_completion_length=finetuning_args.grpo_max_new_tokens,
             num_generations=finetuning_args.grpo_num_generations,
-            # vLLM settings (TRL 0.15.0 compatible)
+            # vLLM settings (TRL 0.18+ compatible)
             use_vllm=finetuning_args.grpo_use_vllm,
+            vllm_mode=finetuning_args.grpo_vllm_mode,
             vllm_gpu_memory_utilization=finetuning_args.grpo_vllm_gpu_memory_utilization,
+            vllm_tensor_parallel_size=finetuning_args.grpo_vllm_tensor_parallel_size,
+            vllm_enable_sleep_mode=finetuning_args.grpo_vllm_enable_sleep_mode,
             # Training arguments
             output_dir=training_args.output_dir,
             learning_rate=training_args.learning_rate,

@@ -3,7 +3,7 @@
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=128G
-#SBATCH --gres=gpu:2
+#SBATCH --gres=gpu:4
 #SBATCH --partition=ailab
 #SBATCH --output=logs/test_rl/grpo_base_%j.out
 #SBATCH --error=logs/test_rl/grpo_base_%j.err
@@ -21,7 +21,7 @@ export TRANSFORMERS_OFFLINE=1
 mkdir -p logs/test_rl
 
 accelerate launch \
-    --config_file configs/fsdp2_2gpu_config.yaml \
+    --config_file configs/fsdp2_4gpu_config.yaml \
     --main_process_port 29600 \
     src/train.py configs/grpo_binary.yaml \
     model_name_or_path="Qwen/Qwen2.5-7B-Instruct" \

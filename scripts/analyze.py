@@ -13,13 +13,12 @@ import re
 from pathlib import Path
 
 import pandas as pd
+from scipy import stats
 from sklearn.metrics import (
     accuracy_score,
     f1_score,
     mean_absolute_error,
     mean_squared_error,
-    precision_score,
-    recall_score,
 )
 
 
@@ -106,6 +105,46 @@ def multiclass_to_binary(label: str) -> str:
     return label_lower
 
 
+def compute_binary_metrics(y_true: list, y_pred: list) -> dict:
+    """
+    Compute binary classification metrics.
+
+    Returns dict with: accuracy, accept_precision, reject_precision, accept_recall,
+    reject_recall, accept_f1, reject_f1, num_tps, num_fps, num_fns, num_tns
+    """
+    # Confusion matrix components (positive = accepted)
+    num_tps = sum(1 for t, p in zip(y_true, y_pred) if t == "accepted" and p == "accepted")
+    num_fps = sum(1 for t, p in zip(y_true, y_pred) if t == "rejected" and p == "accepted")
+    num_fns = sum(1 for t, p in zip(y_true, y_pred) if t == "accepted" and p == "rejected")
+    num_tns = sum(1 for t, p in zip(y_true, y_pred) if t == "rejected" and p == "rejected")
+
+    accuracy = accuracy_score(y_true, y_pred)
+
+    # Accept metrics (positive class = accepted)
+    accept_precision = num_tps / (num_tps + num_fps) if (num_tps + num_fps) > 0 else 0.0
+    accept_recall = num_tps / (num_tps + num_fns) if (num_tps + num_fns) > 0 else 0.0
+    accept_f1 = f1_score(y_true, y_pred, pos_label="accepted", zero_division=0)
+
+    # Reject metrics (positive class = rejected, so TN/FN swap roles)
+    reject_precision = num_tns / (num_tns + num_fns) if (num_tns + num_fns) > 0 else 0.0
+    reject_recall = num_tns / (num_tns + num_fps) if (num_tns + num_fps) > 0 else 0.0
+    reject_f1 = f1_score(y_true, y_pred, pos_label="rejected", zero_division=0)
+
+    return {
+        "accuracy": accuracy,
+        "accept_precision": accept_precision,
+        "reject_precision": reject_precision,
+        "accept_recall": accept_recall,
+        "reject_recall": reject_recall,
+        "accept_f1": accept_f1,
+        "reject_f1": reject_f1,
+        "num_tps": num_tps,
+        "num_fps": num_fps,
+        "num_fns": num_fns,
+        "num_tns": num_tns,
+    }
+
+
 def analyze_binary_results(
     result_files: list[tuple[str, str, Path]], data_dir: str = "data"
 ) -> pd.DataFrame:
@@ -135,44 +174,37 @@ def analyze_binary_results(
         df_valid = df[df["pred_extracted"].notna() & df["label_clean"].notna()].copy()
 
         test_size = len(df)
-        test_num_extracted = len(df_valid)
 
         # Get train size
-        train_size = get_dataset_size(f"{dataset_name}_train", data_dir)
+        train_dataset_name = dataset_name.replace("_test", "_train")
+        train_size = get_dataset_size(train_dataset_name, data_dir)
 
-        if test_num_extracted > 0:
+        if len(df_valid) > 0:
             y_true = df_valid["label_clean"].tolist()
             y_pred = df_valid["pred_extracted"].tolist()
-
-            accuracy = accuracy_score(y_true, y_pred)
-            precision = precision_score(y_true, y_pred, pos_label="accepted", zero_division=0)
-            recall = recall_score(y_true, y_pred, pos_label="accepted", zero_division=0)
-            f1 = f1_score(y_true, y_pred, pos_label="accepted", zero_division=0)
-
-            # Confusion matrix components (positive = accepted)
-            num_tps = sum(1 for t, p in zip(y_true, y_pred) if t == "accepted" and p == "accepted")
-            num_fps = sum(1 for t, p in zip(y_true, y_pred) if t == "rejected" and p == "accepted")
-            num_fns = sum(1 for t, p in zip(y_true, y_pred) if t == "accepted" and p == "rejected")
-            num_tns = sum(1 for t, p in zip(y_true, y_pred) if t == "rejected" and p == "rejected")
+            metrics = compute_binary_metrics(y_true, y_pred)
         else:
-            accuracy = precision = recall = f1 = None
-            num_tps = num_fps = num_fns = num_tns = None
+            metrics = {
+                "accuracy": None,
+                "accept_precision": None,
+                "reject_precision": None,
+                "accept_recall": None,
+                "reject_recall": None,
+                "accept_f1": None,
+                "reject_f1": None,
+                "num_tps": None,
+                "num_fps": None,
+                "num_fns": None,
+                "num_tns": None,
+            }
 
         results.append(
             {
                 "dataset": dataset_name,
                 "run": run_name,
-                "accuracy": accuracy,
-                "precision": precision,
-                "recall": recall,
-                "f1": f1,
-                "num_tps": num_tps,
-                "num_fps": num_fps,
-                "num_fns": num_fns,
-                "num_tns": num_tns,
+                **metrics,
                 "train_size": train_size,
                 "test_size": test_size,
-                "test_num_extracted": test_num_extracted,
             }
         )
 
@@ -183,7 +215,7 @@ def analyze_binary_results(
 def analyze_multiclass_results(
     result_files: list[tuple[str, str, Path]], data_dir: str = "data"
 ) -> pd.DataFrame:
-    """Analyze multiclass results. Accuracy uses 4 classes, precision/recall/f1 use binary mapping."""
+    """Analyze multiclass results. Accuracy uses 4 classes, then binary metrics after mapping."""
     results = []
 
     for dataset_name, run_name, path in result_files:
@@ -216,51 +248,45 @@ def analyze_multiclass_results(
         df_valid = df[df["pred_extracted"].notna() & df["label_clean"].notna()].copy()
 
         test_size = len(df)
-        test_num_extracted = len(df_valid)
 
         # Get train size
-        train_size = get_dataset_size(f"{dataset_name}_train", data_dir)
+        train_dataset_name = dataset_name.replace("_test", "_train")
+        train_size = get_dataset_size(train_dataset_name, data_dir)
 
-        if test_num_extracted > 0:
+        if len(df_valid) > 0:
             # Multiclass accuracy (4 classes: reject, poster, spotlight, oral)
             y_true_multi = df_valid["label_clean"].tolist()
             y_pred_multi = df_valid["pred_extracted"].tolist()
-            accuracy_multi = accuracy_score(y_true_multi, y_pred_multi)
+            accuracy_4class = accuracy_score(y_true_multi, y_pred_multi)
 
-            # Binary metrics: map to accepted/rejected
+            # Binary metrics: map poster/spotlight/oral -> accepted
             y_true_binary = [multiclass_to_binary(y) for y in y_true_multi]
             y_pred_binary = [multiclass_to_binary(y) for y in y_pred_multi]
-
-            accuracy_binary = accuracy_score(y_true_binary, y_pred_binary)
-            precision = precision_score(y_true_binary, y_pred_binary, pos_label="accepted", zero_division=0)
-            recall = recall_score(y_true_binary, y_pred_binary, pos_label="accepted", zero_division=0)
-            f1 = f1_score(y_true_binary, y_pred_binary, pos_label="accepted", zero_division=0)
-
-            # Confusion matrix components (positive = accepted)
-            num_tps = sum(1 for t, p in zip(y_true_binary, y_pred_binary) if t == "accepted" and p == "accepted")
-            num_fps = sum(1 for t, p in zip(y_true_binary, y_pred_binary) if t == "rejected" and p == "accepted")
-            num_fns = sum(1 for t, p in zip(y_true_binary, y_pred_binary) if t == "accepted" and p == "rejected")
-            num_tns = sum(1 for t, p in zip(y_true_binary, y_pred_binary) if t == "rejected" and p == "rejected")
+            metrics = compute_binary_metrics(y_true_binary, y_pred_binary)
         else:
-            accuracy_multi = accuracy_binary = precision = recall = f1 = None
-            num_tps = num_fps = num_fns = num_tns = None
+            accuracy_4class = None
+            metrics = {
+                "accuracy": None,
+                "accept_precision": None,
+                "reject_precision": None,
+                "accept_recall": None,
+                "reject_recall": None,
+                "accept_f1": None,
+                "reject_f1": None,
+                "num_tps": None,
+                "num_fps": None,
+                "num_fns": None,
+                "num_tns": None,
+            }
 
         results.append(
             {
                 "dataset": dataset_name,
                 "run": run_name,
-                "accuracy_4class": accuracy_multi,
-                "accuracy_binary": accuracy_binary,
-                "precision": precision,
-                "recall": recall,
-                "f1": f1,
-                "num_tps": num_tps,
-                "num_fps": num_fps,
-                "num_fns": num_fns,
-                "num_tns": num_tns,
+                "accuracy_4class": accuracy_4class,
+                **metrics,
                 "train_size": train_size,
                 "test_size": test_size,
-                "test_num_extracted": test_num_extracted,
             }
         )
 
@@ -302,19 +328,25 @@ def analyze_citation_results(
         df_valid = df[df["pred_extracted"].notna() & df["label_clean"].notna()].copy()
 
         test_size = len(df)
-        test_num_extracted = len(df_valid)
 
         # Get train size
-        train_size = get_dataset_size(f"{dataset_name}_train", data_dir)
+        train_dataset_name = dataset_name.replace("_test", "_train")
+        train_size = get_dataset_size(train_dataset_name, data_dir)
 
-        if test_num_extracted > 0:
-            y_true = df_valid["label_clean"]
-            y_pred = df_valid["pred_extracted"]
+        if len(df_valid) > 0:
+            y_true = df_valid["label_clean"].values
+            y_pred = df_valid["pred_extracted"].values
 
             mae = mean_absolute_error(y_true, y_pred)
             mse = mean_squared_error(y_true, y_pred)
+
+            # Compute correlation and p-value
+            if len(y_true) > 2:
+                correlation, p_value = stats.pearsonr(y_true, y_pred)
+            else:
+                correlation, p_value = None, None
         else:
-            mae = mse = None
+            mae = mse = correlation = p_value = None
 
         results.append(
             {
@@ -322,9 +354,10 @@ def analyze_citation_results(
                 "run": run_name,
                 "mae": mae,
                 "mse": mse,
+                "correlation": correlation,
+                "p_value": p_value,
                 "train_size": train_size,
                 "test_size": test_size,
-                "test_num_extracted": test_num_extracted,
             }
         )
 
@@ -349,13 +382,15 @@ def sort_results(df: pd.DataFrame) -> pd.DataFrame:
 
 def print_results(df: pd.DataFrame, title: str) -> None:
     """Print results dataframe as formatted table."""
-    print(f"\n{'=' * 100}")
+    print(f"\n{'=' * 120}")
     print(f" {title}")
-    print("=" * 100)
+    print("=" * 120)
     if df.empty:
         print("  No results found")
     else:
         df = sort_results(df)
+        pd.set_option('display.max_columns', None)
+        pd.set_option('display.width', None)
         print(df.to_string(index=False))
     print()
 
@@ -402,7 +437,7 @@ def main():
     if "multiclass" in indicators and discovered["multiclass"]:
         multiclass_df = analyze_multiclass_results(discovered["multiclass"], args.data_dir)
         multiclass_df = sort_results(multiclass_df)
-        print_results(multiclass_df, "MULTICLASS RESULTS (mapped to Accept/Reject)")
+        print_results(multiclass_df, "DECISION (MULTICLASS) RESULTS")
         all_results["multiclass"] = multiclass_df
         if args.csv and not multiclass_df.empty:
             csv_path = results_dir / "multiclass_results.csv"
