@@ -81,7 +81,8 @@ dependencies = [
     "fastapi",
     "sse-starlette",
     "numba",
-    "wandb"
+    "wandb",
+    "scikit-learn"
 ]
 
 [project.optional-dependencies]

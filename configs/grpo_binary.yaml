@@ -10,14 +10,15 @@ finetuning_type: full
 template: qwen
 cutoff_len: 20480
 
-### grpo settings (TRL 0.15.0 compatible)
+### grpo settings (TRL 0.18+ compatible)
 grpo_beta: 0.0
 grpo_num_generations: 4
 grpo_max_new_tokens: 1024
 grpo_reward_funcs: binary
 grpo_temperature: 1.0
 grpo_use_vllm: true
-grpo_vllm_gpu_memory_utilization: 0.5
+grpo_vllm_gpu_memory_utilization: 0.2
+grpo_vllm_tensor_parallel_size: 4
 
 ### output
 logging_steps: 10
