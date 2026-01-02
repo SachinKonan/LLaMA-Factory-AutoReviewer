@@ -79,7 +79,9 @@ dependencies = [
     # api
     "uvicorn",
     "fastapi",
-    "sse-starlette"
+    "sse-starlette",
+    "numba",
+    "wandb"
 ]
 
 [project.optional-dependencies]

@@ -260,6 +260,72 @@ class RLHFArguments:
 
 
 @dataclass
+class GRPOArguments:
+    r"""Arguments pertaining to GRPO (Group Relative Policy Optimization) training."""
+
+    grpo_beta: float = field(
+        default=0.0,
+        metadata={"help": "KL divergence coefficient for GRPO. Set to 0.0 to disable KL penalty."},
+    )
+    grpo_num_iterations: int = field(
+        default=1,
+        metadata={"help": "Number of optimization iterations per generation batch (mu in the paper)."},
+    )
+    grpo_epsilon: float = field(
+        default=0.2,
+        metadata={"help": "Clipping epsilon for the surrogate objective."},
+    )
+    grpo_scale_rewards: Literal["group", "batch", "none"] = field(
+        default="group",
+        metadata={"help": "How to scale rewards: 'group' (per-prompt), 'batch' (global), or 'none'."},
+    )
+    grpo_loss_type: Literal["grpo", "dapo", "dr_grpo", "bnpo", "cispo", "sapo"] = field(
+        default="grpo",
+        metadata={"help": "Loss type for GRPO training."},
+    )
+    grpo_temperature: float = field(
+        default=1.0,
+        metadata={"help": "Sampling temperature for generation."},
+    )
+    grpo_max_new_tokens: int = field(
+        default=512,
+        metadata={"help": "Maximum number of tokens to generate per completion."},
+    )
+    grpo_num_generations: int = field(
+        default=4,
+        metadata={"help": "Number of completions to generate per prompt (G in the paper)."},
+    )
+    grpo_reward_funcs: str = field(
+        default="binary",
+        metadata={"help": "Comma-separated list of reward function names from the registry."},
+    )
+    grpo_reward_weights: Optional[str] = field(
+        default=None,
+        metadata={"help": "Comma-separated weights for each reward function (e.g., '0.5,0.5')."},
+    )
+    grpo_use_vllm: bool = field(
+        default=False,
+        metadata={"help": "Whether to use vLLM for fast generation."},
+    )
+    grpo_vllm_mode: Literal["server", "colocate"] = field(
+        default="colocate",
+        metadata={"help": "vLLM mode: 'server' for separate process or 'colocate' for shared GPU."},
+    )
+    grpo_vllm_gpu_memory_utilization: float = field(
+        default=0.9,
+        metadata={"help": "GPU memory utilization for vLLM (0.0 to 1.0)."},
+    )
+    grpo_vllm_tensor_parallel_size: int = field(
+        default=1,
+        metadata={"help": "Tensor parallel size for vLLM (number of GPUs for inference)."},
+    )
+    grpo_vllm_enable_sleep_mode: bool = field(
+        default=False,
+        metadata={"help": "Offload vLLM weights/cache during optimizer step to save memory."},
+    )
+
+
+@dataclass
 class GaloreArguments:
     r"""Arguments pertaining to the GaLore algorithm."""
 
@@ -446,6 +512,7 @@ class FinetuningArguments(
     BAdamArgument,
     ApolloArguments,
     GaloreArguments,
+    GRPOArguments,
     RLHFArguments,
     LoraArguments,
     OFTArguments,
@@ -457,7 +524,7 @@ class FinetuningArguments(
         default=False,
         metadata={"help": "Whether or not to train model in purely bf16 precision (without AMP)."},
     )
-    stage: Literal["pt", "sft", "rm", "ppo", "dpo", "kto"] = field(
+    stage: Literal["pt", "sft", "rm", "ppo", "grpo", "dpo", "kto"] = field(
         default="sft",
         metadata={"help": "Which stage will be performed in training."},
     )
