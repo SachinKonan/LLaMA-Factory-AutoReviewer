@@ -5,6 +5,7 @@ Analyze prediction results from grid search experiments.
 Usage:
     python scripts/analyze.py --dir grid_searchv2
     python scripts/analyze.py --dir grid_searchv2 --indicators binary,citation
+    python scripts/analyze.py --dir grid_searchv2 --version _v5
 """
 
 import argparse
@@ -57,12 +58,18 @@ def get_dataset_size(dataset_name: str, data_dir: str = "data") -> int | None:
         return len(json.load(f))
 
 
-def discover_results(results_dir: Path) -> dict[str, list[tuple[str, str, Path]]]:
+def discover_results(
+    results_dir: Path, version_filter: str | None = None
+) -> dict[str, list[tuple[str, str, Path]]]:
     """
     Discover all result files in the directory.
 
     Returns dict mapping task_type -> list of (dataset_name, run_name, path).
     run_name is like "base" or "finetuned2871".
+
+    Args:
+        results_dir: Directory to scan for results.
+        version_filter: If provided, only include paths containing this string (e.g., "_v5").
     """
     results = {"binary": [], "multiclass": [], "citation": []}
 
@@ -75,6 +82,10 @@ def discover_results(results_dir: Path) -> dict[str, list[tuple[str, str, Path]]
             continue
 
         dataset_name = subdir.name
+
+        # Apply version filter if specified
+        if version_filter and version_filter not in dataset_name:
+            continue
 
         # Determine task type from directory name
         if "binary" in dataset_name:
@@ -409,6 +420,10 @@ def main():
         "--csv", action="store_true",
         help="Save results as CSV files in results/{dir}/"
     )
+    parser.add_argument(
+        "--version", type=str, default=None,
+        help="Only include paths containing this string (e.g., _v5)"
+    )
     args = parser.parse_args()
 
     results_dir = Path("results") / args.dir
@@ -420,7 +435,7 @@ def main():
         indicators = ["binary", "multiclass", "citation"]
 
     # Discover all results
-    discovered = discover_results(results_dir)
+    discovered = discover_results(results_dir, version_filter=args.version)
 
     all_results = {}
 
