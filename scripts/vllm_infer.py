@@ -63,11 +63,11 @@ def vllm_infer(
     enable_thinking: bool = True,
     seed: Optional[int] = None,
     pipeline_parallel_size: int = 1,
-    image_max_pixels: int = 768 * 768,
-    image_min_pixels: int = 32 * 32,
+    image_max_pixels: int = 28*28*1280,
+    image_min_pixels: int = 1*28*28,
     video_fps: float = 2.0,
     video_maxlen: int = 128,
-    batch_size: int = 64,
+    batch_size: int = 32,
     image_mismatch_mode: str = "skip",
 ):
     r"""Perform batch generation using vLLM engine, which supports tensor parallelism.
