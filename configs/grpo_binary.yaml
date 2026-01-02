@@ -1,0 +1,36 @@
+### model
+trust_remote_code: true
+
+### method
+stage: grpo
+do_train: true
+finetuning_type: full
+
+### dataset
+template: qwen
+cutoff_len: 20480
+
+### grpo settings (TRL 0.15.0 compatible)
+grpo_beta: 0.0
+grpo_num_generations: 4
+grpo_max_new_tokens: 1024
+grpo_reward_funcs: binary
+grpo_temperature: 1.0
+grpo_use_vllm: true
+grpo_vllm_gpu_memory_utilization: 0.5
+
+### output
+logging_steps: 10
+save_steps: 99999
+plot_loss: true
+report_to: wandb
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+learning_rate: 1.0e-5
+num_train_epochs: 1.0
+lr_scheduler_type: constant_with_warmup
+warmup_ratio: 0.03
+bf16: true
+gradient_checkpointing: true
