@@ -175,8 +175,8 @@ def analyze_binary_results(
 
         test_size = len(df)
 
-        # Get train size
-        train_dataset_name = dataset_name.replace("_test", "_train")
+        # Get train size (dataset_name doesn't have _test suffix, so append _train)
+        train_dataset_name = f"{dataset_name}_train"
         train_size = get_dataset_size(train_dataset_name, data_dir)
 
         if len(df_valid) > 0:
@@ -249,8 +249,8 @@ def analyze_multiclass_results(
 
         test_size = len(df)
 
-        # Get train size
-        train_dataset_name = dataset_name.replace("_test", "_train")
+        # Get train size (dataset_name doesn't have _test suffix, so append _train)
+        train_dataset_name = f"{dataset_name}_train"
         train_size = get_dataset_size(train_dataset_name, data_dir)
 
         if len(df_valid) > 0:
@@ -329,8 +329,8 @@ def analyze_citation_results(
 
         test_size = len(df)
 
-        # Get train size
-        train_dataset_name = dataset_name.replace("_test", "_train")
+        # Get train size (dataset_name doesn't have _test suffix, so append _train)
+        train_dataset_name = f"{dataset_name}_train"
         train_size = get_dataset_size(train_dataset_name, data_dir)
 
         if len(df_valid) > 0:
