@@ -454,7 +454,7 @@ def main():
             citation_df.to_csv(csv_path, index=False)
             print(f"Saved: {csv_path}")
 
-    if not any(all_results.values()):
+    if not any(not df.empty for df in all_results.values()):
         print(f"No results found in {results_dir}")
 
     return all_results

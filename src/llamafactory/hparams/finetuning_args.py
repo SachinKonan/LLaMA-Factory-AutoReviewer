@@ -319,9 +319,9 @@ class GRPOArguments:
         default=1,
         metadata={"help": "Tensor parallel size for vLLM (number of GPUs for inference)."},
     )
-    grpo_vllm_enable_sleep_mode: bool = field(
+    grpo_append_reasoning_explicit: bool = field(
         default=False,
-        metadata={"help": "Offload vLLM weights/cache during optimizer step to save memory."},
+        metadata={"help": "Append reasoning instruction to user prompts."},
     )
 
 
