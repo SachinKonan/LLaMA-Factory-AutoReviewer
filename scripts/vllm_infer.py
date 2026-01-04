@@ -19,7 +19,6 @@ import time
 import av
 import fire
 from datasets import load_dataset
-from eval_bleu_rouge import compute_metrics
 from tqdm import tqdm
 from transformers import Seq2SeqTrainingArguments
 
@@ -250,6 +249,8 @@ def vllm_infer(
     #    }
     #
     if matrix_save_name is not None:
+        from eval_bleu_rouge import compute_metrics
+
         predict_time = model_predict_end_time - model_predict_start_time
         preparation_time = model_predict_start_time - model_preparation_start_time
 

@@ -77,7 +77,8 @@ dependencies = [
     "sse-starlette",
     "numba",
     "wandb",
-    "scikit-learn"
+    "scikit-learn",
+    "vllm"
 ]
 
 [project.optional-dependencies]
