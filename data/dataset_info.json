@@ -1718,5 +1718,65 @@
       "assistant_tag": "gpt",
       "system_tag": "system"
     }
+  },
+  "iclr_clean+images_binary_no_reviews_v3_train": {
+    "file_name": "iclr_clean+images_binary_no_reviews_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_vision_binary_no_reviews_v3_train": {
+    "file_name": "iclr_vision_binary_no_reviews_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_clean+images_binary_no_reviews_v3_test": {
+    "file_name": "iclr_clean+images_binary_no_reviews_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_vision_binary_no_reviews_v3_test": {
+    "file_name": "iclr_vision_binary_no_reviews_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
   }
 }
