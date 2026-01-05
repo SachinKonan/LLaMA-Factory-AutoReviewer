@@ -5,9 +5,8 @@
 #SBATCH --mem=70G
 #SBATCH --gres=gpu:1
 #SBATCH --partition=ailab
-#SBATCH --array=0-6
-#SBATCH --output=logs/hyperparam_sweep_inference_batch16/%A_%a.out
-#SBATCH --error=logs/hyperparam_sweep_inference_batch16/%A_%a.err
+#SBATCH --output=logs/hyperparam_sweep/%A_%a.out
+#SBATCH --error=logs/hyperparam_sweep/%A_%a.err
 
 set -e
 cd /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer
@@ -17,15 +16,9 @@ export TRANSFORMERS_OFFLINE=1
 # 7 model directories to run inference on
 MODEL_DIRS=(
     "saves/qwen2.5-7b/full/hyperparam_sweep/bs16_lr2.0e-5_const_w0"
-    "saves/qwen2.5-7b/full/hyperparam_sweep/bs16_lr2.0e-5_const_w0.03"
-    "saves/qwen2.5-7b/full/hyperparam_sweep/bs16_lr2.0e-5_cos_w0"
-    "saves/qwen2.5-7b/full/hyperparam_sweep/bs16_lr2.0e-5_cos_w0.03"
-    "saves/qwen2.5-7b/full/hyperparam_sweep/bs16_lr2.0e-6_const_w0"
-    "saves/qwen2.5-7b/full/hyperparam_sweep/bs16_lr2.0e-6_cos_w0"
-    "saves/qwen2.5-7b/full/hyperparam_sweep/bs16_lr2.0e-6_cos_w0.03"
 )
 
-MODEL_DIR="${MODEL_DIRS[$SLURM_ARRAY_TASK_ID]}"
+MODEL_DIR="saves/qwen2.5-7b/full/hyperparam_sweep/bs16_lr2.0e-5_const_w0"
 CONFIG_NAME=$(basename "${MODEL_DIR}")
 RESULTS_DIR="results/hyperparam_sweep/${CONFIG_NAME}"
 

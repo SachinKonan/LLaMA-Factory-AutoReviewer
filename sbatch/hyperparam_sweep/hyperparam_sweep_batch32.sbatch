@@ -6,8 +6,8 @@
 #SBATCH --gres=gpu:4
 #SBATCH --partition=ailab
 #SBATCH --array=0-7
-#SBATCH --output=logs/hyperparam_sweep/%A_%a.out
-#SBATCH --error=logs/hyperparam_sweep/%A_%a.err
+#SBATCH --output=logs/hyperparam_sweep_batch32/%A_%a.out
+#SBATCH --error=logs/hyperparam_sweep_batch32/%A_%a.err
 
 set -e
 cd /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer

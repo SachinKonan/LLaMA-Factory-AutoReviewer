@@ -57,12 +57,18 @@ def get_dataset_size(dataset_name: str, data_dir: str = "data") -> int | None:
         return len(json.load(f))
 
 
-def discover_results(results_dir: Path) -> dict[str, list[tuple[str, str, Path]]]:
+def discover_results(
+    results_dir: Path, force_type: str | None = None
+) -> dict[str, list[tuple[str, str, Path]]]:
     """
     Discover all result files in the directory.
 
     Returns dict mapping task_type -> list of (dataset_name, run_name, path).
     run_name is like "base" or "finetuned2871".
+
+    Args:
+        results_dir: Directory to scan for results
+        force_type: If specified, treat all results as this type (binary/multiclass/citation)
     """
     results = {"binary": [], "multiclass": [], "citation": []}
 
@@ -76,8 +82,10 @@ def discover_results(results_dir: Path) -> dict[str, list[tuple[str, str, Path]]
 
         dataset_name = subdir.name
 
-        # Determine task type from directory name
-        if "binary" in dataset_name:
+        # Determine task type from directory name (or use force_type)
+        if force_type:
+            task_type = force_type
+        elif "binary" in dataset_name:
             task_type = "binary"
         elif "multiclass" in dataset_name:
             task_type = "multiclass"
@@ -409,6 +417,11 @@ def main():
         "--csv", action="store_true",
         help="Save results as CSV files in results/{dir}/"
     )
+    parser.add_argument(
+        "--force-result-type", type=str, default=None,
+        choices=["binary", "multiclass", "citation"],
+        help="Force all results to be treated as this type (binary, multiclass, or citation)"
+    )
     args = parser.parse_args()
 
     results_dir = Path("results") / args.dir
@@ -420,7 +433,8 @@ def main():
         indicators = ["binary", "multiclass", "citation"]
 
     # Discover all results
-    discovered = discover_results(results_dir)
+    force_type = getattr(args, 'force_result_type', None)
+    discovered = discover_results(results_dir, force_type=force_type)
 
     all_results = {}
 
