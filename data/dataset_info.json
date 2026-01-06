@@ -1778,5 +1778,653 @@
       "assistant_tag": "gpt",
       "system_tag": "system"
     }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_clean_citation_no_reviews_v3_train": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_clean_citation_no_reviews_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_clean_citation_no_reviews_v3_test": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_clean_citation_no_reviews_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_clean+images_binary_no_reviews_titleabs_corrected_v3_train": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_clean+images_binary_no_reviews_titleabs_corrected_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_clean+images_binary_no_reviews_titleabs_corrected_v3_test": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_clean+images_binary_no_reviews_titleabs_corrected_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_clean+images_citation_no_reviews_v3_train": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_clean+images_citation_no_reviews_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_clean+images_citation_no_reviews_v3_test": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_clean+images_citation_no_reviews_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_vision_binary_no_reviews_titleabs_corrected_v3_train": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_vision_binary_no_reviews_titleabs_corrected_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_vision_binary_no_reviews_titleabs_corrected_v3_test": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_vision_binary_no_reviews_titleabs_corrected_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_vision_citation_no_reviews_v3_train": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_vision_citation_no_reviews_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_vision_citation_no_reviews_v3_test": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_vision_citation_no_reviews_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean+images_binary_no_reviews_titleabs_corrected_v3_train": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean+images_binary_no_reviews_titleabs_corrected_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean+images_binary_no_reviews_titleabs_corrected_v3_test": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean+images_binary_no_reviews_titleabs_corrected_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_vision_binary_no_reviews_titleabs_corrected_v3_train": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_vision_binary_no_reviews_titleabs_corrected_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_vision_binary_no_reviews_titleabs_corrected_v3_test": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_vision_binary_no_reviews_titleabs_corrected_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean_citation_no_reviews_v3_train": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean_citation_no_reviews_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean_citation_no_reviews_v3_test": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean_citation_no_reviews_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean+images_citation_no_reviews_titleabs_corrected_v3_train": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean+images_citation_no_reviews_titleabs_corrected_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean+images_citation_no_reviews_titleabs_corrected_v3_test": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean+images_citation_no_reviews_titleabs_corrected_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_vision_citation_no_reviews_titleabs_corrected_v3_train": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_vision_citation_no_reviews_titleabs_corrected_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_vision_citation_no_reviews_titleabs_corrected_v3_test": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_vision_citation_no_reviews_titleabs_corrected_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_clean_binary_metareview_v3_train": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_clean_binary_metareview_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_clean_binary_metareview_v3_test": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_clean_binary_metareview_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_clean+images_binary_metareview_titleabs_corrected_v3_train": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_clean+images_binary_metareview_titleabs_corrected_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_clean+images_binary_metareview_titleabs_corrected_v3_test": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_clean+images_binary_metareview_titleabs_corrected_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_vision_binary_metareview_titleabs_corrected_v3_train": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_vision_binary_metareview_titleabs_corrected_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_vision_binary_metareview_titleabs_corrected_v3_test": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_vision_binary_metareview_titleabs_corrected_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_clean_citation_metareview_v3_train": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_clean_citation_metareview_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_clean_citation_metareview_v3_test": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_clean_citation_metareview_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_clean+images_citation_metareview_titleabs_corrected_v3_train": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_clean+images_citation_metareview_titleabs_corrected_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_clean+images_citation_metareview_titleabs_corrected_v3_test": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_clean+images_citation_metareview_titleabs_corrected_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_vision_citation_metareview_titleabs_corrected_v3_train": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_vision_citation_metareview_titleabs_corrected_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_vision_citation_metareview_titleabs_corrected_v3_test": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_vision_citation_metareview_titleabs_corrected_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean_binary_metareview_v3_train": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean_binary_metareview_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean_binary_metareview_v3_test": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean_binary_metareview_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean+images_binary_metareview_titleabs_corrected_v3_train": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean+images_binary_metareview_titleabs_corrected_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean+images_binary_metareview_titleabs_corrected_v3_test": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean+images_binary_metareview_titleabs_corrected_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_vision_binary_metareview_titleabs_corrected_v3_train": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_vision_binary_metareview_titleabs_corrected_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_vision_binary_metareview_titleabs_corrected_v3_test": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_vision_binary_metareview_titleabs_corrected_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean_citation_metareview_v3_train": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean_citation_metareview_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean_citation_metareview_v3_test": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean_citation_metareview_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean+images_citation_metareview_titleabs_corrected_v3_train": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean+images_citation_metareview_titleabs_corrected_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean+images_citation_metareview_titleabs_corrected_v3_test": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean+images_citation_metareview_titleabs_corrected_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_vision_citation_metareview_titleabs_corrected_v3_train": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_vision_citation_metareview_titleabs_corrected_v3_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_vision_citation_metareview_titleabs_corrected_v3_test": {
+    "file_name": "iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_vision_citation_metareview_titleabs_corrected_v3_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
   }
 }
