@@ -1,8 +1,8 @@
 ### model
 model_name_or_path: Qwen/Qwen2.5-VL-7B-Instruct
-image_min_pixels: 2352 # 3*28**2
-image_max_pixels: 2104256 # 2684*(28**2)
-video_max_pixels: 2104256 # 2684*(28**2)
+image_min_pixels: 784
+image_max_pixels:
+
 trust_remote_code: true
 flash_attn: fa2
 
@@ -13,19 +13,27 @@ finetuning_type: full
 freeze_vision_tower: true
 freeze_multi_modal_projector: true
 freeze_language_model: false
+gradient_checkpointing: true
+gradient_checkpointing_kwargs: {"use_reentrant": false}
 
-### dataset
-dataset: iclr_clean+images_binary_no_reviews_v3
+### dataset (overridden via CLI)
+dataset: placeholder
+eval_dataset: placeholder
 template: qwen2_vl
 cutoff_len: 20480
+media_dir: /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/data/images
 overwrite_cache: true
 preprocessing_num_workers: 16
 dataloader_num_workers: 4
 
-### output
-output_dir: saves/qwen2.5-vl-7b/full/sft
+### eval
+do_eval: false
+eval_steps: 200
+
+### output (overridden via CLI)
+output_dir: placeholder
 logging_steps: 10
-save_steps: 500
+save_steps: 99999
 plot_loss: true
 overwrite_output_dir: true
 save_only_model: true
@@ -33,9 +41,9 @@ report_to: none
 
 ### train
 per_device_train_batch_size: 1
-gradient_accumulation_steps: 8
+gradient_accumulation_steps: 8    # 1*4*8 = 32 effective batch (4 GPUs)
 learning_rate: 2.0e-6
-num_train_epochs: 3.0
+num_train_epochs: 2.0
 lr_scheduler_type: cosine
 warmup_ratio: 0
 bf16: true

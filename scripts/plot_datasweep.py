@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Plot training loss curves for hyperparameter sweep experiments.
-a
+Plot training loss curves for data sweep experiments.
+
 Usage:
-    python scripts/plot_hyperparamsweep.py
+    python scripts/plot_datasweep.py
 """
 
 import json
@@ -22,25 +22,29 @@ mpl.rcParams.update({
 # Sizes
 labelsize = 16
 titlesize = 18
-legendsize = 12
+legendsize = 11
 ticksize = 14
 
-# Color palette - distinct colors for different configs
+# Color palette for data sweep variants
 COLORS = {
-    "lr2.0e-5_cos_w0": "#FF6B6B",
-    "lr2.0e-5_cos_w0.03": "#FF8E8E",
-    "lr2.0e-5_const_w0": "#4ECDC4",
-    "lr2.0e-5_const_w0.03": "#7EDDD6",
-    "lr2.0e-6_cos_w0": "#45B7D1",
-    "lr2.0e-6_cos_w0.03": "#74CAE0",
-    "lr2.0e-6_const_w0": "#96CEB4",
-    "lr2.0e-6_const_w0.03": "#B4DCC8",
+    "balanced": "#FF6B6B",
+    "balanced_deepreview": "#4ECDC4",
+    "balanced_deepreview_agreeing": "#45B7D1",
+    "balanced_deepreview_seed10": "#96CEB4",
+    "balanced_deepreview_seed20": "#FFEAA7",
+    "original": "#DDA0DD",
+    "original_max20k": "#F39C12",
 }
 
-# Line styles for warmup distinction
-LINESTYLES = {
-    "w0": "-",
-    "w0.03": "--",
+# Display names for legend
+DISPLAY_NAMES = {
+    "balanced": "Balanced",
+    "balanced_deepreview": "Balanced + DeepReview",
+    "balanced_deepreview_agreeing": "Balanced + DeepReview (Agreeing)",
+    "balanced_deepreview_seed10": "Balanced + DeepReview (Seed 10)",
+    "balanced_deepreview_seed20": "Balanced + DeepReview (Seed 20)",
+    "original": "Original",
+    "original_max20k": "Original (Max 20k)",
 }
 
 
@@ -75,53 +79,19 @@ def load_trainer_log(path: Path) -> list:
     return data
 
 
-def parse_config_name(name: str) -> dict:
+def discover_configs(saves_dir: Path) -> dict:
     """
-    Parse config directory name like 'bs16_lr2.0e-6_cos_w0.03'.
+    Discover all dataset configs in the data_sweep directory.
 
-    Returns dict with batch_size, lr, scheduler, warmup.
-    """
-    parts = name.split("_")
-    config = {}
-
-    for part in parts:
-        if part.startswith("bs"):
-            config["batch_size"] = int(part[2:])
-        elif part.startswith("lr"):
-            config["lr"] = part[2:]
-        elif part in ["cos", "const"]:
-            config["scheduler"] = "cosine" if part == "cos" else "constant"
-        elif part.startswith("w"):
-            config["warmup"] = part
-
-    return config
-
-
-def get_legend_label(config: dict, min_loss: float = None) -> str:
-    """Create legend label from config with min loss."""
-    sched = "cos" if config.get("scheduler") == "cosine" else "const"
-    warmup = config.get("warmup", "w0")
-    lr = config.get("lr", "?")
-    base = f"lr={lr}, {sched}, {warmup}"
-    if min_loss is not None:
-        return f"{base} $\\rightarrow$ Min: {min_loss:.3f}"
-    return base
-
-
-def discover_configs(saves_dir: Path, batch_size: int) -> dict:
-    """
-    Discover all configs for a given batch size.
-
-    Returns dict: {config_name: {"path": Path, "config": dict, "log_type": str}}
+    Returns dict: {short_name: {"path": Path, "log_type": str}}
     """
     configs = {}
-    prefix = f"bs{batch_size}_"
 
     if not saves_dir.exists():
         return configs
 
     for subdir in sorted(saves_dir.iterdir()):
-        if not subdir.is_dir() or not subdir.name.startswith(prefix):
+        if not subdir.is_dir():
             continue
 
         # Check for completed training (trainer_state.json) or in-progress (trainer_log.jsonl)
@@ -129,34 +99,30 @@ def discover_configs(saves_dir: Path, batch_size: int) -> dict:
         log_path = subdir / "trainer_log.jsonl"
 
         if state_path.exists():
-            config = parse_config_name(subdir.name)
             configs[subdir.name] = {
                 "path": state_path,
-                "config": config,
                 "log_type": "state",
             }
         elif log_path.exists():
-            config = parse_config_name(subdir.name)
             configs[subdir.name] = {
                 "path": log_path,
-                "config": config,
                 "log_type": "log",
             }
 
     return configs
 
 
-def plot_batch_losses(ax, saves_dir: Path, batch_size: int):
-    """Plot training loss curves for a given batch size."""
-    configs = discover_configs(saves_dir, batch_size)
+def plot_data_sweep_losses(ax, saves_dir: Path):
+    """Plot training loss curves for all dataset variants."""
+    configs = discover_configs(saves_dir)
 
     if not configs:
-        ax.text(0.5, 0.5, f"No data for batch size {batch_size}",
+        ax.text(0.5, 0.5, "No data found",
                 ha='center', va='center', transform=ax.transAxes,
                 fontsize=labelsize, color='gray')
         return
 
-    for config_name, info in sorted(configs.items()):
+    for short_name, info in sorted(configs.items()):
         # Use appropriate loader based on log type
         if info.get("log_type") == "log":
             log_history = load_trainer_log(info["path"])
@@ -181,22 +147,20 @@ def plot_batch_losses(ax, saves_dir: Path, batch_size: int):
         max_step = max(steps)
         progress = [100.0 * s / max_step for s in steps]
 
-        # Get color and style
-        config = info["config"]
-        color_key = f"lr{config.get('lr', '')}_{config.get('scheduler', 'cos')[:3]}_{config.get('warmup', 'w0')}"
-        color = COLORS.get(color_key, "#888888")
-        warmup = config.get("warmup", "w0")
-        linestyle = LINESTYLES.get(warmup, "-")
+        # Get color
+        color = COLORS.get(short_name, "#888888")
 
         # Calculate min loss for legend
         min_loss = min(losses)
-        label = get_legend_label(config, min_loss)
+        display_name = DISPLAY_NAMES.get(short_name, short_name)
+        label = f"{display_name} $\\rightarrow$ Min: {min_loss:.3f}"
+
         ax.plot(progress, losses, label=label, color=color,
-                linestyle=linestyle, linewidth=2.0, alpha=0.9)
+                linestyle="-", linewidth=2.0, alpha=0.9)
 
     ax.set_xlabel(r"Progress (\%)", fontsize=labelsize)
     ax.set_ylabel(r"Loss", fontsize=labelsize)
-    ax.set_title(f"Batch Size {batch_size}", fontsize=titlesize, fontweight='bold')
+    ax.set_title(r"Data Sweep: Training Loss Curves", fontsize=titlesize, fontweight='bold')
     ax.grid(True, linestyle='--', alpha=0.5)
     ax.tick_params(axis='both', labelsize=ticksize)
     ax.legend(fontsize=legendsize, loc='upper right')
@@ -204,26 +168,25 @@ def plot_batch_losses(ax, saves_dir: Path, batch_size: int):
 
 
 def main():
-    SAVES_DIR = Path("saves/qwen2.5-7b/full/hyperparam_sweep")
-    OUTPUT_DIR = Path("results/hyperparam_sweep")
+    SAVES_DIR = Path("saves/qwen2.5-7b/full/data_sweep")
+    OUTPUT_DIR = Path("results/data_sweep")
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Create 2x1 figure
-    fig, axes = plt.subplots(2, 1, figsize=(12, 10))
+    # Create figure
+    fig, ax = plt.subplots(figsize=(12, 7))
 
-    fig.suptitle(r"Hyperparameter Sweep: Training Loss Curves",
-                 fontsize=titlesize + 2, fontweight='bold')
-
-    # Top: Batch 16
-    plot_batch_losses(axes[0], SAVES_DIR, batch_size=16)
-
-    # Bottom: Batch 32
-    plot_batch_losses(axes[1], SAVES_DIR, batch_size=32)
+    plot_data_sweep_losses(ax, SAVES_DIR)
 
     plt.tight_layout()
     output_path = OUTPUT_DIR / "training_loss.pdf"
     plt.savefig(output_path, dpi=200, bbox_inches='tight')
     print(f"Saved: {output_path}")
+
+    # Also save PNG for quick viewing
+    output_path_png = OUTPUT_DIR / "training_loss.png"
+    plt.savefig(output_path_png, dpi=150, bbox_inches='tight')
+    print(f"Saved: {output_path_png}")
+
     plt.close()
 
 
