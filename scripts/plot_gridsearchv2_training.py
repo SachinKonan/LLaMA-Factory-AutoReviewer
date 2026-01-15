@@ -4,8 +4,10 @@ Plot training loss curves and test accuracy for grid_searchv2 experiments.
 
 Usage:
     python scripts/plot_gridsearchv2_training.py
+    python scripts/plot_gridsearchv2_training.py --max-y-val 1.5
 """
 
+import argparse
 import json
 from pathlib import Path
 
@@ -145,7 +147,7 @@ def discover_training_logs(saves_dir: Path, text_type_filter: str = None) -> dic
     return logs
 
 
-def plot_training_curves(saves_dir: Path, output_path: Path, text_type_filter: str = None):
+def plot_training_curves(saves_dir: Path, output_path: Path, text_type_filter: str = None, max_y_val: float | None = None):
     """Create 3x3 grid of training loss curves."""
 
     # Discover logs
@@ -219,6 +221,8 @@ def plot_training_curves(saves_dir: Path, output_path: Path, text_type_filter: s
             # Styling
             ax.grid(True, linestyle='--', alpha=0.5)
             ax.tick_params(axis='both', labelsize=ticksize)
+            if max_y_val is not None:
+                ax.set_ylim(top=max_y_val)
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=200, bbox_inches='tight', transparent=False)
@@ -294,7 +298,7 @@ def load_results_from_csv(results_dir: Path, text_type_filter: str = None) -> di
     return results
 
 
-def plot_test_accuracy(results_dir: Path, output_path: Path, text_type_filter: str = None):
+def plot_test_accuracy(results_dir: Path, output_path: Path, text_type_filter: str = None, max_y_val: float | None = None):
     """Create 3x3 grid of test accuracy vs iterations."""
 
     # Load results from CSV files
@@ -361,6 +365,8 @@ def plot_test_accuracy(results_dir: Path, output_path: Path, text_type_filter: s
             # Styling
             ax.grid(True, linestyle='--', alpha=0.5)
             ax.tick_params(axis='both', labelsize=ticksize)
+            if max_y_val is not None:
+                ax.set_ylim(top=max_y_val)
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=200, bbox_inches='tight', transparent=False)
@@ -369,6 +375,15 @@ def plot_test_accuracy(results_dir: Path, output_path: Path, text_type_filter: s
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Plot training loss curves and test accuracy for grid_searchv2 experiments.")
+    parser.add_argument(
+        "--max-y-val",
+        type=float,
+        default=None,
+        help="Maximum y-axis value for the plot"
+    )
+    args = parser.parse_args()
+
     # Constants for grid_searchv2
     DIR = "grid_searchv2"
     SAVES_DIR = Path("saves/qwen2.5-7b/full/grid_searchv2")
@@ -381,11 +396,11 @@ def main():
     for text_type in ["clean", "clean-title+abstract"]:
         # Training loss curves
         output_path = OUTPUT_DIR / f"training_loss_{text_type}.pdf"
-        plot_training_curves(SAVES_DIR, output_path, text_type)
+        plot_training_curves(SAVES_DIR, output_path, text_type, max_y_val=args.max_y_val)
 
         # Test accuracy vs iterations
         output_path = OUTPUT_DIR / f"test_accuracy_{text_type}.pdf"
-        plot_test_accuracy(RESULTS_DIR, output_path, text_type)
+        plot_test_accuracy(RESULTS_DIR, output_path, text_type, max_y_val=args.max_y_val)
 
 
 if __name__ == "__main__":

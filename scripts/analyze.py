@@ -30,6 +30,21 @@ def extract_boxed_answer(text: str) -> str | None:
     return None
 
 
+def extract_gemini_answer(text: str) -> str | None:
+    """Extract answer from Gemini output (simple string matching)."""
+    if not text:
+        return None
+    text_lower = text.lower()
+    is_reject = "reject" in text_lower
+    is_accept = "accept" in text_lower
+    if is_accept and not is_reject:
+        return "Accept"
+    if is_reject and not is_accept:
+        return "Reject"
+    # If both or neither, return None
+    return None
+
+
 def load_jsonl(path: str) -> pd.DataFrame:
     """Load jsonl file as dataframe."""
     with open(path) as f:
@@ -154,10 +169,13 @@ def compute_binary_metrics(y_true: list, y_pred: list) -> dict:
 
 
 def analyze_binary_results(
-    result_files: list[tuple[str, str, Path]], data_dir: str = "data"
+    result_files: list[tuple[str, str, Path]], data_dir: str = "data", is_gemini: bool = False
 ) -> pd.DataFrame:
     """Analyze binary classification results."""
     results = []
+
+    # Choose extraction function based on is_gemini flag
+    pred_extractor = extract_gemini_answer if is_gemini else extract_boxed_answer
 
     for dataset_name, run_name, path in result_files:
         if not path.exists():
@@ -165,8 +183,8 @@ def analyze_binary_results(
             continue
 
         df = load_jsonl(str(path))
-        df["label_clean"] = df["label"].apply(extract_boxed_answer)
-        df["pred_extracted"] = df["predict"].apply(extract_boxed_answer)
+        df["label_clean"] = df["label"].apply(extract_boxed_answer)  # Labels always use boxed format
+        df["pred_extracted"] = df["predict"].apply(pred_extractor)
 
         # Normalize to accepted/rejected
         df["label_clean"] = df["label_clean"].apply(
@@ -191,6 +209,13 @@ def analyze_binary_results(
             y_true = df_valid["label_clean"].tolist()
             y_pred = df_valid["pred_extracted"].tolist()
             metrics = compute_binary_metrics(y_true, y_pred)
+
+            # Calculate ground-truth acceptance rate and majority reject accuracy
+            num_accepts = sum(1 for y in y_true if y == "accepted")
+            num_rejects = sum(1 for y in y_true if y == "rejected")
+            total = num_accepts + num_rejects
+            acceptance_rate = num_accepts / total if total > 0 else None
+            majority_reject_acc = 1 - acceptance_rate if acceptance_rate is not None else None
         else:
             metrics = {
                 "accuracy": None,
@@ -205,6 +230,8 @@ def analyze_binary_results(
                 "num_fns": None,
                 "num_tns": None,
             }
+            acceptance_rate = None
+            majority_reject_acc = None
 
         results.append(
             {
@@ -213,6 +240,8 @@ def analyze_binary_results(
                 **metrics,
                 "train_size": train_size,
                 "test_size": test_size,
+                "acceptance_rate": acceptance_rate,
+                "majority_reject_acc": majority_reject_acc,
             }
         )
 
@@ -271,6 +300,13 @@ def analyze_multiclass_results(
             y_true_binary = [multiclass_to_binary(y) for y in y_true_multi]
             y_pred_binary = [multiclass_to_binary(y) for y in y_pred_multi]
             metrics = compute_binary_metrics(y_true_binary, y_pred_binary)
+
+            # Calculate ground-truth acceptance rate and majority reject accuracy
+            num_accepts = sum(1 for y in y_true_binary if y == "accepted")
+            num_rejects = sum(1 for y in y_true_binary if y == "rejected")
+            total = num_accepts + num_rejects
+            acceptance_rate = num_accepts / total if total > 0 else None
+            majority_reject_acc = 1 - acceptance_rate if acceptance_rate is not None else None
         else:
             accuracy_4class = None
             metrics = {
@@ -286,6 +322,8 @@ def analyze_multiclass_results(
                 "num_fns": None,
                 "num_tns": None,
             }
+            acceptance_rate = None
+            majority_reject_acc = None
 
         results.append(
             {
@@ -295,6 +333,8 @@ def analyze_multiclass_results(
                 **metrics,
                 "train_size": train_size,
                 "test_size": test_size,
+                "acceptance_rate": acceptance_rate,
+                "majority_reject_acc": majority_reject_acc,
             }
         )
 
@@ -422,6 +462,10 @@ def main():
         choices=["binary", "multiclass", "citation"],
         help="Force all results to be treated as this type (binary, multiclass, or citation)"
     )
+    parser.add_argument(
+        "--is-gemini", action="store_true",
+        help="Use Gemini-style parsing (simple accept/reject string matching instead of \\boxed{})"
+    )
     args = parser.parse_args()
 
     results_dir = Path("results") / args.dir
@@ -439,7 +483,7 @@ def main():
     all_results = {}
 
     if "binary" in indicators and discovered["binary"]:
-        binary_df = analyze_binary_results(discovered["binary"], args.data_dir)
+        binary_df = analyze_binary_results(discovered["binary"], args.data_dir, is_gemini=args.is_gemini)
         binary_df = sort_results(binary_df)
         print_results(binary_df, "BINARY CLASSIFICATION RESULTS")
         all_results["binary"] = binary_df

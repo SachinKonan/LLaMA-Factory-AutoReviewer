@@ -8,31 +8,36 @@ enable_liger_kernel: true
 stage: sft
 do_train: true
 finetuning_type: full
+gradient_checkpointing: true
+gradient_checkpointing_kwargs: {"use_reentrant": false}
 
-### dataset
-dataset: alpaca_en_demo
+### dataset (overridden via CLI)
+dataset: placeholder
+eval_dataset: placeholder
 template: qwen
-cutoff_len: 24480
-max_samples: 1000
+cutoff_len: 20480
 overwrite_cache: true
 preprocessing_num_workers: 16
 dataloader_num_workers: 4
 
-### output
-output_dir: saves/qwen2.5-7b/full/sft
+### eval
+do_eval: false
+
+### output (overridden via CLI)
+output_dir: placeholder
 logging_steps: 10
-save_steps: 500
+save_strategy: epoch
 plot_loss: true
 overwrite_output_dir: true
-save_only_model: false
+save_only_model: true
 report_to: none
 
 ### train
 per_device_train_batch_size: 1
-gradient_accumulation_steps: 4
-learning_rate: 1.0e-5
+gradient_accumulation_steps: 1    # 1*4*4 = 16 effective batch
+learning_rate: 2.0e-6
 num_train_epochs: 3.0
 lr_scheduler_type: cosine
-warmup_ratio: 0.1
+warmup_ratio: 0
 bf16: true
 ddp_timeout: 180000000

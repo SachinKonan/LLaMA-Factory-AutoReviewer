@@ -2,36 +2,37 @@
 model_name_or_path: Qwen/Qwen2.5-7B-Instruct
 trust_remote_code: true
 flash_attn: fa2
-enable_liger_kernel: true
 
 ### method
 stage: sft
 do_train: true
 finetuning_type: full
+gradient_checkpointing: true
+gradient_checkpointing_kwargs: {"use_reentrant": false}
 
 ### dataset
-dataset: alpaca_en_demo
+dataset: iclr_2020_2025_80_20_split5_balanced_deepreview_agreeing_clean_binary_no_reviews_v3_train
 template: qwen
-cutoff_len: 24480
-max_samples: 1000
+cutoff_len: 4096
 overwrite_cache: true
 preprocessing_num_workers: 16
 dataloader_num_workers: 4
 
 ### output
-output_dir: saves/qwen2.5-7b/full/sft
-logging_steps: 10
-save_steps: 500
+output_dir: saves/test_liger_fsdp2
+logging_steps: 1
+save_steps: 100
 plot_loss: true
 overwrite_output_dir: true
 save_only_model: false
 report_to: none
 
 ### train
-per_device_train_batch_size: 1
+per_device_train_batch_size: 2
 gradient_accumulation_steps: 4
-learning_rate: 1.0e-5
-num_train_epochs: 3.0
+learning_rate: 1.0e-6
+num_train_epochs: 1.0
+max_steps: 20
 lr_scheduler_type: cosine
 warmup_ratio: 0.1
 bf16: true

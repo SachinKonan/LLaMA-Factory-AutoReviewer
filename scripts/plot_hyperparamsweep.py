@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
 Plot training loss curves for hyperparameter sweep experiments.
-a
+
 Usage:
     python scripts/plot_hyperparamsweep.py
+    python scripts/plot_hyperparamsweep.py --max-y-val 1.5
 """
 
+import argparse
 import json
 from pathlib import Path
 
@@ -108,9 +110,9 @@ def get_legend_label(config: dict, min_loss: float = None) -> str:
     return base
 
 
-def discover_configs(saves_dir: Path, batch_size: int) -> dict:
+def discover_configs(saves_dir: Path, batch_size: int, lr_filter: str | None = None) -> dict:
     """
-    Discover all configs for a given batch size.
+    Discover all configs for a given batch size and optional learning rate.
 
     Returns dict: {config_name: {"path": Path, "config": dict, "log_type": str}}
     """
@@ -130,6 +132,9 @@ def discover_configs(saves_dir: Path, batch_size: int) -> dict:
 
         if state_path.exists():
             config = parse_config_name(subdir.name)
+            # Filter by learning rate if specified
+            if lr_filter and config.get("lr") != lr_filter:
+                continue
             configs[subdir.name] = {
                 "path": state_path,
                 "config": config,
@@ -137,6 +142,9 @@ def discover_configs(saves_dir: Path, batch_size: int) -> dict:
             }
         elif log_path.exists():
             config = parse_config_name(subdir.name)
+            # Filter by learning rate if specified
+            if lr_filter and config.get("lr") != lr_filter:
+                continue
             configs[subdir.name] = {
                 "path": log_path,
                 "config": config,
@@ -146,9 +154,9 @@ def discover_configs(saves_dir: Path, batch_size: int) -> dict:
     return configs
 
 
-def plot_batch_losses(ax, saves_dir: Path, batch_size: int):
-    """Plot training loss curves for a given batch size."""
-    configs = discover_configs(saves_dir, batch_size)
+def plot_batch_losses(ax, saves_dir: Path, batch_size: int, lr_filter: str | None = None, max_y_val: float | None = None):
+    """Plot training loss curves for a given batch size and optional learning rate."""
+    configs = discover_configs(saves_dir, batch_size, lr_filter=lr_filter)
 
     if not configs:
         ax.text(0.5, 0.5, f"No data for batch size {batch_size}",
@@ -196,29 +204,46 @@ def plot_batch_losses(ax, saves_dir: Path, batch_size: int):
 
     ax.set_xlabel(r"Progress (\%)", fontsize=labelsize)
     ax.set_ylabel(r"Loss", fontsize=labelsize)
-    ax.set_title(f"Batch Size {batch_size}", fontsize=titlesize, fontweight='bold')
+    # Build title based on filters
+    title_parts = [f"Batch Size {batch_size}"]
+    if lr_filter:
+        title_parts.append(f"lr={lr_filter}")
+    ax.set_title(", ".join(title_parts), fontsize=titlesize, fontweight='bold')
     ax.grid(True, linestyle='--', alpha=0.5)
     ax.tick_params(axis='both', labelsize=ticksize)
     ax.legend(fontsize=legendsize, loc='upper right')
     ax.set_xlim(0, 100)
+    if max_y_val is not None:
+        ax.set_ylim(top=max_y_val)
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Plot training loss curves for hyperparameter sweep experiments.")
+    parser.add_argument(
+        "--max-y-val",
+        type=float,
+        default=None,
+        help="Maximum y-axis value for the plot"
+    )
+    args = parser.parse_args()
+
     SAVES_DIR = Path("saves/qwen2.5-7b/full/hyperparam_sweep")
     OUTPUT_DIR = Path("results/hyperparam_sweep")
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Create 2x1 figure
-    fig, axes = plt.subplots(2, 1, figsize=(12, 10))
+    # Create 2x2 figure: rows=batch size, cols=learning rate
+    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
 
     fig.suptitle(r"Hyperparameter Sweep: Training Loss Curves",
                  fontsize=titlesize + 2, fontweight='bold')
 
-    # Top: Batch 16
-    plot_batch_losses(axes[0], SAVES_DIR, batch_size=16)
+    # Row 1: Batch 16
+    plot_batch_losses(axes[0, 0], SAVES_DIR, batch_size=16, lr_filter="2.0e-5", max_y_val=args.max_y_val)
+    plot_batch_losses(axes[0, 1], SAVES_DIR, batch_size=16, lr_filter="2.0e-6", max_y_val=args.max_y_val)
 
-    # Bottom: Batch 32
-    plot_batch_losses(axes[1], SAVES_DIR, batch_size=32)
+    # Row 2: Batch 32
+    plot_batch_losses(axes[1, 0], SAVES_DIR, batch_size=32, lr_filter="2.0e-5", max_y_val=args.max_y_val)
+    plot_batch_losses(axes[1, 1], SAVES_DIR, batch_size=32, lr_filter="2.0e-6", max_y_val=args.max_y_val)
 
     plt.tight_layout()
     output_path = OUTPUT_DIR / "training_loss.pdf"

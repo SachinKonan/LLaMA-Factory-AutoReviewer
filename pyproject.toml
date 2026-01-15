@@ -51,6 +51,8 @@ dependencies = [
     # gui
     "gradio>=4.38.0,<=5.50.0",
     "matplotlib>=3.7.0",
+    "seaborn>=0.12.0",
+    "plotly>=5.0.0",
     "tyro<0.9.0",
     # ops
     "einops",
@@ -78,7 +80,10 @@ dependencies = [
     "numba",
     "wandb",
     "scikit-learn",
-    "vllm==0.10.1"
+    "vllm==0.10.1",
+    # google cloud / gemini
+    "google-genai>=1.0.0",
+    "google-cloud-storage>=2.0.0",
 ]
 
 [project.optional-dependencies]

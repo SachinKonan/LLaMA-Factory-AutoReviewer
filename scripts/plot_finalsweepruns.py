@@ -29,24 +29,24 @@ ticksize = 14
 
 # Color palette for data sweep variants
 COLORS = {
-    "balanced": "#FF6B6B",
-    "balanced_deepreview": "#4ECDC4",
-    "balanced_deepreview_agreeing": "#45B7D1",
-    "balanced_deepreview_seed10": "#96CEB4",
-    "balanced_deepreview_seed20": "#FFEAA7",
-    "original": "#DDA0DD",
-    "original_max20k": "#F39C12",
+    "clean": "#FF6B6B",
+    "clean_images": "#4ECDC4",
+    "vision_768": "#45B7D1",
+    #"balanced_deepreview_seed10": "#96CEB4",
+    #"balanced_deepreview_seed20": "#FFEAA7",
+    #"original": "#DDA0DD",
+    #"original_max20k": "#F39C12",
 }
 
 # Display names for legend
 DISPLAY_NAMES = {
-    "balanced": "Balanced",
-    "balanced_deepreview": "Balanced + DeepReview",
-    "balanced_deepreview_agreeing": "Balanced + DeepReview (Agreeing)",
-    "balanced_deepreview_seed10": "Balanced + DeepReview (Seed 10)",
-    "balanced_deepreview_seed20": "Balanced + DeepReview (Seed 20)",
-    "original": "Original",
-    "original_max20k": "Original (Max 20k)",
+    "clean": "Text",
+    "clean_images": "Text+Figures",
+    "vision_768": "Vision-753ppage",
+    #"balanced_deepreview_seed10": "Balanced + DeepReview (Seed 10)",
+    #"balanced_deepreview_seed20": "Balanced + DeepReview (Seed 20)",
+    #"original": "Original",
+    #"original_max20k": "Original (Max 20k)",
 }
 
 
@@ -166,7 +166,7 @@ def plot_data_sweep_losses(ax, saves_dir: Path, runs_filter: list[str] | None = 
 
     ax.set_xlabel(r"Progress (\%)", fontsize=labelsize)
     ax.set_ylabel(r"Loss", fontsize=labelsize)
-    ax.set_title(r"Data Sweep: Training Loss Curves", fontsize=titlesize, fontweight='bold')
+    ax.set_title(r"Final Sweep Runs: Training Loss Curves", fontsize=titlesize, fontweight='bold')
     ax.grid(True, linestyle='--', alpha=0.5)
     ax.tick_params(axis='both', labelsize=ticksize)
     ax.legend(fontsize=legendsize, loc='upper right')
@@ -197,8 +197,8 @@ def main():
         runs_filter = [r.strip() for r in args.runs.split(",")]
         print(f"Filtering to runs: {runs_filter}")
 
-    SAVES_DIR = Path("saves/qwen2.5-7b/full/data_sweep")
-    OUTPUT_DIR = Path("results/data_sweep")
+    SAVES_DIR = Path("saves/sweep_final_runs")
+    OUTPUT_DIR = Path("results/sweep_final_runs")
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     # Create figure
