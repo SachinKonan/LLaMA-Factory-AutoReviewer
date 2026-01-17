@@ -45,6 +45,15 @@ BALANCED_CLEAN_REF = "iclr_2020_2025_85_5_10_split6_balanced_clean_binary_norevi
 BALANCED_VISION_REF = "iclr_2020_2025_85_5_10_split6_balanced_vision_binary_noreviews_v6_test"
 
 
+def get_dataset_size(dataset_name: str, data_dir: str = "data") -> int | None:
+    """Get the number of samples in a dataset."""
+    path = Path(data_dir) / dataset_name / "data.json"
+    if not path.exists():
+        return None
+    with open(path) as f:
+        return len(json.load(f))
+
+
 def extract_boxed_answer(text: str) -> str | None:
     """Extract answer from \\boxed{...} format."""
     if not text:
@@ -190,9 +199,13 @@ def analyze_subset(
     # Compute in-dist vs ood breakdown
     combined, in_dist, ood = compute_dist_breakdown(valid)
 
+    num_accepted = sum(1 for d in valid if d["label"] == "accepted")
+    accept_rate = num_accepted / len(valid)
+
     return {
         "subset": subset_name,
         "size": len(valid),
+        "test_accept_rate": f"{accept_rate:.2f}",
         "combined": combined,
         "in_dist": in_dist,
         "ood": ood,
@@ -273,6 +286,10 @@ def analyze_result_dir(
         print(f"  Skipping (unknown result directory): {result_name}")
         return results
 
+    # Get train dataset size
+    train_dataset = test_dataset.replace("_test", "_train")
+    train_size = get_dataset_size(train_dataset, data_dir)
+
     # Load predictions
     pred_path = results_dir / result_name / "finetuned.jsonl"
     if not pred_path.exists():
@@ -289,7 +306,7 @@ def analyze_result_dir(
     predictions = load_predictions(pred_path)
 
     if verbose:
-        print(f"  Loaded {len(predictions)} predictions, {len(test_data)} test samples")
+        print(f"  Loaded {len(predictions)} predictions, {len(test_data)} test samples, train_size={train_size}")
 
     # Join predictions with metadata
     joined = join_predictions_with_metadata(predictions, test_data)
@@ -302,10 +319,14 @@ def analyze_result_dir(
 
     if len(valid_full) > 0:
         combined, in_dist, ood = compute_dist_breakdown(valid_full)
+        num_accepted = sum(1 for d in valid_full if d["label"] == "accepted")
+        accept_rate = num_accepted / len(valid_full)
         results.append({
             "result": result_name,
             "subset": "(full)",
-            "size": len(valid_full),
+            "train_size": train_size,
+            "test_size": len(valid_full),
+            "test_accept_rate": f"{accept_rate:.2f}",
             "combined": combined,
             "in_dist": in_dist,
             "ood": ood,
@@ -322,7 +343,13 @@ def analyze_result_dir(
         if result is not None:
             results.append({
                 "result": result_name,
-                **result,
+                "subset": result["subset"],
+                "train_size": train_size,
+                "test_size": result["size"],
+                "test_accept_rate": result["test_accept_rate"],
+                "combined": result["combined"],
+                "in_dist": result["in_dist"],
+                "ood": result["ood"],
             })
 
     return results
@@ -383,7 +410,7 @@ def main():
     df = pd.DataFrame(all_results)
 
     # Reorder columns
-    column_order = ["result", "subset", "size", "combined", "in_dist", "ood"]
+    column_order = ["result", "subset", "train_size", "test_size", "test_accept_rate", "combined", "in_dist", "ood"]
     df = df[[c for c in column_order if c in df.columns]]
 
     # Ensure full display
