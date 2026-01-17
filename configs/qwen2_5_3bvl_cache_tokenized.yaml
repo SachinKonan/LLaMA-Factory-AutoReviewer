@@ -1,0 +1,45 @@
+### Tokenization caching config for qwen2.5vl-3b
+### Run this on CPU to pre-tokenize the dataset before GPU training
+
+### model
+model_name_or_path: Qwen/Qwen2.5-VL-3B-Instruct
+trust_remote_code: true
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+
+### dataset
+dataset: iclr_2020_2025_85_5_10_split6_original_vision_binary_noreviews_v6_train
+media_dir: .
+template: qwen2_vl
+cutoff_len: 16384
+max_samples: 20000
+overwrite_cache: true
+preprocessing_num_workers: 16
+
+# This is the key - save tokenized dataset to disk
+tokenized_path: cache/tokenized_qwen2_5_3bvl_sft
+
+### output
+output_dir: saves/qwen2.5vl-3b/full/sft_ds3_cache_run
+logging_steps: 10
+save_steps: 500
+overwrite_output_dir: true
+report_to: none
+
+### train - minimal settings, we exit after tokenization
+image_max_pixels: 250880
+image_min_pixels: 196
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 1
+learning_rate: 1.0e-5
+max_steps: 1
+bf16: false
+
+### evaluation
+do_eval: true
+eval_dataset: iclr_2020_2025_85_5_10_split6_original_vision_binary_noreviews_v6_validation
+eval_strategy: "no"
+per_device_eval_batch_size: 1
