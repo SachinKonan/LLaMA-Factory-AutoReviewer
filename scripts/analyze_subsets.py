@@ -137,6 +137,37 @@ def join_predictions_with_metadata(
     return joined
 
 
+def format_combined(metrics: dict) -> str:
+    """Format combined metrics as acc/acc_rec/rej_rec."""
+    return f"{metrics['accuracy']:.2f}/{metrics['accept_recall']:.2f}/{metrics['reject_recall']:.2f}"
+
+
+def compute_dist_breakdown(valid_data: list[dict]) -> tuple[str, str, str]:
+    """Compute in-distribution (year < 2025) vs out-of-distribution (year = 2025) breakdown.
+
+    Returns: (combined, in_dist, ood) formatted strings
+    Format: acc/accept_recall/reject_recall
+    """
+    in_dist = [d for d in valid_data if d["year"] is not None and d["year"] < 2025]
+    ood = [d for d in valid_data if d["year"] is not None and d["year"] == 2025]
+
+    # Combined metrics
+    y_true_all = [d["label"] for d in valid_data]
+    y_pred_all = [d["predicted"] for d in valid_data]
+    m_all = compute_binary_metrics(y_true_all, y_pred_all)
+    combined_str = format_combined(m_all)
+
+    def format_metrics(data: list[dict]) -> str:
+        if len(data) == 0:
+            return "N/A"
+        y_true = [d["label"] for d in data]
+        y_pred = [d["predicted"] for d in data]
+        m = compute_binary_metrics(y_true, y_pred)
+        return f"{m['accuracy']:.2f}/{m['accept_recall']:.2f}/{m['reject_recall']:.2f}(n={len(data)})"
+
+    return combined_str, format_metrics(in_dist), format_metrics(ood)
+
+
 def analyze_subset(
     joined_data: list[dict],
     filter_fn: callable,
@@ -156,16 +187,15 @@ def analyze_subset(
 
     metrics = compute_binary_metrics(y_true, y_pred)
 
+    # Compute in-dist vs ood breakdown
+    combined, in_dist, ood = compute_dist_breakdown(valid)
+
     return {
         "subset": subset_name,
-        "accuracy": metrics["accuracy"],
-        "accept_recall": metrics["accept_recall"],
-        "reject_recall": metrics["reject_recall"],
         "size": len(valid),
-        "num_tps": metrics["num_tps"],
-        "num_fps": metrics["num_fps"],
-        "num_fns": metrics["num_fns"],
-        "num_tns": metrics["num_tns"],
+        "combined": combined,
+        "in_dist": in_dist,
+        "ood": ood,
     }
 
 
@@ -271,17 +301,14 @@ def analyze_result_dir(
         print(f"  Valid predictions: {len(valid_full)}")
 
     if len(valid_full) > 0:
-        metrics_full = compute_binary_metrics(
-            [d["label"] for d in valid_full],
-            [d["predicted"] for d in valid_full]
-        )
+        combined, in_dist, ood = compute_dist_breakdown(valid_full)
         results.append({
             "result": result_name,
             "subset": "(full)",
-            "accuracy": metrics_full["accuracy"],
-            "accept_recall": metrics_full["accept_recall"],
-            "reject_recall": metrics_full["reject_recall"],
             "size": len(valid_full),
+            "combined": combined,
+            "in_dist": in_dist,
+            "ood": ood,
         })
 
     # Get subset analyses for this result type
@@ -352,24 +379,28 @@ def main():
 
     print(f"\nTotal result rows: {len(all_results)}")
 
-    # Create dataframe and display
+    # Create dataframe
     df = pd.DataFrame(all_results)
 
-    # Format numeric columns
-    for col in ["accuracy", "accept_recall", "reject_recall"]:
-        if col in df.columns:
-            df[col] = df[col].apply(lambda x: f"{x:.4f}" if pd.notna(x) else "")
+    # Reorder columns
+    column_order = ["result", "subset", "size", "combined", "in_dist", "ood"]
+    df = df[[c for c in column_order if c in df.columns]]
 
     # Ensure full display
     pd.set_option('display.max_rows', None)
     pd.set_option('display.max_columns', None)
     pd.set_option('display.width', None)
 
-    print("\n" + "=" * 100)
-    print(" SUBSET ANALYSIS RESULTS")
-    print("=" * 100)
+    print("\n" + "=" * 120)
+    print(" SUBSET ANALYSIS RESULTS (format: acc/accept_recall/reject_recall)")
+    print("=" * 120)
     print(df.to_string(index=False))
     print()
+
+    # Save CSV
+    csv_path = results_dir / "subset_analysis.csv"
+    df.to_csv(csv_path, index=False)
+    print(f"Saved CSV to: {csv_path}")
 
 
 if __name__ == "__main__":
