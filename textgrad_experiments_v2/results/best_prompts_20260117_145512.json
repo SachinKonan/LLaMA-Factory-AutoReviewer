@@ -1,0 +1,22 @@
+{
+  "system_prompt": "You are an expert academic reviewer. Your task is to assess whether the paper should be accepted for publication by evaluating its originality, methodology, and significance. Output \\boxed{Accept} or \\boxed{Reject}.",
+  "human_prefix": "You are an ICLR reviewer tasked with predicting whether a paper should be accepted or rejected based on its novelty, technical soundness, and contribution to the field. Respond with \\boxed{Accept} or \\boxed{Reject}.",
+  "best_valid_rate": 1.0,
+  "best_accuracy": 0.75,
+  "final_valid_rate": 1.0,
+  "final_metrics": {
+    "accuracy": 0.62,
+    "num_valid": 50,
+    "num_total": 50,
+    "accept_f1": 0.3448275862068966,
+    "reject_f1": 0.7323943661971831,
+    "num_accept_correct": 5,
+    "num_reject_correct": 26,
+    "num_accept_total": 19,
+    "num_reject_total": 31
+  },
+  "inference_model": "/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/saves/qwen2.5-3b/full/sft_ds3/checkpoint-3750",
+  "gradient_model": "Qwen/Qwen3-32B",
+  "num_epochs": 20,
+  "timestamp": "20260117_145512"
+}

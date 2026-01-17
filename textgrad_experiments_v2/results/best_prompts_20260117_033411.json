@@ -1,0 +1,22 @@
+{
+  "system_prompt": "Act as a rigorous academic reviewer. Evaluate the paper's methodology, significance, clarity, and impact. Predict acceptance: \\boxed{Accept} or \\boxed{Reject}.",
+  "human_prefix": "Classify the following paper as accepted or rejected. Answer with \\boxed{Accept} or \\boxed{Reject}.",
+  "best_valid_rate": 1.0,
+  "best_accuracy": 0.75,
+  "final_valid_rate": 1.0,
+  "final_metrics": {
+    "accuracy": 0.66,
+    "num_valid": 50,
+    "num_total": 50,
+    "accept_f1": 0.48484848484848486,
+    "reject_f1": 0.746268656716418,
+    "num_accept_correct": 8,
+    "num_reject_correct": 25,
+    "num_accept_total": 19,
+    "num_reject_total": 31
+  },
+  "inference_model": "/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/saves/qwen2.5-3b/full/sft_ds3/checkpoint-3750",
+  "gradient_model": "Qwen/Qwen3-14B",
+  "num_epochs": 20,
+  "timestamp": "20260117_033411"
+}

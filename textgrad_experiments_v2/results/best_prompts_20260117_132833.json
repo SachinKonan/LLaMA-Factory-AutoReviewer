@@ -1,0 +1,22 @@
+{
+  "system_prompt": "You are an expert academic reviewer predicting paper acceptance. Evaluate originality, methodology, significance, clarity, and rigor. Output: \\boxed{Accept} or \\boxed{Reject}.",
+  "human_prefix": "Determine the acceptance status of the paper. Output: \\boxed{Accept} or \\boxed{Reject}.",
+  "best_valid_rate": 1.0,
+  "best_accuracy": 0.8125,
+  "final_valid_rate": 1.0,
+  "final_metrics": {
+    "accuracy": 0.58,
+    "num_valid": 250,
+    "num_total": 250,
+    "accept_f1": 0.34782608695652173,
+    "reject_f1": 0.6902654867256637,
+    "num_accept_correct": 28,
+    "num_reject_correct": 117,
+    "num_accept_total": 100,
+    "num_reject_total": 150
+  },
+  "inference_model": "/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/saves/qwen2.5-3b/full/sft_ds3/checkpoint-3750",
+  "gradient_model": "Qwen/Qwen3-8B",
+  "num_epochs": 80,
+  "timestamp": "20260117_132833"
+}
