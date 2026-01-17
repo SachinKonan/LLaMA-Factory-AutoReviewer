@@ -1,0 +1,23 @@
+tail: option used in invalid context -- 5
+tail: option used in invalid context -- 5
+Traceback (most recent call last):
+  File "/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/textgrad_experiments/optimize_prompt.py", line 292, in <module>
+    fire.Fire(optimize_prompt)
+  File "/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/textgrad_experiments/.venv/lib/python3.11/site-packages/fire/core.py", line 135, in Fire
+    component_trace = _Fire(component, args, parsed_flag_args, context, name)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/textgrad_experiments/.venv/lib/python3.11/site-packages/fire/core.py", line 468, in _Fire
+    component, remaining_args = _CallAndUpdateTrace(
+                                ^^^^^^^^^^^^^^^^^^^^
+  File "/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/textgrad_experiments/.venv/lib/python3.11/site-packages/fire/core.py", line 684, in _CallAndUpdateTrace
+    component = fn(*varargs, **kwargs)
+                ^^^^^^^^^^^^^^^^^^^^^^
+  File "/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/textgrad_experiments/optimize_prompt.py", line 173, in optimize_prompt
+    inference_engine, _ = setup_engines(
+                          ^^^^^^^^^^^^^^
+  File "/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/textgrad_experiments/optimize_prompt.py", line 46, in setup_engines
+    inference_engine = tg.get_engine(
+                       ^^^^^^^^^^^^^^
+  File "/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/textgrad_experiments/.venv/lib/python3.11/site-packages/textgrad/engine/__init__.py", line 83, in get_engine
+    raise ValueError(f"Engine {engine_name} not supported")
+ValueError: Engine openai/Qwen2.5-3B-Instruct not supported
