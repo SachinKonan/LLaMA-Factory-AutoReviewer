@@ -2,8 +2,8 @@
 #SBATCH --job-name=textgrad-opt-qwen32b
 #SBATCH --time=08:00:00
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=100G
-#SBATCH --gres=gpu:2
+#SBATCH --mem=160G
+#SBATCH --gres=gpu:5
 #SBATCH --output=textgrad_experiments/logs/textgrad_%j.out
 #SBATCH --error=textgrad_experiments/logs/textgrad_%j.err
 
@@ -16,8 +16,8 @@ BASEDIR="/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer"
 WORKDIR="${BASEDIR}/textgrad_experiments"
 DATA_DIR="${BASEDIR}/data"
 
-MAIN_VENV="${BASEDIR}/.venv_vllm_inf"     # vLLM environment
-TEXTGRAD_VENV="${WORKDIR}/.venv"          # TextGrad environment
+MAIN_VENV="${BASEDIR}/.venv_vllm_inf"     # vLLM env
+TEXTGRAD_VENV="${WORKDIR}/.venv"          # TextGrad env
 
 INFERENCE_MODEL="Qwen/Qwen2.5-3B-Instruct"
 GRADIENT_MODEL="Qwen/Qwen3-32B"
@@ -40,15 +40,15 @@ echo "Gradient Model: ${GRADIENT_MODEL}"
 echo "=============================================="
 
 # =========================
-# Start inference server (GPU 0 only)
+# Inference server (GPU 0)
 # =========================
-echo "Starting inference server on port ${INFERENCE_PORT} (GPU 0)..."
+echo "Starting inference server on GPU 0 (port ${INFERENCE_PORT})..."
 
 CUDA_VISIBLE_DEVICES=0 \
 ${MAIN_VENV}/bin/python -m vllm.entrypoints.openai.api_server \
     --model "${INFERENCE_MODEL}" \
     --port ${INFERENCE_PORT} \
-    --gpu-memory-utilization 0.40 \
+    --gpu-memory-utilization 0.35 \
     --max-model-len 32768 \
     --dtype bfloat16 \
     --trust-remote-code \
@@ -57,19 +57,19 @@ ${MAIN_VENV}/bin/python -m vllm.entrypoints.openai.api_server \
 PID_INFERENCE=$!
 echo "Inference server PID: ${PID_INFERENCE}"
 
-# Give inference server a head start so it claims GPU 0 memory first
+# Give inference time to fully initialize and claim GPU 0
 sleep 60
 
 # =========================
-# Start gradient server (TP=2 across both GPUs)
+# Gradient server (GPUs 1,2 | TP=2)
 # =========================
-echo "Starting gradient server on port ${GRADIENT_PORT} (GPUs 0,1 | TP=2)..."
+echo "Starting gradient server on GPUs 1,2 (port ${GRADIENT_PORT})..."
 
-CUDA_VISIBLE_DEVICES=0,1 \
+CUDA_VISIBLE_DEVICES=1,2,3,4 \
 ${MAIN_VENV}/bin/python -m vllm.entrypoints.openai.api_server \
     --model "${GRADIENT_MODEL}" \
     --port ${GRADIENT_PORT} \
-    --tensor-parallel-size 2 \
+    --tensor-parallel-size 4 \
     --gpu-memory-utilization 0.92 \
     --max-model-len 32768 \
     --dtype bfloat16 \
@@ -101,7 +101,7 @@ for port in ${INFERENCE_PORT} ${GRADIENT_PORT}; do
 done
 
 # =========================
-# Run TextGrad optimization
+# Run TextGrad
 # =========================
 source "${TEXTGRAD_VENV}/bin/activate"
 
@@ -117,7 +117,7 @@ python optimize_prompt.py \
     --gradient_model "${GRADIENT_MODEL}" \
     --inference_port ${INFERENCE_PORT} \
     --gradient_port ${GRADIENT_PORT} \
-    --num_epochs 40 \
+    --num_epochs 20 \
     --batch_size 16 \
     --eval_batch_size 50 \
     --save_dir results/

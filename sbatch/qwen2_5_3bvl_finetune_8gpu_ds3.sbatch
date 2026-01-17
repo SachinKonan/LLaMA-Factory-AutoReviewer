@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=qwen_vis_sft_ds3
-#SBATCH --time=24:00:00
+#SBATCH --time=48:00:00
 #SBATCH --mem=256G
 #SBATCH --gres=gpu:8
 #SBATCH --output=logs/qwen_sft/sft_ds3_%j.out
