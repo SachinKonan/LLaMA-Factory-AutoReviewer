@@ -26,6 +26,7 @@ import pandas as pd
 
 # Mapping from result directory short names to actual test dataset names
 RESULT_TO_TEST_DATASET = {
+    # data_sweep_v2 and data_sweep_v2_long
     "iclr20_balanced_clean": "iclr_2020_2025_85_5_10_split6_balanced_clean_binary_noreviews_v6_test",
     "iclr20_balanced_vision": "iclr_2020_2025_85_5_10_split6_balanced_vision_binary_noreviews_v6_test",
     "iclr20_trainagreeing_clean": "iclr_2020_2025_85_5_10_split6_balanced_trainagreeing_clean_binary_noreviews_v6_test",
@@ -38,6 +39,12 @@ RESULT_TO_TEST_DATASET = {
     "iclr_nips_balanced_vision": "iclr_nips_2020_2025_85_5_10_split6_balanced_vision_binary_noreviews_v6_test",
     "iclr_nips_accepts_clean": "iclr_nips_2020_2025_85_5_10_split6_balanced_nips_accepts_clean_binary_noreviews_v6_test",
     "iclr_nips_accepts_vision": "iclr_nips_2020_2025_85_5_10_split6_balanced_nips_accepts_vision_binary_noreviews_v6_test",
+    # data_sweep_clean_images
+    "balanced_clean_images": "iclr_2020_2025_85_5_10_split6_balanced_clean_images_binary_noreviews_v6_test",
+    "trainagreeing_clean_images": "iclr_2020_2025_85_5_10_split6_balanced_trainagreeing_clean_images_binary_noreviews_v6_test",
+    # data_sweep_long_context
+    "balanced_clean_vision": "iclr_2020_2025_85_5_10_split6_balanced_clean_vision_binary_noreviews_v6_test",
+    "balanced_vision_clean": "iclr_2020_2025_85_5_10_split6_balanced_vision_clean_binary_noreviews_v6_test",
 }
 
 # Reference datasets for filtering by submission_id
@@ -362,8 +369,9 @@ def main():
     parser.add_argument(
         "--results-dir",
         type=str,
+        nargs="+",
         required=True,
-        help="Results directory name under results/ (e.g., data_sweep_v2)",
+        help="Results directory names under results/ (e.g., data_sweep_v2 data_sweep_v2_long)",
     )
     parser.add_argument(
         "--data-dir",
@@ -372,33 +380,48 @@ def main():
         help="Data directory (default: data)",
     )
     parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="Output CSV path (default: results/subset_analysis.csv)",
+    )
+    parser.add_argument(
         "--verbose", "-v",
         action="store_true",
         help="Enable verbose output for debugging",
     )
     args = parser.parse_args()
 
-    results_dir = Path("results") / args.results_dir
-
-    if not results_dir.exists():
-        print(f"Error: Results directory not found: {results_dir}")
-        return
-
     all_results = []
 
-    # Process each result subdirectory
-    for subdir in sorted(results_dir.iterdir()):
-        if not subdir.is_dir():
+    # Process each results directory
+    for results_dir_name in args.results_dir:
+        results_dir = Path("results") / results_dir_name
+
+        if not results_dir.exists():
+            print(f"Warning: Results directory not found: {results_dir}")
             continue
 
-        result_name = subdir.name
-        print(f"Processing: {result_name}")
+        print(f"\n=== Processing {results_dir_name} ===")
 
-        results = analyze_result_dir(result_name, results_dir, args.data_dir, args.verbose)
-        all_results.extend(results)
+        # Process each result subdirectory
+        for subdir in sorted(results_dir.iterdir()):
+            if not subdir.is_dir():
+                continue
 
-        if args.verbose:
-            print(f"  -> Generated {len(results)} result rows")
+            result_name = subdir.name
+            print(f"Processing: {result_name}")
+
+            results = analyze_result_dir(result_name, results_dir, args.data_dir, args.verbose)
+
+            # Add source column to each result
+            for r in results:
+                r["source"] = results_dir_name
+
+            all_results.extend(results)
+
+            if args.verbose:
+                print(f"  -> Generated {len(results)} result rows")
 
     if not all_results:
         print("\nNo results found.")
@@ -410,7 +433,7 @@ def main():
     df = pd.DataFrame(all_results)
 
     # Reorder columns
-    column_order = ["result", "subset", "train_size", "test_size", "test_accept_rate", "combined", "in_dist", "ood"]
+    column_order = ["source", "result", "subset", "train_size", "test_size", "test_accept_rate", "combined", "in_dist", "ood"]
     df = df[[c for c in column_order if c in df.columns]]
 
     # Ensure full display
@@ -418,14 +441,15 @@ def main():
     pd.set_option('display.max_columns', None)
     pd.set_option('display.width', None)
 
-    print("\n" + "=" * 120)
+    print("\n" + "=" * 140)
     print(" SUBSET ANALYSIS RESULTS (format: acc/accept_recall/reject_recall)")
-    print("=" * 120)
+    print("=" * 140)
     print(df.to_string(index=False))
     print()
 
     # Save CSV
-    csv_path = results_dir / "subset_analysis.csv"
+    csv_path = Path(args.output) if args.output else Path("results/subset_analysis.csv")
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(csv_path, index=False)
     print(f"Saved CSV to: {csv_path}")
 
