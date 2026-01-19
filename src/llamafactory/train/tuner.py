@@ -29,7 +29,7 @@ from ..hparams import get_infer_args, get_ray_args, get_train_args, read_args
 from ..model import load_model, load_tokenizer
 from .callbacks import LogCallback, PissaConvertCallback, ReporterCallback
 from .dpo import run_dpo
-from .grpo import run_grpo
+# from .grpo import run_grpo
 from .kto import run_kto
 from .pt import run_pt
 from .rm import run_rm

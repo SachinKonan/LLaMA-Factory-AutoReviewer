@@ -589,6 +589,10 @@ class FinetuningArguments(
         default=False,
         metadata={"help": "Whether or not to compute effective tokens per second."},
     )
+    track_decision_probs: bool = field(
+        default=False,
+        metadata={"help": "Track accept/reject token probabilities during evaluation for binary classification."},
+    )
 
     def __post_init__(self):
         def split_arg(arg):

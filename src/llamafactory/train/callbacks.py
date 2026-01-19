@@ -380,3 +380,190 @@ class ReporterCallback(TrainerCallback):
                     "generating_args": self.generating_args.to_dict(),
                 }
             )
+
+
+class AcceptRejectProbabilityCallback(TrainerCallback):
+    r"""A callback for tracking accept/reject token probabilities during evaluation.
+
+    This callback computes P(accept) and P(reject) at the answer token position
+    for binary classification tasks with \boxed{Accept} or \boxed{Reject} format.
+
+    Logs aggregate statistics:
+    - eval_avg_p_accept: Average probability of accept tokens
+    - eval_avg_p_reject: Average probability of reject tokens
+    - eval_decision_prob_mass: P(accept) + P(reject), should approach 1.0
+    - eval_decision_confidence: max(P(accept), P(reject))
+    - eval_decision_accuracy: Accuracy based on argmax of accept/reject probs
+    """
+
+    def __init__(self, tokenizer, output_dir: Optional[str] = None) -> None:
+        self.tokenizer = tokenizer
+        self.output_dir = output_dir
+        # Precompute token IDs for accept/reject variants
+        self.accept_ids = self._get_token_ids(["Accept", "accept"])
+        self.reject_ids = self._get_token_ids(["Reject", "reject"])
+        logger.info_rank0(f"AcceptRejectProbabilityCallback initialized with accept_ids={self.accept_ids}, reject_ids={self.reject_ids}")
+
+    def _get_token_ids(self, words: list[str]) -> list[int]:
+        """Get token IDs for a list of words."""
+        ids = set()
+        for word in words:
+            token_ids = self.tokenizer.encode(word, add_special_tokens=False)
+            ids.update(token_ids)
+        return list(ids)
+
+    def _find_answer_position(self, labels: torch.Tensor) -> int:
+        """Find the position where Accept/Reject token appears in labels.
+
+        Args:
+            labels: Label tensor for a single sample, shape (seq_len,)
+
+        Returns:
+            Position of the answer token, or -1 if not found
+        """
+        from ..extras.constants import IGNORE_INDEX
+
+        # Find valid (non-IGNORE_INDEX) positions from the end
+        valid_mask = labels != IGNORE_INDEX
+        valid_positions = torch.where(valid_mask)[0]
+
+        if len(valid_positions) == 0:
+            return -1
+
+        # Search from the end for accept/reject tokens
+        all_answer_ids = set(self.accept_ids + self.reject_ids)
+        for pos in reversed(valid_positions.tolist()):
+            if labels[pos].item() in all_answer_ids:
+                return pos
+
+        return -1
+
+    def _compute_probs_for_batch(
+        self,
+        model: torch.nn.Module,
+        batch: dict[str, torch.Tensor],
+    ) -> tuple[list[float], list[float], list[str]]:
+        """Compute accept/reject probabilities for a batch.
+
+        Returns:
+            Tuple of (p_accepts, p_rejects, ground_truths)
+        """
+        import torch.nn.functional as F
+        from ..extras.constants import IGNORE_INDEX
+
+        model.eval()
+        with torch.no_grad():
+            outputs = model(
+                input_ids=batch["input_ids"],
+                attention_mask=batch.get("attention_mask"),
+                labels=batch.get("labels"),
+            )
+
+        logits = outputs.logits  # (batch_size, seq_len, vocab_size)
+        labels = batch.get("labels")
+
+        p_accepts, p_rejects, ground_truths = [], [], []
+
+        for i in range(logits.size(0)):
+            answer_pos = self._find_answer_position(labels[i])
+            if answer_pos < 0 or answer_pos == 0:
+                continue
+
+            # Get logits at position before the answer token (model predicts next token)
+            pred_logits = logits[i, answer_pos - 1, :]  # (vocab_size,)
+            probs = F.softmax(pred_logits, dim=-1)
+
+            # Sum probabilities for accept and reject token variants
+            p_accept = sum(probs[tid].item() for tid in self.accept_ids if tid < probs.size(0))
+            p_reject = sum(probs[tid].item() for tid in self.reject_ids if tid < probs.size(0))
+
+            p_accepts.append(p_accept)
+            p_rejects.append(p_reject)
+
+            # Determine ground truth
+            gt_token_id = labels[i, answer_pos].item()
+            if gt_token_id in self.accept_ids:
+                ground_truths.append("accept")
+            elif gt_token_id in self.reject_ids:
+                ground_truths.append("reject")
+            else:
+                ground_truths.append("unknown")
+
+        return p_accepts, p_rejects, ground_truths
+
+    @override
+    def on_evaluate(
+        self,
+        args: "TrainingArguments",
+        state: "TrainerState",
+        control: "TrainerControl",
+        model: torch.nn.Module = None,
+        eval_dataloader=None,
+        **kwargs,
+    ):
+        if model is None or eval_dataloader is None:
+            return
+
+        if not state.is_world_process_zero:
+            return
+
+        all_p_accepts, all_p_rejects, all_gts = [], [], []
+
+        # Sample a subset for efficiency (max 200 samples)
+        max_samples = 200
+        samples_processed = 0
+
+        for batch in eval_dataloader:
+            if samples_processed >= max_samples:
+                break
+
+            # Move batch to model device
+            device = next(model.parameters()).device
+            batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+
+            p_accepts, p_rejects, gts = self._compute_probs_for_batch(model, batch)
+            all_p_accepts.extend(p_accepts)
+            all_p_rejects.extend(p_rejects)
+            all_gts.extend(gts)
+
+            samples_processed += len(batch.get("input_ids", []))
+
+        if len(all_p_accepts) == 0:
+            logger.warning_rank0("AcceptRejectProbabilityCallback: No valid samples found for probability computation")
+            return
+
+        # Compute aggregate statistics
+        avg_p_accept = sum(all_p_accepts) / len(all_p_accepts)
+        avg_p_reject = sum(all_p_rejects) / len(all_p_rejects)
+        avg_prob_mass = sum(p + r for p, r in zip(all_p_accepts, all_p_rejects)) / len(all_p_accepts)
+        avg_confidence = sum(max(p, r) for p, r in zip(all_p_accepts, all_p_rejects)) / len(all_p_accepts)
+
+        # Compute accuracy based on argmax
+        correct = sum(
+            1 for p, r, gt in zip(all_p_accepts, all_p_rejects, all_gts)
+            if (p > r and gt == "accept") or (r > p and gt == "reject")
+        )
+        accuracy = correct / len(all_gts) if all_gts else 0.0
+
+        # Log metrics
+        metrics = {
+            "eval_avg_p_accept": round(avg_p_accept, 4),
+            "eval_avg_p_reject": round(avg_p_reject, 4),
+            "eval_decision_prob_mass": round(avg_prob_mass, 4),
+            "eval_decision_confidence": round(avg_confidence, 4),
+            "eval_decision_accuracy": round(accuracy, 4),
+            "eval_decision_num_samples": len(all_p_accepts),
+        }
+
+        logger.info_rank0(f"Decision probability metrics: {metrics}")
+
+        # Add to trainer state log history
+        if state.log_history:
+            state.log_history[-1].update(metrics)
+
+        # Optionally save detailed results to file
+        if self.output_dir and args.should_save:
+            prob_log_path = os.path.join(self.output_dir, "decision_probs.jsonl")
+            with open(prob_log_path, "a", encoding="utf-8") as f:
+                log_entry = {"step": state.global_step, **metrics}
+                f.write(json.dumps(log_entry) + "\n")
