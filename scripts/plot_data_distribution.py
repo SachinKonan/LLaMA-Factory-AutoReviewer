@@ -4,13 +4,19 @@ Plot data distribution for datasets showing year breakdown and token/page/image 
 
 Usage:
     python scripts/plot_data_distribution.py \\
-        --clean iclr_2020_2025_80_20_split5_balanced_deepreview_clean_binary_no_reviews_v3 \\
-        --clean_images iclr_2020_2025_80_20_split5_balanced_deepreview_clean+images_binary_no_reviews_titleabs_corrected_v3 \\
-        --vision iclr_2020_2025_80_20_split5_balanced_deepreview_vision_binary_no_reviews_titleabs_corrected_v3
+        --clean iclr_2017_2025_85_5_10_split6_balanced_clean_binary_noreviews_v6 \\
+        --vision iclr_2017_2025_85_5_10_split6_balanced_vision_binary_noreviews_v6
+
+    # With conference breakdown:
+    python scripts/plot_data_distribution.py \\
+        --clean iclr_nips_2020_2025_85_5_10_split6_balanced_nips_accepts_clean_binary_noreviews_v6 \\
+        --vision iclr_nips_2020_2025_85_5_10_split6_balanced_nips_accepts_vision_binary_noreviews_v6 \\
+        --conference-breakdown
 """
 
 import argparse
 import json
+import re
 from collections import defaultdict
 from pathlib import Path
 
@@ -101,9 +107,12 @@ def extract_token_stats(entries: list[dict]) -> dict:
 
 
 def extract_image_stats(entries: list[dict]) -> dict:
-    """Extract image counts from clean+images dataset."""
+    """Extract image counts from clean dataset by counting markdown image references."""
     accept_images = []
     reject_images = []
+
+    # Pattern to find markdown image references: ![alt](images/filename.png)
+    image_pattern = re.compile(r'!\[[^\]]*\]\(images/([^)]+)\)')
 
     for entry in entries:
         metadata = entry.get("_metadata", {})
@@ -116,8 +125,8 @@ def extract_image_stats(entries: list[dict]) -> dict:
                 human_content = msg.get("value", "")
                 break
 
-        # Count images (number of <image> tags)
-        images = human_content.count("<image>")
+        # Count images using regex pattern
+        images = len(image_pattern.findall(human_content))
 
         if answer == "accept":
             accept_images.append(images)
@@ -243,24 +252,38 @@ def plot_metrics_distribution(ax, token_stats: dict, image_stats: dict, page_sta
     ax.grid(True, linestyle='--', alpha=0.3, axis='x')
 
 
+def extract_conference_stats(entries: list[dict]) -> dict[str, dict]:
+    """Extract year stats broken down by conference."""
+    conference_stats = defaultdict(lambda: {"year_accept": defaultdict(int), "year_reject": defaultdict(int)})
+
+    for entry in entries:
+        metadata = entry.get("_metadata", {})
+        year = metadata.get("year", "unknown")
+        answer = metadata.get("answer", "").lower()
+        conference = metadata.get("conference", "unknown")
+
+        if answer == "accept":
+            conference_stats[conference]["year_accept"][year] += 1
+        elif answer == "reject":
+            conference_stats[conference]["year_reject"][year] += 1
+
+    # Convert defaultdicts to regular dicts
+    return {conf: {"year_accept": dict(stats["year_accept"]), "year_reject": dict(stats["year_reject"])}
+            for conf, stats in conference_stats.items()}
+
+
 def main():
     parser = argparse.ArgumentParser(description="Plot data distribution for datasets.")
     parser.add_argument(
         "--clean",
         type=str,
-        required=True,
-        help="Clean dataset name (for text tokens)"
-    )
-    parser.add_argument(
-        "--clean_images",
-        type=str,
-        required=True,
-        help="Clean+images dataset name (for image counts)"
+        default=None,
+        help="Clean dataset name (for text tokens and image reference counts)"
     )
     parser.add_argument(
         "--vision",
         type=str,
-        required=True,
+        default=None,
         help="Vision dataset name (for page counts)"
     )
     parser.add_argument(
@@ -269,42 +292,112 @@ def main():
         default="data_distribution",
         help="Output filename (without extension)"
     )
+    parser.add_argument(
+        "--conference-breakdown",
+        action="store_true",
+        help="Show separate plots for each conference (e.g., iclr vs nips)"
+    )
     args = parser.parse_args()
+
+    # At least one dataset must be provided
+    if not args.clean and not args.vision:
+        print("Error: At least --clean or --vision must be provided")
+        return
 
     DATA_DIR = Path("data")
     OUTPUT_DIR = Path("results/data_distribution")
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Load all datasets
+    # Load all datasets (only those provided)
     print("Loading datasets...")
-    clean_train = load_dataset(DATA_DIR, args.clean, "train")
-    clean_test = load_dataset(DATA_DIR, args.clean, "test")
-    clean_images_train = load_dataset(DATA_DIR, args.clean_images, "train")
-    clean_images_test = load_dataset(DATA_DIR, args.clean_images, "test")
-    vision_train = load_dataset(DATA_DIR, args.vision, "train")
-    vision_test = load_dataset(DATA_DIR, args.vision, "test")
+    # Use clean if available, otherwise vision for year stats
+    primary_dataset = args.clean if args.clean else args.vision
 
-    if not clean_train:
-        print(f"Error: No data found for clean dataset {args.clean}")
+    clean_train = load_dataset(DATA_DIR, args.clean, "train") if args.clean else []
+    clean_test = load_dataset(DATA_DIR, args.clean, "test") if args.clean else []
+    vision_train = load_dataset(DATA_DIR, args.vision, "train") if args.vision else []
+    vision_test = load_dataset(DATA_DIR, args.vision, "test") if args.vision else []
+
+    # Use primary dataset for year stats
+    primary_train = clean_train if clean_train else vision_train
+    primary_test = clean_test if clean_test else vision_test
+
+    if not primary_train:
+        print(f"Error: No data found for primary dataset")
+        return
+
+    # Handle conference breakdown
+    if args.conference_breakdown:
+        print("Extracting conference breakdown...")
+        train_conf_stats = extract_conference_stats(primary_train)
+        test_conf_stats = extract_conference_stats(primary_test)
+
+        conferences = sorted(train_conf_stats.keys())
+        print(f"Found conferences: {conferences}")
+
+        # Filter entries by conference
+        def filter_by_conference(entries: list[dict], conf: str) -> list[dict]:
+            return [e for e in entries if e.get("_metadata", {}).get("conference") == conf]
+
+        # Create separate 2x2 plots for each conference
+        for conf in conferences:
+            print(f"\nPlotting {conf}...")
+
+            # Filter data by conference
+            clean_train_conf = filter_by_conference(clean_train, conf) if clean_train else []
+            clean_test_conf = filter_by_conference(clean_test, conf) if clean_test else []
+            vision_train_conf = filter_by_conference(vision_train, conf) if vision_train else []
+            vision_test_conf = filter_by_conference(vision_test, conf) if vision_test else []
+
+            # Extract stats for this conference
+            train_token_stats_conf = extract_token_stats(clean_train_conf) if clean_train_conf else {"accept_tokens": [], "reject_tokens": []}
+            test_token_stats_conf = extract_token_stats(clean_test_conf) if clean_test_conf else {"accept_tokens": [], "reject_tokens": []}
+            train_image_stats_conf = extract_image_stats(clean_train_conf) if clean_train_conf else {"accept_images": [], "reject_images": []}
+            test_image_stats_conf = extract_image_stats(clean_test_conf) if clean_test_conf else {"accept_images": [], "reject_images": []}
+            train_page_stats_conf = extract_page_stats(vision_train_conf) if vision_train_conf else {"accept_pages": [], "reject_pages": []}
+            test_page_stats_conf = extract_page_stats(vision_test_conf) if vision_test_conf else {"accept_pages": [], "reject_pages": []}
+
+            # Create 2x2 figure
+            fig, axes = plt.subplots(2, 2, figsize=(18, 12))
+
+            # Row 1: Train
+            plot_year_distribution(axes[0, 0], train_conf_stats[conf], f"Train ({conf.upper()}): Submissions per Year")
+            plot_metrics_distribution(axes[0, 1], train_token_stats_conf, train_image_stats_conf, train_page_stats_conf,
+                                      f"Train ({conf.upper()}): Tokens, Images \\& Pages (Mean)")
+
+            # Row 2: Test
+            plot_year_distribution(axes[1, 0], test_conf_stats[conf], f"Test ({conf.upper()}): Submissions per Year")
+            plot_metrics_distribution(axes[1, 1], test_token_stats_conf, test_image_stats_conf, test_page_stats_conf,
+                                      f"Test ({conf.upper()}): Tokens, Images \\& Pages (Mean)")
+
+            plt.tight_layout()
+
+            output_base = OUTPUT_DIR / f"{args.output}_{conf}"
+            plt.savefig(f"{output_base}.pdf", dpi=200, bbox_inches='tight')
+            print(f"Saved: {output_base}.pdf")
+            plt.savefig(f"{output_base}.png", dpi=150, bbox_inches='tight')
+            print(f"Saved: {output_base}.png")
+            plt.close()
+
         return
 
     # Extract stats
     print("Extracting statistics...")
-    # Year stats from clean dataset (should be same across all)
-    train_year_stats = extract_year_stats(clean_train)
-    test_year_stats = extract_year_stats(clean_test)
+    # Year stats from primary dataset
+    train_year_stats = extract_year_stats(primary_train)
+    test_year_stats = extract_year_stats(primary_test)
 
-    # Token stats from clean dataset
-    train_token_stats = extract_token_stats(clean_train)
-    test_token_stats = extract_token_stats(clean_test)
+    # Token stats from clean dataset (empty if not provided)
+    train_token_stats = extract_token_stats(clean_train) if clean_train else {"accept_tokens": [], "reject_tokens": []}
+    test_token_stats = extract_token_stats(clean_test) if clean_test else {"accept_tokens": [], "reject_tokens": []}
 
-    # Image stats from clean+images dataset
-    train_image_stats = extract_image_stats(clean_images_train)
-    test_image_stats = extract_image_stats(clean_images_test)
+    # Image stats from clean dataset (counts markdown image references)
+    train_image_stats = extract_image_stats(clean_train) if clean_train else {"accept_images": [], "reject_images": []}
+    test_image_stats = extract_image_stats(clean_test) if clean_test else {"accept_images": [], "reject_images": []}
 
-    # Page stats from vision dataset
-    train_page_stats = extract_page_stats(vision_train)
-    test_page_stats = extract_page_stats(vision_test)
+    # Page stats from vision dataset (empty if not provided)
+    train_page_stats = extract_page_stats(vision_train) if vision_train else {"accept_pages": [], "reject_pages": []}
+    test_page_stats = extract_page_stats(vision_test) if vision_test else {"accept_pages": [], "reject_pages": []}
 
     # Create 2x2 figure with larger size
     fig, axes = plt.subplots(2, 2, figsize=(18, 12))

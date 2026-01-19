@@ -45,6 +45,13 @@ RESULT_TO_TEST_DATASET = {
     # data_sweep_long_context
     "balanced_clean_vision": "iclr_2020_2025_85_5_10_split6_balanced_clean_vision_binary_noreviews_v6_test",
     "balanced_vision_clean": "iclr_2020_2025_85_5_10_split6_balanced_vision_clean_binary_noreviews_v6_test",
+    # data_sweep_year_range
+    "iclr24_clean": "iclr_2024_2025_85_5_10_split6_balanced_clean_binary_noreviews_v6_test",
+    "iclr24_vision": "iclr_2024_2025_85_5_10_split6_balanced_vision_binary_noreviews_v6_test",
+    "iclr24_clean_images": "iclr_2024_2025_85_5_10_split6_balanced_clean_images_binary_noreviews_v6_test",
+    "iclr22_clean": "iclr_2022_2025_85_5_10_split6_balanced_clean_binary_noreviews_v6_test",
+    "iclr22_vision": "iclr_2022_2025_85_5_10_split6_balanced_vision_binary_noreviews_v6_test",
+    "iclr22_clean_images": "iclr_2022_2025_85_5_10_split6_balanced_clean_images_binary_noreviews_v6_test",
 }
 
 # Reference datasets for filtering by submission_id
@@ -158,6 +165,16 @@ def format_combined(metrics: dict) -> str:
     return f"{metrics['accuracy']:.2f}/{metrics['accept_recall']:.2f}/{metrics['reject_recall']:.2f}"
 
 
+def format_metrics_with_n(data: list[dict]) -> str:
+    """Format metrics as acc/accept_recall/reject_recall(n=samples)."""
+    if len(data) == 0:
+        return "N/A"
+    y_true = [d["label"] for d in data]
+    y_pred = [d["predicted"] for d in data]
+    m = compute_binary_metrics(y_true, y_pred)
+    return f"{m['accuracy']:.2f}/{m['accept_recall']:.2f}/{m['reject_recall']:.2f}(n={len(data)})"
+
+
 def compute_dist_breakdown(valid_data: list[dict]) -> tuple[str, str, str]:
     """Compute in-distribution (year < 2025) vs out-of-distribution (year = 2025) breakdown.
 
@@ -173,15 +190,21 @@ def compute_dist_breakdown(valid_data: list[dict]) -> tuple[str, str, str]:
     m_all = compute_binary_metrics(y_true_all, y_pred_all)
     combined_str = format_combined(m_all)
 
-    def format_metrics(data: list[dict]) -> str:
-        if len(data) == 0:
-            return "N/A"
-        y_true = [d["label"] for d in data]
-        y_pred = [d["predicted"] for d in data]
-        m = compute_binary_metrics(y_true, y_pred)
-        return f"{m['accuracy']:.2f}/{m['accept_recall']:.2f}/{m['reject_recall']:.2f}(n={len(data)})"
+    return combined_str, format_metrics_with_n(in_dist), format_metrics_with_n(ood)
 
-    return combined_str, format_metrics(in_dist), format_metrics(ood)
+
+def compute_year_breakdown(valid_data: list[dict]) -> dict[str, str]:
+    """Compute metrics breakdown by year (2017-2025).
+
+    Returns: dict mapping year column names to formatted metrics strings
+    Format: acc/accept_recall/reject_recall(n=samples) or N/A if no data
+    """
+    year_metrics = {}
+    for year in range(2017, 2026):
+        year_data = [d for d in valid_data if d["year"] == year]
+        col_name = f"y{year}"
+        year_metrics[col_name] = format_metrics_with_n(year_data)
+    return year_metrics
 
 
 def analyze_subset(
@@ -205,11 +228,12 @@ def analyze_subset(
 
     # Compute in-dist vs ood breakdown
     combined, in_dist, ood = compute_dist_breakdown(valid)
+    year_breakdown = compute_year_breakdown(valid)
 
     num_accepted = sum(1 for d in valid if d["label"] == "accepted")
     accept_rate = num_accepted / len(valid)
 
-    return {
+    result = {
         "subset": subset_name,
         "size": len(valid),
         "test_accept_rate": f"{accept_rate:.2f}",
@@ -217,6 +241,8 @@ def analyze_subset(
         "in_dist": in_dist,
         "ood": ood,
     }
+    result.update(year_breakdown)
+    return result
 
 
 def get_subset_analyses(result_name: str, data_dir: str = "data") -> list[tuple[str, callable]]:
@@ -326,9 +352,10 @@ def analyze_result_dir(
 
     if len(valid_full) > 0:
         combined, in_dist, ood = compute_dist_breakdown(valid_full)
+        year_breakdown = compute_year_breakdown(valid_full)
         num_accepted = sum(1 for d in valid_full if d["label"] == "accepted")
         accept_rate = num_accepted / len(valid_full)
-        results.append({
+        result_row = {
             "result": result_name,
             "subset": "(full)",
             "train_size": train_size,
@@ -337,7 +364,9 @@ def analyze_result_dir(
             "combined": combined,
             "in_dist": in_dist,
             "ood": ood,
-        })
+        }
+        result_row.update(year_breakdown)
+        results.append(result_row)
 
     # Get subset analyses for this result type
     analyses = get_subset_analyses(result_name, data_dir)
@@ -348,7 +377,7 @@ def analyze_result_dir(
     for subset_name, filter_fn in analyses:
         result = analyze_subset(joined, filter_fn, subset_name)
         if result is not None:
-            results.append({
+            result_row = {
                 "result": result_name,
                 "subset": result["subset"],
                 "train_size": train_size,
@@ -357,7 +386,12 @@ def analyze_result_dir(
                 "combined": result["combined"],
                 "in_dist": result["in_dist"],
                 "ood": result["ood"],
-            })
+            }
+            # Add year breakdown columns
+            for year in range(2017, 2026):
+                col_name = f"y{year}"
+                result_row[col_name] = result.get(col_name, "N/A")
+            results.append(result_row)
 
     return results
 
@@ -433,7 +467,8 @@ def main():
     df = pd.DataFrame(all_results)
 
     # Reorder columns
-    column_order = ["source", "result", "subset", "train_size", "test_size", "test_accept_rate", "combined", "in_dist", "ood"]
+    year_cols = [f"y{y}" for y in range(2017, 2026)]
+    column_order = ["source", "result", "subset", "train_size", "test_size", "test_accept_rate", "combined", "in_dist", "ood"] + year_cols
     df = df[[c for c in column_order if c in df.columns]]
 
     # Ensure full display
