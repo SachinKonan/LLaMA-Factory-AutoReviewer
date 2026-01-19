@@ -52,3 +52,6 @@ eval_dataset: iclr_2020_2025_85_5_10_split6_original_vision_binary_noreviews_v6_
 eval_strategy: steps
 eval_steps: 500
 per_device_eval_batch_size: 1
+
+### decision probability tracking
+track_decision_probs: true
