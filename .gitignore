@@ -182,4 +182,3 @@ generated_predictions.jsonl
 predictions_score.json
 data/
 textgrad_experiments/logs
-textgrad_experiments_v2/logs

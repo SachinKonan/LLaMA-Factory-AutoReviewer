@@ -14,6 +14,13 @@ Usage:
         --dataset iclr_2020_2025_85_5_10_split6_original_vision_binary_noreviews_v6_validation \
         --output results/probs_ckpt500.jsonl
 
+    # For \\boxed{accept/reject} format:
+    python scripts/extract_token_probs.py \
+        --checkpoint saves/qwen2.5vl-3b/full/sft_ds3/checkpoint-500 \
+        --dataset my_dataset \
+        --output results/probs.jsonl \
+        --boxed
+
 Output format (JSONL):
     {"sample_id": 0, "p_accept": 0.72, "p_reject": 0.18, "gt": "accept", "pred": "accept", "correct": true}
 """
@@ -43,13 +50,21 @@ def get_token_ids(tokenizer, words: list[str]) -> list[int]:
     return list(ids)
 
 
-def find_answer_position(labels: torch.Tensor, accept_ids: list[int], reject_ids: list[int]) -> int:
+def find_answer_position(
+    labels: torch.Tensor,
+    accept_ids: list[int],
+    reject_ids: list[int],
+    boxed_prefix_ids: Optional[list[int]] = None,
+    closing_brace_ids: Optional[list[int]] = None,
+) -> int:
     """Find the position where Accept/Reject token appears in labels.
 
     Args:
         labels: Label tensor for a single sample, shape (seq_len,)
         accept_ids: Token IDs for accept variants
         reject_ids: Token IDs for reject variants
+        boxed_prefix_ids: Token IDs for \\boxed{ prefix (if None, search for bare accept/reject)
+        closing_brace_ids: Token IDs for } closing brace
 
     Returns:
         Position of the answer token, or -1 if not found
@@ -61,8 +76,34 @@ def find_answer_position(labels: torch.Tensor, accept_ids: list[int], reject_ids
     if len(valid_positions) == 0:
         return -1
 
-    # Search from the end for accept/reject tokens
     all_answer_ids = set(accept_ids + reject_ids)
+    labels_list = labels.tolist()
+
+    # If boxed pattern is requested, search for \boxed{accept} or \boxed{reject}
+    if boxed_prefix_ids is not None and closing_brace_ids is not None:
+        # Search from the end for accept/reject token preceded by \boxed{ and followed by }
+        valid_pos_list = valid_positions.tolist()
+        prefix_len = len(boxed_prefix_ids)
+        for idx in range(len(valid_pos_list) - 1, -1, -1):
+            pos = valid_pos_list[idx]
+            token_id = labels_list[pos]
+            if token_id in all_answer_ids:
+                # Check if followed by closing brace
+                if idx + 1 < len(valid_pos_list):
+                    next_pos = valid_pos_list[idx + 1]
+                    if labels_list[next_pos] not in closing_brace_ids:
+                        continue
+                else:
+                    continue
+                # Check if preceded by \boxed{ prefix
+                if idx >= prefix_len:
+                    prefix_positions = valid_pos_list[idx - prefix_len:idx]
+                    prefix_tokens = [labels_list[p] for p in prefix_positions]
+                    if prefix_tokens == boxed_prefix_ids:
+                        return pos
+        return -1
+
+    # Default: search from the end for accept/reject tokens
     for pos in reversed(valid_positions.tolist()):
         if labels[pos].item() in all_answer_ids:
             return pos
@@ -74,20 +115,23 @@ def extract_probs(
     model_name_or_path: str,
     dataset: str,
     dataset_dir: str = "data",
+    media_dir: str = ".",
     template: str = "qwen2_vl",
     cutoff_len: int = 16384,
     max_samples: Optional[int] = None,
     output: str = "probs.jsonl",
     batch_size: int = 1,
+    boxed: bool = False,
 ):
     """Extract accept/reject probabilities from a checkpoint."""
 
     # Load model and tokenizer
-    model_args, data_args, _, _ = get_infer_args(
+    model_args, data_args, finetuning_args, _ = get_infer_args(
         dict(
             model_name_or_path=model_name_or_path,
             dataset=dataset,
             dataset_dir=dataset_dir,
+            media_dir=media_dir,
             template=template,
             cutoff_len=cutoff_len,
             max_samples=max_samples,
@@ -106,6 +150,17 @@ def extract_probs(
     print(f"Accept token IDs: {accept_ids}")
     print(f"Reject token IDs: {reject_ids}")
 
+    # Get token IDs for boxed pattern if requested
+    boxed_prefix_ids = None
+    closing_brace_ids = None
+    if boxed:
+        # Get the exact token sequence for \boxed{
+        boxed_prefix_ids = tokenizer.encode("\\boxed{", add_special_tokens=False)
+        closing_brace_ids = tokenizer.encode("}", add_special_tokens=False)
+        print(f"Boxed mode enabled - searching for \\boxed{{accept/reject}}")
+        print(f"Boxed prefix token IDs: {boxed_prefix_ids}")
+        print(f"Closing brace token IDs: {closing_brace_ids}")
+
     # Load dataset
     dataset_module = get_dataset(template_obj, model_args, data_args, training_args, stage="sft", **tokenizer_module)
     train_dataset = dataset_module.get("train_dataset") or dataset_module.get("eval_dataset")
@@ -117,7 +172,7 @@ def extract_probs(
 
     # Load model
     print(f"Loading model from {model_name_or_path}...")
-    model = load_model(tokenizer, model_args, finetuning_args=None, is_trainable=False)
+    model = load_model(tokenizer, model_args, finetuning_args=finetuning_args, is_trainable=False)
     model.eval()
     device = next(model.parameters()).device
     print(f"Model loaded on device: {device}")
@@ -133,6 +188,9 @@ def extract_probs(
         collated = {}
         for key in keys:
             values = [item[key] for item in batch]
+            # Convert lists to tensors if needed
+            if isinstance(values[0], list):
+                values = [torch.tensor(v) for v in values]
             if isinstance(values[0], torch.Tensor):
                 # Pad tensors
                 max_len = max(v.size(0) for v in values)
@@ -179,7 +237,11 @@ def extract_probs(
                 sample_id += 1
                 continue
 
-            answer_pos = find_answer_position(sample_labels, accept_ids, reject_ids)
+            answer_pos = find_answer_position(
+                sample_labels, accept_ids, reject_ids,
+                boxed_prefix_ids=boxed_prefix_ids,
+                closing_brace_ids=closing_brace_ids,
+            )
             if answer_pos < 0 or answer_pos == 0:
                 sample_id += 1
                 continue
@@ -249,22 +311,26 @@ def main():
     parser.add_argument("--checkpoint", type=str, required=True, help="Path to model checkpoint")
     parser.add_argument("--dataset", type=str, required=True, help="Dataset name (from dataset_info.json)")
     parser.add_argument("--dataset_dir", type=str, default="data", help="Dataset directory")
+    parser.add_argument("--media_dir", type=str, default=".", help="Media directory for images")
     parser.add_argument("--template", type=str, default="qwen2_vl", help="Template name")
     parser.add_argument("--cutoff_len", type=int, default=16384, help="Maximum sequence length")
     parser.add_argument("--max_samples", type=int, default=None, help="Maximum number of samples to process")
     parser.add_argument("--output", type=str, default="probs.jsonl", help="Output file path")
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size for inference")
+    parser.add_argument("--boxed", action="store_true", help="Search for \\boxed{accept/reject} pattern instead of bare tokens")
     args = parser.parse_args()
 
     extract_probs(
         model_name_or_path=args.checkpoint,
         dataset=args.dataset,
         dataset_dir=args.dataset_dir,
+        media_dir=args.media_dir,
         template=args.template,
         cutoff_len=args.cutoff_len,
         max_samples=args.max_samples,
         output=args.output,
         batch_size=args.batch_size,
+        boxed=args.boxed,
     )
 
 
