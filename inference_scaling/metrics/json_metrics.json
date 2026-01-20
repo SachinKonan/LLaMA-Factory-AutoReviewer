@@ -1,0 +1,222 @@
+{
+  "vision/new_fewshot": {
+    "total_predictions": 10,
+    "valid_json_count": 10,
+    "invalid_json_count": 0,
+    "json_validity_rate": 1.0,
+    "error_types": {},
+    "field_presence_rate": {
+      "summary": 1.0,
+      "questions": 1.0,
+      "limitations": 1.0,
+      "strengths": 1.0,
+      "weaknesses": 1.0,
+      "ethical_concerns": 1.0,
+      "soundness": 1.0,
+      "presentation": 1.0,
+      "contribution": 1.0,
+      "overall": 1.0,
+      "confidence": 1.0,
+      "decision": 1.0
+    },
+    "field_type_correctness_rate": {
+      "summary": 1.0,
+      "questions": 1.0,
+      "limitations": 1.0,
+      "strengths": 1.0,
+      "weaknesses": 1.0,
+      "ethical_concerns": 1.0,
+      "soundness": 1.0,
+      "presentation": 1.0,
+      "contribution": 1.0,
+      "overall": 1.0,
+      "confidence": 1.0,
+      "decision": 1.0
+    },
+    "score_validity_rate": {
+      "soundness": 1.0,
+      "presentation": 1.0,
+      "contribution": 1.0,
+      "overall": 1.0,
+      "confidence": 1.0,
+      "decision": 1.0
+    },
+    "avg_fields_present": 12.0
+  },
+  "vision/new": {
+    "total_predictions": 2,
+    "valid_json_count": 2,
+    "invalid_json_count": 0,
+    "json_validity_rate": 1.0,
+    "error_types": {},
+    "field_presence_rate": {
+      "summary": 1.0,
+      "questions": 1.0,
+      "limitations": 1.0,
+      "strengths": 1.0,
+      "weaknesses": 1.0,
+      "ethical_concerns": 1.0,
+      "soundness": 1.0,
+      "presentation": 1.0,
+      "contribution": 1.0,
+      "overall": 1.0,
+      "confidence": 1.0,
+      "decision": 1.0
+    },
+    "field_type_correctness_rate": {
+      "summary": 1.0,
+      "questions": 1.0,
+      "limitations": 1.0,
+      "strengths": 1.0,
+      "weaknesses": 1.0,
+      "ethical_concerns": 1.0,
+      "soundness": 1.0,
+      "presentation": 1.0,
+      "contribution": 1.0,
+      "overall": 1.0,
+      "confidence": 1.0,
+      "decision": 1.0
+    },
+    "score_validity_rate": {
+      "soundness": 1.0,
+      "presentation": 1.0,
+      "contribution": 1.0,
+      "overall": 1.0,
+      "confidence": 1.0,
+      "decision": 1.0
+    },
+    "avg_fields_present": 12.0
+  },
+  "clean_images/new_fewshot": {
+    "total_predictions": 10,
+    "valid_json_count": 10,
+    "invalid_json_count": 0,
+    "json_validity_rate": 1.0,
+    "error_types": {},
+    "field_presence_rate": {
+      "summary": 1.0,
+      "questions": 1.0,
+      "limitations": 1.0,
+      "strengths": 1.0,
+      "weaknesses": 1.0,
+      "ethical_concerns": 1.0,
+      "soundness": 1.0,
+      "presentation": 1.0,
+      "contribution": 1.0,
+      "overall": 1.0,
+      "confidence": 1.0,
+      "decision": 1.0
+    },
+    "field_type_correctness_rate": {
+      "summary": 1.0,
+      "questions": 1.0,
+      "limitations": 1.0,
+      "strengths": 1.0,
+      "weaknesses": 1.0,
+      "ethical_concerns": 1.0,
+      "soundness": 1.0,
+      "presentation": 1.0,
+      "contribution": 1.0,
+      "overall": 1.0,
+      "confidence": 1.0,
+      "decision": 1.0
+    },
+    "score_validity_rate": {
+      "soundness": 1.0,
+      "presentation": 1.0,
+      "contribution": 1.0,
+      "overall": 1.0,
+      "confidence": 1.0,
+      "decision": 1.0
+    },
+    "avg_fields_present": 12.0
+  },
+  "clean_images/new": {
+    "total_predictions": 2,
+    "valid_json_count": 2,
+    "invalid_json_count": 0,
+    "json_validity_rate": 1.0,
+    "error_types": {},
+    "field_presence_rate": {
+      "summary": 1.0,
+      "questions": 1.0,
+      "limitations": 1.0,
+      "strengths": 1.0,
+      "weaknesses": 1.0,
+      "ethical_concerns": 1.0,
+      "soundness": 1.0,
+      "presentation": 1.0,
+      "contribution": 1.0,
+      "overall": 1.0,
+      "confidence": 1.0,
+      "decision": 1.0
+    },
+    "field_type_correctness_rate": {
+      "summary": 1.0,
+      "questions": 1.0,
+      "limitations": 1.0,
+      "strengths": 1.0,
+      "weaknesses": 1.0,
+      "ethical_concerns": 1.0,
+      "soundness": 1.0,
+      "presentation": 1.0,
+      "contribution": 1.0,
+      "overall": 1.0,
+      "confidence": 1.0,
+      "decision": 1.0
+    },
+    "score_validity_rate": {
+      "soundness": 1.0,
+      "presentation": 1.0,
+      "contribution": 1.0,
+      "overall": 1.0,
+      "confidence": 1.0,
+      "decision": 1.0
+    },
+    "avg_fields_present": 12.0
+  },
+  "clean/new": {
+    "total_predictions": 2,
+    "valid_json_count": 2,
+    "invalid_json_count": 0,
+    "json_validity_rate": 1.0,
+    "error_types": {},
+    "field_presence_rate": {
+      "summary": 1.0,
+      "questions": 1.0,
+      "limitations": 1.0,
+      "strengths": 1.0,
+      "weaknesses": 1.0,
+      "ethical_concerns": 1.0,
+      "soundness": 1.0,
+      "presentation": 1.0,
+      "contribution": 1.0,
+      "overall": 1.0,
+      "confidence": 1.0,
+      "decision": 1.0
+    },
+    "field_type_correctness_rate": {
+      "summary": 1.0,
+      "questions": 1.0,
+      "limitations": 1.0,
+      "strengths": 1.0,
+      "weaknesses": 1.0,
+      "ethical_concerns": 1.0,
+      "soundness": 1.0,
+      "presentation": 1.0,
+      "contribution": 1.0,
+      "overall": 1.0,
+      "confidence": 1.0,
+      "decision": 1.0
+    },
+    "score_validity_rate": {
+      "soundness": 1.0,
+      "presentation": 1.0,
+      "contribution": 1.0,
+      "overall": 1.0,
+      "confidence": 1.0,
+      "decision": 1.0
+    },
+    "avg_fields_present": 12.0
+  }
+}

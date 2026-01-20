@@ -1,0 +1,19 @@
+Configuration,Accuracy,Accept Recall,Reject Recall,Accept Precision,Reject Precision,Total
+vision/new_fewshot/majority,1.0000,1.0000,0.0000,1.0000,0.0000,2
+vision/new_fewshot/calibrated,1.0000,1.0000,0.0000,1.0000,0.0000,2
+vision/new_fewshot/single,1.0000,1.0000,0.0000,1.0000,0.0000,2
+vision/new/calibrated,1.0000,1.0000,0.0000,1.0000,0.0000,2
+vision/new/single,1.0000,1.0000,0.0000,1.0000,0.0000,2
+vision/original/calibrated,0.5000,0.5000,0.0000,1.0000,0.0000,2
+vision/original/single,0.5000,0.5000,0.0000,1.0000,0.0000,2
+clean_images/new_fewshot/majority,1.0000,1.0000,0.0000,1.0000,0.0000,2
+clean_images/new_fewshot/calibrated,1.0000,1.0000,0.0000,1.0000,0.0000,2
+clean_images/new_fewshot/single,1.0000,1.0000,0.0000,1.0000,0.0000,2
+clean_images/new/calibrated,1.0000,1.0000,0.0000,1.0000,0.0000,2
+clean_images/new/single,1.0000,1.0000,0.0000,1.0000,0.0000,2
+clean_images/original/calibrated,1.0000,1.0000,0.0000,1.0000,0.0000,2
+clean_images/original/single,1.0000,1.0000,0.0000,1.0000,0.0000,2
+clean/new/calibrated,1.0000,1.0000,0.0000,1.0000,0.0000,2
+clean/new/single,1.0000,1.0000,0.0000,1.0000,0.0000,2
+clean/original/calibrated,1.0000,1.0000,0.0000,1.0000,0.0000,2
+clean/original/single,1.0000,1.0000,0.0000,1.0000,0.0000,2
