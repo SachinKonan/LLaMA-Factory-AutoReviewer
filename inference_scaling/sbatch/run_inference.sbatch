@@ -4,9 +4,9 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=100G
 #SBATCH --gres=gpu:1
-#SBATCH --array=0-0
-#SBATCH --output=logs/inference_scaling/infer_%A_%a.out
-#SBATCH --error=logs/inference_scaling/infer_%A_%a.err
+#SBATCH --array=0-8
+#SBATCH --output=logs/inference_scaling/%A/infer_%A_%a.out
+#SBATCH --error=logs/inference_scaling/%A/infer_%A_%a.err
 
 # ============================================================================
 # Inference Scaling Job Array
@@ -18,7 +18,7 @@
 #   - 3 prompt variants: original, new, new_fewshot
 #
 # Model Selection:
-#   - clean: Qwen2.5-7B-Instruct-1M (qwen template)
+#   - clean: Qwen2.5-7B-Instruct with YaRN rope scaling (131k context)
 #   - clean_images, vision: Qwen2.5-VL-7B-Instruct (qwen2_vl template)
 #
 # For prompts 3-5 (new_fewshot with ensembling):
@@ -31,17 +31,17 @@ set -e
 # Configuration
 PROJECT_DIR="/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer"
 cd "${PROJECT_DIR}"
-source .venv_vllm_inf/bin/activate
+source .vllm/bin/activate
 # export TRANSFORMERS_OFFLINE=1
 
 # Base data directory (original datasets)
 BASE_DATA_DIR="/n/fs/vision-mix/sk7524/LLaMA-Factory/data"
 
 # Generated datasets directory
-GENERATED_DATA_DIR="${PROJECT_DIR}/inference_strategies/data"
+GENERATED_DATA_DIR="${PROJECT_DIR}/inference_scaling/data"
 
 # Results directory
-RESULTS_DIR="${PROJECT_DIR}/inference_strategies/results"
+RESULTS_DIR="${PROJECT_DIR}/inference_scaling/results"
 
 # Define modalities and their dataset patterns
 MODALITIES=(
@@ -65,16 +65,19 @@ MODALITY="${MODALITIES[$MODALITY_IDX]}"
 PROMPT_VARIANT="${PROMPT_VARIANTS[$PROMPT_IDX]}"
 
 # Model configuration based on modality
-# - clean (text-only): Qwen2.5-7B-Instruct-1M with qwen template
+# - clean (text-only): Qwen2.5-7B-Instruct with YaRN rope scaling for 131k context
 # - clean_images, vision: Qwen2.5-VL-7B-Instruct with qwen2_vl template
 if [ "$MODALITY" == "clean" ]; then
-    MODEL="${MODEL:-Qwen/Qwen2.5-7B-Instruct-1M}"
+    MODEL="${MODEL:-Qwen/Qwen2.5-7B-Instruct}"
     TEMPLATE="${TEMPLATE:-qwen}"
     MEDIA_DIR=""
+    # YaRN rope scaling: 32768 * 4 = 131072 context length
+    ROPE_SCALING='{"rope_scaling":{"rope_type":"yarn","factor":4.0,"original_max_position_embeddings":32768}}'
 else
     MODEL="${MODEL_VL:-Qwen/Qwen2.5-VL-7B-Instruct}"
     TEMPLATE="${TEMPLATE_VL:-qwen2_vl}"
     MEDIA_DIR="."
+    ROPE_SCALING=""
 fi
 
 # Construct dataset name
@@ -124,7 +127,7 @@ if [ ! -d "${GENERATED_DATA_DIR}/${DATASET_NAME}" ]; then
 fi
 
 # Build inference command
-INFERENCE_CMD="python inference_strategies/scripts/vllm_infer_ensemble.py \
+INFERENCE_CMD="python inference_scaling/scripts/vllm_infer_ensemble.py \
     --model_name_or_path ${MODEL} \
     --dataset ${DATASET_NAME} \
     --dataset_dir ${GENERATED_DATA_DIR} \
@@ -139,6 +142,11 @@ INFERENCE_CMD="python inference_strategies/scripts/vllm_infer_ensemble.py \
 # Add media_dir for VL models
 if [ -n "${MEDIA_DIR}" ]; then
     INFERENCE_CMD="${INFERENCE_CMD} --media_dir ${MEDIA_DIR}"
+fi
+
+# Add rope_scaling config for extended context (clean modality)
+if [ -n "${ROPE_SCALING}" ]; then
+    INFERENCE_CMD="${INFERENCE_CMD} --vllm_config '${ROPE_SCALING}'"
 fi
 
 # Run inference

@@ -578,9 +578,9 @@ def create_summary_table(all_metrics: Dict[str, Dict], output_path: str):
 
 def main():
     parser = argparse.ArgumentParser(description="Compute metrics and generate plots")
-    parser.add_argument("--results_dir", type=str, default="./inference_strategies/results",
+    parser.add_argument("--results_dir", type=str, default="./inference_scaling/results",
                         help="Directory containing results")
-    parser.add_argument("--output_dir", type=str, default="./inference_strategies/metrics",
+    parser.add_argument("--output_dir", type=str, default="./inference_scaling/metrics",
                         help="Output directory for metrics and plots")
     parser.add_argument("--base_data_dir", type=str,
                         default="/n/fs/vision-mix/sk7524/LLaMA-Factory/data",

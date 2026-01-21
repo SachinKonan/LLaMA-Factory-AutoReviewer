@@ -88,7 +88,7 @@ Use the following JSON schema:
 }
 ```"""
 
-# Fewshot example placeholder text (to be replaced with actual examples)
+# Fewshot example template
 FEWSHOT_TEMPLATE = """Here are example reviews for reference:
 
 Example 1 (Accept):
@@ -100,6 +100,26 @@ Paper: {reject_paper}
 Review: {reject_review}
 
 """
+
+# Path to hardcoded few-shot examples (from clean/new inference results)
+FEWSHOT_EXAMPLES_PATH = os.path.join(os.path.dirname(__file__), "fewshot_examples.json")
+
+
+def load_fewshot_examples() -> Optional[str]:
+    """Load hardcoded few-shot examples from JSON file."""
+    if not os.path.exists(FEWSHOT_EXAMPLES_PATH):
+        print(f"Warning: Few-shot examples file not found at {FEWSHOT_EXAMPLES_PATH}")
+        return None
+
+    with open(FEWSHOT_EXAMPLES_PATH, "r", encoding="utf-8") as f:
+        examples = json.load(f)
+
+    return FEWSHOT_TEMPLATE.format(
+        accept_paper=examples['accept_paper'],
+        accept_review=examples['accept_review'],
+        reject_paper=examples['reject_paper'],
+        reject_review=examples['reject_review']
+    )
 
 
 def load_dataset(data_path: str) -> List[Dict]:
@@ -278,13 +298,17 @@ def generate_datasets(
     """
     os.makedirs(output_dir, exist_ok=True)
 
-    # Load few-shot examples if provided
-    fewshot_string = None
-    if fewshot_dir:
-        validation_data = load_dataset(fewshot_dir)
-        accept_ex, reject_ex = get_fewshot_examples(validation_data, seed)
-        fewshot_string = format_fewshot_string(accept_ex, reject_ex)
-        print(f"Loaded few-shot examples from {fewshot_dir}")
+    # Load few-shot examples (hardcoded from clean/new inference results)
+    fewshot_string = load_fewshot_examples()
+    if fewshot_string:
+        print(f"Loaded hardcoded few-shot examples from {FEWSHOT_EXAMPLES_PATH}")
+    else:
+        # Fall back to loading from fewshot_dir if provided
+        if fewshot_dir:
+            validation_data = load_dataset(fewshot_dir)
+            accept_ex, reject_ex = get_fewshot_examples(validation_data, seed)
+            fewshot_string = format_fewshot_string(accept_ex, reject_ex)
+            print(f"Loaded few-shot examples from {fewshot_dir}")
 
     for dataset_name in dataset_names:
         for split in splits:
@@ -333,7 +357,7 @@ def main():
                         default="/n/fs/vision-mix/sk7524/LLaMA-Factory/data",
                         help="Base directory containing original datasets")
     parser.add_argument("--output_dir", type=str,
-                        default="./inference_strategies/data",
+                        default="./inference_scaling/data",
                         help="Output directory for modified datasets")
     parser.add_argument("--splits", type=str, nargs="+", default=["test"],
                         help="Dataset splits to process")

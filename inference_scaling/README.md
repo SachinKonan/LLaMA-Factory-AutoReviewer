@@ -25,7 +25,7 @@ For the `new_fewshot` variant with `n_generations=5`:
 ## Directory Structure
 
 ```
-inference_strategies/
+inference_scaling/
 ├── README.md               # This file
 ├── run_pipeline.sh         # Master pipeline script
 ├── data/                   # Generated datasets
@@ -61,34 +61,34 @@ Run the entire pipeline:
 
 ```bash
 cd /n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer
-./inference_strategies/run_pipeline.sh all
+./inference_scaling/run_pipeline.sh all
 ```
 
 ### Step-by-Step
 
 1. **Generate datasets** (modifies prompts):
    ```bash
-   ./inference_strategies/run_pipeline.sh generate
+   ./inference_scaling/run_pipeline.sh generate
    ```
 
 2. **Submit inference jobs** (SLURM job array):
    ```bash
-   ./inference_strategies/run_pipeline.sh inference
+   ./inference_scaling/run_pipeline.sh inference
    ```
 
 3. **Wait for inference to complete**, then submit meta-review jobs:
    ```bash
-   ./inference_strategies/run_pipeline.sh metareview
+   ./inference_scaling/run_pipeline.sh metareview
    ```
 
 4. **Extract results** from predictions:
    ```bash
-   ./inference_strategies/run_pipeline.sh extract
+   ./inference_scaling/run_pipeline.sh extract
    ```
 
 5. **Compute metrics** and generate plots:
    ```bash
-   ./inference_strategies/run_pipeline.sh metrics
+   ./inference_scaling/run_pipeline.sh metrics
    ```
 
 ### Configuration
@@ -105,7 +105,7 @@ Environment variables to override defaults:
 
 Example:
 ```bash
-MODEL_VL="Qwen/Qwen2.5-VL-72B-Instruct" sbatch inference_strategies/sbatch/run_inference.sbatch
+MODEL_VL="Qwen/Qwen2.5-VL-72B-Instruct" sbatch inference_scaling/sbatch/run_inference.sbatch
 ```
 
 ## Metrics
@@ -175,5 +175,6 @@ Current error:
 
 TODO: 
 Replace the format_fewshot_string function in generate_datasets.py with real examples later. 
-Make ./inference_strategies/run_pipeline.sh extract save outputs to a file.
-ask to have logs saved to a /logs/inference_scaling/experiment_i folder.
+
+Have logs saved to a /logs/inference_scaling/experiment_i folder.
+Make ./inference_scaling/run_pipeline.sh extract save outputs to a file within /logs/inference_scaling/experiment_i folder.

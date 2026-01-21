@@ -36,8 +36,8 @@ LIMIT=4000  # Change to 2 for testing
 
 # Create necessary directories
 mkdir -p logs/inference_scaling
-mkdir -p inference_strategies/results
-mkdir -p inference_strategies/metrics
+mkdir -p inference_scaling/results
+mkdir -p inference_scaling/metrics
 
 STEP="${1:-all}"
 
@@ -52,17 +52,17 @@ generate_datasets() {
 
     source .venv_vllm_inf/bin/activate
 
-    python inference_strategies/scripts/generate_datasets.py \
+    python inference_scaling/scripts/generate_datasets.py \
         --base_data_dir "/n/fs/vision-mix/sk7524/LLaMA-Factory/data" \
-        --output_dir "./inference_strategies/data" \
+        --output_dir "./inference_scaling/data" \
         --splits test \
         --seed 42 \
         --limit ${LIMIT}
 
     # Generate dataset_info.json for LlamaFactory
-    python inference_strategies/scripts/generate_dataset_info.py \
-        --data_dir "./inference_strategies/data" \
-        --output "./inference_strategies/data/dataset_info.json"
+    python inference_scaling/scripts/generate_dataset_info.py \
+        --data_dir "./inference_scaling/data" \
+        --output "./inference_scaling/data/dataset_info.json"
 
     echo "Dataset generation complete!"
 }
@@ -76,7 +76,7 @@ submit_inference() {
     echo "=============================================="
 
     # Submit main inference job array
-    INFERENCE_JOB=$(sbatch --parsable inference_strategies/sbatch/run_inference.sbatch)
+    INFERENCE_JOB=$(sbatch --parsable inference_scaling/sbatch/run_inference.sbatch)
     echo "Submitted inference job array: ${INFERENCE_JOB}"
 
     echo "Monitor with: squeue -u \$USER"
@@ -93,13 +93,13 @@ submit_metareview() {
 
     # Check if inference results exist
     for modality in clean clean_images vision; do
-        pred_file="inference_strategies/results/${modality}/new_fewshot/predictions.jsonl"
+        pred_file="inference_scaling/results/${modality}/new_fewshot/predictions.jsonl"
         if [ ! -f "${pred_file}" ]; then
             echo "Warning: ${pred_file} not found. Meta-review may fail for ${modality}."
         fi
     done
 
-    METAREVIEW_JOB=$(sbatch --parsable inference_strategies/sbatch/run_metareview.sbatch)
+    METAREVIEW_JOB=$(sbatch --parsable inference_scaling/sbatch/run_metareview.sbatch)
     echo "Submitted meta-review job array: ${METAREVIEW_JOB}"
 }
 
@@ -113,7 +113,7 @@ extract_results() {
 
     source .venv_vllm_inf/bin/activate
 
-    RESULTS_DIR="inference_strategies/results"
+    RESULTS_DIR="inference_scaling/results"
 
     for modality in clean clean_images vision; do
         for variant in original new new_fewshot; do
@@ -127,13 +127,13 @@ extract_results() {
             echo "Processing ${modality}/${variant}..."
 
             # Single strategy (variants 1-3)
-            python inference_strategies/scripts/extract_results.py \
+            python inference_scaling/scripts/extract_results.py \
                 --input "${pred_file}" \
                 --output "${RESULTS_DIR}/${modality}/${variant}/results_single.jsonl" \
                 --strategy single
 
             # Calibrated strategy (using overall score threshold)
-            python inference_strategies/scripts/extract_results.py \
+            python inference_scaling/scripts/extract_results.py \
                 --input "${pred_file}" \
                 --output "${RESULTS_DIR}/${modality}/${variant}/results_calibrated.jsonl" \
                 --strategy single \
@@ -142,7 +142,7 @@ extract_results() {
 
             # Majority strategy (for ensemble predictions)
             if [ "${variant}" == "new_fewshot" ]; then
-                python inference_strategies/scripts/extract_results.py \
+                python inference_scaling/scripts/extract_results.py \
                     --input "${pred_file}" \
                     --output "${RESULTS_DIR}/${modality}/${variant}/results_majority.jsonl" \
                     --strategy majority
@@ -150,7 +150,7 @@ extract_results() {
                 # Meta-review results (if available)
                 meta_pred="${RESULTS_DIR}/${modality}/${variant}/metareview_predictions.jsonl"
                 if [ -f "${meta_pred}" ]; then
-                    python inference_strategies/scripts/run_metareview.py extract \
+                    python inference_scaling/scripts/run_metareview.py extract \
                         --input "${meta_pred}" \
                         --output "${RESULTS_DIR}/${modality}/${variant}/results_metareview.jsonl"
                 fi
@@ -171,13 +171,13 @@ compute_metrics() {
 
     source .venv_vllm_inf/bin/activate
 
-    python inference_strategies/scripts/compute_metrics.py \
-        --results_dir "./inference_strategies/results" \
-        --output_dir "./inference_strategies/metrics" \
+    python inference_scaling/scripts/compute_metrics.py \
+        --results_dir "./inference_scaling/results" \
+        --output_dir "./inference_scaling/metrics" \
         --base_data_dir "/n/fs/vision-mix/sk7524/LLaMA-Factory/data"
 
     echo "Metrics computation complete!"
-    echo "Results saved to: ./inference_strategies/metrics/"
+    echo "Results saved to: ./inference_scaling/metrics/"
 }
 
 # ============================================================================

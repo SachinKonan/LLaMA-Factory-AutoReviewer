@@ -6,7 +6,7 @@ This script creates the necessary LlamaFactory dataset configuration entries
 for all generated prompt variants.
 
 Usage:
-    python generate_dataset_info.py --output ./inference_strategies/data/dataset_info.json
+    python generate_dataset_info.py --output ./inference_scaling/data/dataset_info.json
 """
 
 import argparse
@@ -85,10 +85,10 @@ def generate_dataset_info(data_dir: str, output_path: str):
 def main():
     parser = argparse.ArgumentParser(description="Generate dataset_info.json for inference scaling datasets")
     parser.add_argument("--data_dir", type=str,
-                        default="./inference_strategies/data",
+                        default="./inference_scaling/data",
                         help="Directory containing generated datasets")
     parser.add_argument("--output", type=str,
-                        default="./inference_strategies/data/dataset_info.json",
+                        default="./inference_scaling/data/dataset_info.json",
                         help="Output path for dataset_info.json")
 
     args = parser.parse_args()

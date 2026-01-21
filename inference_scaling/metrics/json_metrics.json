@@ -1,23 +1,25 @@
 {
   "vision/new_fewshot": {
-    "total_predictions": 10,
-    "valid_json_count": 10,
-    "invalid_json_count": 0,
-    "json_validity_rate": 1.0,
-    "error_types": {},
+    "total_predictions": 50,
+    "valid_json_count": 19,
+    "invalid_json_count": 31,
+    "json_validity_rate": 0.38,
+    "error_types": {
+      "no_json_found": 31
+    },
     "field_presence_rate": {
-      "summary": 1.0,
-      "questions": 1.0,
-      "limitations": 1.0,
-      "strengths": 1.0,
-      "weaknesses": 1.0,
-      "ethical_concerns": 1.0,
-      "soundness": 1.0,
-      "presentation": 1.0,
-      "contribution": 1.0,
-      "overall": 1.0,
-      "confidence": 1.0,
-      "decision": 1.0
+      "summary": 0.38,
+      "questions": 0.38,
+      "limitations": 0.38,
+      "strengths": 0.38,
+      "weaknesses": 0.38,
+      "ethical_concerns": 0.38,
+      "soundness": 0.38,
+      "presentation": 0.38,
+      "contribution": 0.38,
+      "overall": 0.38,
+      "confidence": 0.38,
+      "decision": 0.38
     },
     "field_type_correctness_rate": {
       "summary": 1.0,
@@ -41,11 +43,11 @@
       "confidence": 1.0,
       "decision": 1.0
     },
-    "avg_fields_present": 12.0
+    "avg_fields_present": 4.56
   },
   "vision/new": {
-    "total_predictions": 2,
-    "valid_json_count": 2,
+    "total_predictions": 10,
+    "valid_json_count": 10,
     "invalid_json_count": 0,
     "json_validity_rate": 1.0,
     "error_types": {},
@@ -88,6 +90,55 @@
     "avg_fields_present": 12.0
   },
   "clean_images/new_fewshot": {
+    "total_predictions": 50,
+    "valid_json_count": 25,
+    "invalid_json_count": 25,
+    "json_validity_rate": 0.5,
+    "error_types": {
+      "no_json_found": 22,
+      "json_parse_error: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)": 1,
+      "json_parse_error_in_fence: Invalid \\escape: line 2 column 128 (char 129)": 1,
+      "json_parse_error_in_fence: Invalid \\escape: line 2 column 126 (char 127)": 1
+    },
+    "field_presence_rate": {
+      "summary": 0.5,
+      "questions": 0.5,
+      "limitations": 0.5,
+      "strengths": 0.5,
+      "weaknesses": 0.5,
+      "ethical_concerns": 0.5,
+      "soundness": 0.5,
+      "presentation": 0.5,
+      "contribution": 0.5,
+      "overall": 0.5,
+      "confidence": 0.5,
+      "decision": 0.5
+    },
+    "field_type_correctness_rate": {
+      "summary": 1.0,
+      "questions": 1.0,
+      "limitations": 1.0,
+      "strengths": 1.0,
+      "weaknesses": 1.0,
+      "ethical_concerns": 1.0,
+      "soundness": 1.0,
+      "presentation": 1.0,
+      "contribution": 1.0,
+      "overall": 1.0,
+      "confidence": 1.0,
+      "decision": 1.0
+    },
+    "score_validity_rate": {
+      "soundness": 1.0,
+      "presentation": 1.0,
+      "contribution": 1.0,
+      "overall": 1.0,
+      "confidence": 1.0,
+      "decision": 1.0
+    },
+    "avg_fields_present": 6.0
+  },
+  "clean_images/new": {
     "total_predictions": 10,
     "valid_json_count": 10,
     "invalid_json_count": 0,
@@ -131,25 +182,28 @@
     },
     "avg_fields_present": 12.0
   },
-  "clean_images/new": {
-    "total_predictions": 2,
-    "valid_json_count": 2,
-    "invalid_json_count": 0,
-    "json_validity_rate": 1.0,
-    "error_types": {},
+  "clean/new_fewshot": {
+    "total_predictions": 50,
+    "valid_json_count": 16,
+    "invalid_json_count": 34,
+    "json_validity_rate": 0.32,
+    "error_types": {
+      "no_json_found": 33,
+      "json_parse_error: Expecting ',' delimiter: line 2 column 17 (char 18)": 1
+    },
     "field_presence_rate": {
-      "summary": 1.0,
-      "questions": 1.0,
-      "limitations": 1.0,
-      "strengths": 1.0,
-      "weaknesses": 1.0,
-      "ethical_concerns": 1.0,
-      "soundness": 1.0,
-      "presentation": 1.0,
-      "contribution": 1.0,
-      "overall": 1.0,
-      "confidence": 1.0,
-      "decision": 1.0
+      "summary": 0.32,
+      "questions": 0.32,
+      "limitations": 0.32,
+      "strengths": 0.32,
+      "weaknesses": 0.32,
+      "ethical_concerns": 0.32,
+      "soundness": 0.32,
+      "presentation": 0.32,
+      "contribution": 0.32,
+      "overall": 0.32,
+      "confidence": 0.32,
+      "decision": 0.32
     },
     "field_type_correctness_rate": {
       "summary": 1.0,
@@ -173,11 +227,11 @@
       "confidence": 1.0,
       "decision": 1.0
     },
-    "avg_fields_present": 12.0
+    "avg_fields_present": 3.84
   },
   "clean/new": {
-    "total_predictions": 2,
-    "valid_json_count": 2,
+    "total_predictions": 10,
+    "valid_json_count": 10,
     "invalid_json_count": 0,
     "json_validity_rate": 1.0,
     "error_types": {},
