@@ -3524,5 +3524,137 @@
       "assistant_tag": "gpt",
       "system_tag": "system"
     }
+  },
+  "iclr_2020_2025_85_5_10_split6_balanced_clean_citation_noreviews_v6_train": {
+    "file_name": "iclr_2020_2025_85_5_10_split6_balanced_clean_citation_noreviews_v6_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split6_balanced_clean_citation_noreviews_v6_validation": {
+    "file_name": "iclr_2020_2025_85_5_10_split6_balanced_clean_citation_noreviews_v6_validation/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split6_balanced_clean_citation_noreviews_v6_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split6_balanced_clean_citation_noreviews_v6_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split6_balanced_vision_citation_noreviews_v6_train": {
+    "file_name": "iclr_2020_2025_85_5_10_split6_balanced_vision_citation_noreviews_v6_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split6_balanced_vision_citation_noreviews_v6_validation": {
+    "file_name": "iclr_2020_2025_85_5_10_split6_balanced_vision_citation_noreviews_v6_validation/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split6_balanced_vision_citation_noreviews_v6_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split6_balanced_vision_citation_noreviews_v6_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split6_balanced_clean_images_citation_noreviews_v6_train": {
+    "file_name": "iclr_2020_2025_85_5_10_split6_balanced_clean_images_citation_noreviews_v6_train/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split6_balanced_clean_images_citation_noreviews_v6_validation": {
+    "file_name": "iclr_2020_2025_85_5_10_split6_balanced_clean_images_citation_noreviews_v6_validation/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split6_balanced_clean_images_citation_noreviews_v6_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split6_balanced_clean_images_citation_noreviews_v6_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations",
+      "images": "images"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
   }
 }
