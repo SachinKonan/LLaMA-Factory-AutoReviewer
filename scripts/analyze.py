@@ -111,9 +111,21 @@ def discover_results(
             continue
 
         # Find all jsonl files in this subdir
-        for jsonl_file in sorted(subdir.glob("*.jsonl")):
+        jsonl_files = list(subdir.glob("*.jsonl"))
+        for jsonl_file in sorted(jsonl_files):
             run_name = jsonl_file.stem  # "base" or "finetuned2871"
             results[task_type].append((dataset_name, run_name, jsonl_file))
+
+        # Also check subdirectories (e.g., checkpoint-*) if no direct jsonl files found
+        if not jsonl_files:
+            for subsubdir in sorted(subdir.iterdir()):
+                if not subsubdir.is_dir():
+                    continue
+                for jsonl_file in sorted(subsubdir.glob("*.jsonl")):
+                    run_name = jsonl_file.stem
+                    # Append subdirectory name to dataset_name
+                    full_name = f"{dataset_name}_{subsubdir.name}"
+                    results[task_type].append((full_name, run_name, jsonl_file))
 
     return results
 

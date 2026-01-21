@@ -74,6 +74,15 @@ def vllm_infer(
 
     Usage: python vllm_infer.py --model_name_or_path meta-llama/Llama-2-7b-hf --template llama --dataset alpaca_en_demo
     """
+    # Map common template aliases to valid names
+    template_aliases = {
+        "qwen2.5": "qwen",
+        "qwen2": "qwen",
+    }
+    if template in template_aliases:
+        print(f"Mapping template '{template}' -> '{template_aliases[template]}'")
+        template = template_aliases[template]
+
     if pipeline_parallel_size > get_device_count():
         raise ValueError("Pipeline parallel size should be smaller than the number of gpus.")
 

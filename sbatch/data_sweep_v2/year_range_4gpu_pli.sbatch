@@ -20,10 +20,10 @@ export TRANSFORMERS_OFFLINE=1
 # 3-5: 2022-2025 (clean, vision, clean_images)
 # Format: "DATASET_BASE SHORT_NAME CONFIG_FILE TEMPLATE"
 CONFIGS=(
-    "iclr_2024_2025_85_5_10_split6_balanced_clean_binary_noreviews_v6 iclr24_clean configs/data_sweep_v2_clean.yaml qwen2.5"
+    "iclr_2024_2025_85_5_10_split6_balanced_clean_binary_noreviews_v6 iclr24_clean configs/data_sweep_v2_clean.yaml qwen"
     "iclr_2024_2025_85_5_10_split6_balanced_vision_binary_noreviews_v6 iclr24_vision configs/data_sweep_v2_vision.yaml qwen2_vl"
     "iclr_2024_2025_85_5_10_split6_balanced_clean_images_binary_noreviews_v6 iclr24_clean_images configs/data_sweep_clean_images.yaml qwen2_vl"
-    "iclr_2022_2025_85_5_10_split6_balanced_clean_binary_noreviews_v6 iclr22_clean configs/data_sweep_v2_clean.yaml qwen2.5"
+    "iclr_2022_2025_85_5_10_split6_balanced_clean_binary_noreviews_v6 iclr22_clean configs/data_sweep_v2_clean.yaml qwen"
     "iclr_2022_2025_85_5_10_split6_balanced_vision_binary_noreviews_v6 iclr22_vision configs/data_sweep_v2_vision.yaml qwen2_vl"
     "iclr_2022_2025_85_5_10_split6_balanced_clean_images_binary_noreviews_v6 iclr22_clean_images configs/data_sweep_clean_images.yaml qwen2_vl"
 )

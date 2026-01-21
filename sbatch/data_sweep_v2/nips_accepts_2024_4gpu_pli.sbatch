@@ -1,30 +1,27 @@
 #!/bin/bash
-#SBATCH --job-name=year_range
-#SBATCH --time=26:00:00
+#SBATCH --job-name=nips_acc_24
+#SBATCH --time=18:00:00
 #SBATCH --cpus-per-task=10
 #SBATCH --mem=250G
 #SBATCH --gres=gpu:4
-#SBATCH --constraint="nomig&gpu80"
-#SBATCH --array=0-5
-#SBATCH --output=logs/data_sweep_year_range/%A_%a.out
-#SBATCH --error=logs/data_sweep_year_range/%A_%a.err
+#SBATCH --partition=pli
+#SBATCH --account=llm_explore
+#SBATCH --array=0-2
+#SBATCH --output=logs/data_sweep_nips_accepts_24/%A_%a.out
+#SBATCH --error=logs/data_sweep_nips_accepts_24/%A_%a.err
 
 set -e
 cd /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer
 source .venv/bin/activate
 export TRANSFORMERS_OFFLINE=1
 
-# 6 configurations:
-# 0-2: 2024-2025 (clean, vision, clean_images)
-# 3-5: 2022-2025 (clean, vision, clean_images)
+# 3 configurations: clean, clean_images, vision
+# Dataset: nips_accepts from 2024-2025 (iclr original + nips accepts)
 # Format: "DATASET_BASE SHORT_NAME CONFIG_FILE TEMPLATE"
 CONFIGS=(
-    "iclr_2024_2025_85_5_10_split6_balanced_clean_binary_noreviews_v6 iclr24_clean configs/data_sweep_v2_clean.yaml qwen2.5"
-    "iclr_2024_2025_85_5_10_split6_balanced_vision_binary_noreviews_v6 iclr24_vision configs/data_sweep_v2_vision.yaml qwen2_vl"
-    "iclr_2024_2025_85_5_10_split6_balanced_clean_images_binary_noreviews_v6 iclr24_clean_images configs/data_sweep_clean_images.yaml qwen2_vl"
-    "iclr_2022_2025_85_5_10_split6_balanced_clean_binary_noreviews_v6 iclr22_clean configs/data_sweep_v2_clean.yaml qwen2.5"
-    "iclr_2022_2025_85_5_10_split6_balanced_vision_binary_noreviews_v6 iclr22_vision configs/data_sweep_v2_vision.yaml qwen2_vl"
-    "iclr_2022_2025_85_5_10_split6_balanced_clean_images_binary_noreviews_v6 iclr22_clean_images configs/data_sweep_clean_images.yaml qwen2_vl"
+    "iclr_nips_2024_2025_85_5_10_split6_balanced_nips_accepts_clean_binary_noreviews_v6 nips_acc24_clean configs/data_sweep_v2_clean.yaml qwen2.5"
+    "iclr_nips_2024_2025_85_5_10_split6_balanced_nips_accepts_clean_images_binary_noreviews_v6 nips_acc24_clean_images configs/data_sweep_clean_images.yaml qwen2_vl"
+    "iclr_nips_2024_2025_85_5_10_split6_balanced_nips_accepts_vision_binary_noreviews_v6 nips_acc24_vision configs/data_sweep_v2_vision.yaml qwen2_vl"
 )
 
 read DATASET SHORT_NAME CONFIG_FILE TEMPLATE <<< "${CONFIGS[$SLURM_ARRAY_TASK_ID]}"
@@ -42,8 +39,8 @@ PER_DEVICE_BATCH=2
 GRAD_ACCUM=2
 NUM_GPUS=4
 
-MODEL_DIR="saves/data_sweep_year_range/${SHORT_NAME}"
-RESULTS_DIR="results/data_sweep_year_range/${SHORT_NAME}"
+MODEL_DIR="saves/data_sweep_nips_accepts_24/${SHORT_NAME}"
+RESULTS_DIR="results/data_sweep_nips_accepts_24/${SHORT_NAME}"
 MASTER_PORT=$((29700 + SLURM_ARRAY_TASK_ID))
 
 echo "=============================================="
@@ -58,7 +55,7 @@ echo "Config: ${CONFIG_FILE}"
 echo "Model Dir: ${MODEL_DIR}"
 echo "=============================================="
 
-mkdir -p logs/data_sweep_year_range "${MODEL_DIR}" "${RESULTS_DIR}"
+mkdir -p logs/data_sweep_nips_accepts_24 "${MODEL_DIR}" "${RESULTS_DIR}"
 
 # ======================
 # PHASE 1: TRAINING
