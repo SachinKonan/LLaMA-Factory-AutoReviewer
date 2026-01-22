@@ -53,6 +53,77 @@ SCORE_RANGES = {
 }
 
 
+def parse_boxed_from_text(text: str) -> Tuple[Optional[str], str]:
+    """
+    Parse boxed decision from model output text.
+
+    Returns:
+        Tuple of (decision or None, error_message or "")
+    """
+    if not text:
+        return None, "empty_response"
+
+    # Match \boxed{Accept} or \boxed{Reject}
+    match = re.search(r'\\boxed\{(Accept|Reject)\}', text, re.IGNORECASE)
+    if match:
+        return match.group(1).capitalize(), ""
+
+    return None, "no_boxed_found"
+
+
+def compute_boxed_metrics(predictions_path: str) -> Dict:
+    """
+    Compute boxed format validity from predictions file (for original prompt).
+
+    Args:
+        predictions_path: Path to predictions.jsonl file
+
+    Returns:
+        Dictionary with boxed-related metrics
+    """
+    metrics = {
+        "total_predictions": 0,
+        "valid_boxed_count": 0,
+        "invalid_boxed_count": 0,
+        "boxed_validity_rate": 0.0,
+        "error_types": defaultdict(int),
+        "decision_distribution": {"Accept": 0, "Reject": 0},
+    }
+
+    with open(predictions_path, "r", encoding="utf-8") as f:
+        for line in f:
+            try:
+                data = json.loads(line.strip())
+            except json.JSONDecodeError:
+                continue
+
+            predictions = data.get("predict", [])
+            if isinstance(predictions, str):
+                predictions = [predictions]
+
+            for pred in predictions:
+                metrics["total_predictions"] += 1
+
+                decision, error = parse_boxed_from_text(pred)
+
+                if decision is not None:
+                    metrics["valid_boxed_count"] += 1
+                    metrics["decision_distribution"][decision] += 1
+                else:
+                    metrics["invalid_boxed_count"] += 1
+                    metrics["error_types"][error] += 1
+
+    # Compute rates
+    total = metrics["total_predictions"]
+    if total > 0:
+        metrics["boxed_validity_rate"] = metrics["valid_boxed_count"] / total
+
+    # Convert defaultdict to regular dict for JSON serialization
+    metrics["error_types"] = dict(metrics["error_types"])
+
+    return metrics
+
+
 def parse_json_from_text(text: str) -> Tuple[Optional[Dict], str]:
     """
     Parse JSON from model output text.
@@ -570,8 +641,11 @@ def create_summary_table(all_metrics: Dict[str, Dict], output_path: str):
     df.to_csv(output_path, index=False)
     print(f"\nSummary table saved to: {output_path}")
 
-    # Also print as markdown
-    print("\n" + df.to_markdown(index=False))
+    # Also print as markdown (if tabulate is available)
+    try:
+        print("\n" + df.to_markdown(index=False))
+    except ImportError:
+        print("\n" + df.to_string(index=False))
 
     return df
 
@@ -609,13 +683,34 @@ def main():
 
             variant = variant_dir.name
 
-            # Compute JSON metrics from predictions.jsonl (for new prompt variants)
+            # Compute format validity metrics from predictions.jsonl
             predictions_file = variant_dir / "predictions.jsonl"
-            if predictions_file.exists() and variant in ["new", "new_fewshot"]:
-                json_config_name = f"{modality}/{variant}"
-                json_metrics = compute_json_metrics(str(predictions_file))
-                all_json_metrics[json_config_name] = json_metrics
-                print_json_metrics(json_metrics, json_config_name)
+            if predictions_file.exists():
+                config_name = f"{modality}/{variant}"
+                if variant in ["new", "new_fewshot"]:
+                    # JSON format for new prompts
+                    json_metrics = compute_json_metrics(str(predictions_file))
+                    all_json_metrics[config_name] = json_metrics
+                    print_json_metrics(json_metrics, config_name)
+                elif variant == "original":
+                    # Boxed format for original prompt
+                    boxed_metrics = compute_boxed_metrics(str(predictions_file))
+                    # Store in same format for unified plotting
+                    all_json_metrics[config_name] = {
+                        "total_predictions": boxed_metrics["total_predictions"],
+                        "valid_json_count": boxed_metrics["valid_boxed_count"],
+                        "invalid_json_count": boxed_metrics["invalid_boxed_count"],
+                        "json_validity_rate": boxed_metrics["boxed_validity_rate"],
+                        "format_type": "boxed",
+                        "error_types": boxed_metrics["error_types"],
+                        "decision_distribution": boxed_metrics["decision_distribution"],
+                    }
+                    print(f"\n{'='*70}")
+                    print(f"Boxed Metrics: {config_name}")
+                    print(f"{'='*70}")
+                    print(f"  Total predictions: {boxed_metrics['total_predictions']}")
+                    print(f"  Valid boxed: {boxed_metrics['valid_boxed_count']} ({boxed_metrics['boxed_validity_rate']:.2%})")
+                    print(f"  Invalid: {boxed_metrics['invalid_boxed_count']}")
 
             # Find result files
             for result_file in variant_dir.glob("results_*.jsonl"):
@@ -661,20 +756,28 @@ def main():
             # Create JSON metrics summary table
             json_summary_rows = []
             for config, jm in all_json_metrics.items():
-                json_summary_rows.append({
+                format_type = jm.get("format_type", "json")
+                row = {
                     "Configuration": config,
-                    "JSON Validity Rate": f"{jm['json_validity_rate']:.2%}",
-                    "Avg Fields Present": f"{jm['avg_fields_present']:.1f}/{len(EXPECTED_FIELDS)}",
-                    "Decision Present": f"{jm['field_presence_rate'].get('decision', 0):.2%}",
-                    "Decision Valid": f"{jm['score_validity_rate'].get('decision', 0):.2%}",
+                    "Format": format_type,
+                    "Validity Rate": f"{jm['json_validity_rate']:.2%}",
                     "Total Predictions": jm["total_predictions"],
-                })
+                }
+                # Add JSON-specific fields if available
+                if format_type == "json" or "avg_fields_present" in jm:
+                    row["Avg Fields Present"] = f"{jm.get('avg_fields_present', 0):.1f}/{len(EXPECTED_FIELDS)}"
+                    row["Decision Present"] = f"{jm.get('field_presence_rate', {}).get('decision', 0):.2%}"
+                    row["Decision Valid"] = f"{jm.get('score_validity_rate', {}).get('decision', 0):.2%}"
+                json_summary_rows.append(row)
             json_df = pd.DataFrame(json_summary_rows)
             json_summary_path = os.path.join(args.output_dir, "json_summary.csv")
             json_df.to_csv(json_summary_path, index=False)
             print(f"JSON summary saved to: {json_summary_path}")
             print("\nJSON Metrics Summary:")
-            print(json_df.to_markdown(index=False))
+            try:
+                print(json_df.to_markdown(index=False))
+            except ImportError:
+                print(json_df.to_string(index=False))
     else:
         print("\nNo results found. Please run inference first.")
 

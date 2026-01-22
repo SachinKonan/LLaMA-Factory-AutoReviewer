@@ -314,12 +314,13 @@ def get_client(project: str, location: str) -> genai.Client:
     )
 
 
-def upload_to_gcs(local_path: str, gcs_uri: str) -> str:
+def upload_to_gcs(local_path: str, gcs_uri: str, project: str) -> str:
     """Upload local file to GCS.
 
     Args:
         local_path: Local file path
         gcs_uri: GCS URI (gs://bucket/path)
+        project: GCP project ID
 
     Returns:
         GCS URI
@@ -335,7 +336,7 @@ def upload_to_gcs(local_path: str, gcs_uri: str) -> str:
     blob_name = parts[1] if len(parts) > 1 else ""
 
     # Upload
-    client = storage.Client()
+    client = storage.Client(project=project)
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
     blob.upload_from_filename(local_path)
@@ -434,12 +435,13 @@ def poll_until_complete(
         time.sleep(interval)
 
 
-def download_from_gcs(gcs_uri: str, local_path: str) -> str:
+def download_from_gcs(gcs_uri: str, local_path: str, project: str) -> str:
     """Download file from GCS.
 
     Args:
         gcs_uri: GCS URI
         local_path: Local destination path
+        project: GCP project ID
 
     Returns:
         Local path
@@ -450,7 +452,7 @@ def download_from_gcs(gcs_uri: str, local_path: str) -> str:
     bucket_name = parts[0]
     blob_name = parts[1] if len(parts) > 1 else ""
 
-    client = storage.Client()
+    client = storage.Client(project=project)
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
     blob.download_to_filename(local_path)
@@ -458,11 +460,12 @@ def download_from_gcs(gcs_uri: str, local_path: str) -> str:
     return local_path
 
 
-def list_gcs_files(gcs_prefix: str) -> list[str]:
+def list_gcs_files(gcs_prefix: str, project: str) -> list[str]:
     """List files in GCS with prefix.
 
     Args:
         gcs_prefix: GCS URI prefix
+        project: GCP project ID
 
     Returns:
         List of GCS URIs
@@ -473,7 +476,7 @@ def list_gcs_files(gcs_prefix: str) -> list[str]:
     bucket_name = parts[0]
     prefix = parts[1] if len(parts) > 1 else ""
 
-    client = storage.Client()
+    client = storage.Client(project=project)
     bucket = client.bucket(bucket_name)
     blobs = bucket.list_blobs(prefix=prefix)
 
@@ -509,6 +512,7 @@ def process_batch_results(
     output_uri: str,
     metadata_list: list[dict],
     output_path: str,
+    project: str,
 ) -> int:
     """Process batch results and save in vllm_infer.py format.
 
@@ -516,6 +520,7 @@ def process_batch_results(
         output_uri: GCS URI prefix where results are stored
         metadata_list: List of metadata for each request
         output_path: Local path to save results JSONL
+        project: GCP project ID
 
     Returns:
         Number of successfully processed results
@@ -523,7 +528,7 @@ def process_batch_results(
     print(f"\nProcessing batch results from: {output_uri}")
 
     # List result files
-    result_files = list_gcs_files(output_uri)
+    result_files = list_gcs_files(output_uri, project)
     result_files = [f for f in result_files if f.endswith(".jsonl")]
 
     if not result_files:
@@ -537,7 +542,7 @@ def process_batch_results(
     with tempfile.TemporaryDirectory() as tmpdir:
         for gcs_file in result_files:
             local_file = os.path.join(tmpdir, os.path.basename(gcs_file))
-            download_from_gcs(gcs_file, local_file)
+            download_from_gcs(gcs_file, local_file, project)
 
             with open(local_file) as f:
                 for line in f:
@@ -729,7 +734,7 @@ def main():
     output_uri = f"{args.gcs_staging}/{short_name}_{timestamp}_output/"
 
     print(f"\nUploading batch input to GCS...")
-    upload_to_gcs(local_jsonl, input_uri)
+    upload_to_gcs(local_jsonl, input_uri, args.project)
 
     # Get client and submit job
     client = get_client(args.project, args.location)
@@ -781,7 +786,7 @@ def main():
 
     # Process results
     num_processed = process_batch_results(
-        output_uri, metadata_list, args.output
+        output_uri, metadata_list, args.output, args.project
     )
 
     # Update job info

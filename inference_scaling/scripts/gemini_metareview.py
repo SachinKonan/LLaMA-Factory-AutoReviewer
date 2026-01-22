@@ -8,17 +8,17 @@ Usage:
     # Submit metareview jobs (after main inference is complete)
     python inference_scaling/scripts/gemini_metareview.py submit \
         --results_dir inference_scaling/results/gemini \
-        --project YOUR_PROJECT
+        --project hip-gecko-485003-c4
 
     # Check status
     python inference_scaling/scripts/gemini_metareview.py status \
         --results_dir inference_scaling/results/gemini \
-        --project YOUR_PROJECT
+        --project hip-gecko-485003-c4
 
     # Retrieve results
     python inference_scaling/scripts/gemini_metareview.py retrieve \
         --results_dir inference_scaling/results/gemini \
-        --project YOUR_PROJECT
+        --project hip-gecko-485003-c4
 """
 
 import argparse
@@ -38,8 +38,8 @@ from google.genai.types import CreateBatchJobConfig, HttpOptions
 
 DEFAULT_MODEL = "gemini-2.5-flash"
 DEFAULT_LOCATION = "us-central1"
-DEFAULT_PROJECT = "ringed-inn-474523-u3"
-DEFAULT_GCS_STAGING = "gs://autoreviewer-data/inference_scaling"
+DEFAULT_PROJECT = "hip-gecko-485003-c4"
+DEFAULT_GCS_STAGING = "gs://jl0796-autoreviewer-staging/inference_scaling"
 
 MODALITIES = ["clean", "clean_images", "vision"]
 
@@ -174,7 +174,7 @@ def get_client(project: str, location: str) -> genai.Client:
     )
 
 
-def upload_to_gcs(local_path: str, gcs_uri: str) -> str:
+def upload_to_gcs(local_path: str, gcs_uri: str, project: str) -> str:
     """Upload local file to GCS."""
     from google.cloud import storage
 
@@ -182,7 +182,7 @@ def upload_to_gcs(local_path: str, gcs_uri: str) -> str:
     bucket_name = parts[0]
     blob_name = parts[1] if len(parts) > 1 else ""
 
-    client = storage.Client()
+    client = storage.Client(project=project)
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
     blob.upload_from_filename(local_path)
@@ -191,7 +191,7 @@ def upload_to_gcs(local_path: str, gcs_uri: str) -> str:
     return gcs_uri
 
 
-def download_from_gcs(gcs_uri: str, local_path: str) -> str:
+def download_from_gcs(gcs_uri: str, local_path: str, project: str) -> str:
     """Download file from GCS."""
     from google.cloud import storage
 
@@ -199,7 +199,7 @@ def download_from_gcs(gcs_uri: str, local_path: str) -> str:
     bucket_name = parts[0]
     blob_name = parts[1] if len(parts) > 1 else ""
 
-    client = storage.Client()
+    client = storage.Client(project=project)
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
     blob.download_to_filename(local_path)
@@ -207,7 +207,7 @@ def download_from_gcs(gcs_uri: str, local_path: str) -> str:
     return local_path
 
 
-def list_gcs_files(gcs_prefix: str) -> list[str]:
+def list_gcs_files(gcs_prefix: str, project: str) -> list[str]:
     """List files in GCS with prefix."""
     from google.cloud import storage
 
@@ -215,7 +215,7 @@ def list_gcs_files(gcs_prefix: str) -> list[str]:
     bucket_name = parts[0]
     prefix = parts[1] if len(parts) > 1 else ""
 
-    client = storage.Client()
+    client = storage.Client(project=project)
     bucket = client.bucket(bucket_name)
     blobs = bucket.list_blobs(prefix=prefix)
 
@@ -271,11 +271,11 @@ def parse_prediction(response: dict) -> str:
     return ""
 
 
-def process_batch_results(output_uri: str, metadata_list: list[dict], output_path: str) -> int:
+def process_batch_results(output_uri: str, metadata_list: list[dict], output_path: str, project: str) -> int:
     """Process batch results."""
     print(f"\nProcessing metareview results from: {output_uri}")
 
-    result_files = list_gcs_files(output_uri)
+    result_files = list_gcs_files(output_uri, project)
     result_files = [f for f in result_files if f.endswith(".jsonl")]
 
     if not result_files:
@@ -286,7 +286,7 @@ def process_batch_results(output_uri: str, metadata_list: list[dict], output_pat
     with tempfile.TemporaryDirectory() as tmpdir:
         for gcs_file in result_files:
             local_file = os.path.join(tmpdir, os.path.basename(gcs_file))
-            download_from_gcs(gcs_file, local_file)
+            download_from_gcs(gcs_file, local_file, project)
 
             with open(local_file) as f:
                 for line in f:
@@ -362,7 +362,7 @@ def cmd_submit(args):
         # Upload to GCS
         input_uri = f"{args.gcs_staging}/metareview_{modality}_{timestamp}_input.jsonl"
         output_uri = f"{args.gcs_staging}/metareview_{modality}_{timestamp}_output/"
-        upload_to_gcs(local_jsonl, input_uri)
+        upload_to_gcs(local_jsonl, input_uri, args.project)
 
         # Submit job
         display_name = f"metareview_{modality}_{timestamp}"
@@ -467,6 +467,7 @@ def cmd_retrieve(args):
             job_info["output_uri"],
             metadata_list,
             str(output_path),
+            args.project,
         )
 
         job_info["status"] = "retrieved"

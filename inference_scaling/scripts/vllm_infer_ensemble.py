@@ -80,6 +80,9 @@ def vllm_infer(
     image_mismatch_mode: str = "crop",
     # New parameters for ensembling
     n_generations: int = 1,
+    # Sharding parameters for distributed inference
+    shard_id: int = 0,
+    num_shards: int = 1,
 ):
     r"""Perform batch generation using vLLM engine, which supports tensor parallelism.
 
@@ -91,6 +94,8 @@ def vllm_infer(
             - "skip": Skip samples where image count doesn't match tag count
         n_generations: Number of generations per sample (for ensembling). Default is 1.
                        When > 1, uses vLLM's n parameter for efficient parallel generation.
+        shard_id: Which shard this worker processes (0 to num_shards-1). Default is 0.
+        num_shards: Total number of shards to split the dataset. Default is 1 (no sharding).
     """
     if pipeline_parallel_size > get_device_count():
         raise ValueError("Pipeline parallel size should be smaller than the number of gpus.")
@@ -144,6 +149,15 @@ def vllm_infer(
     # load datasets
     dataset_module = get_dataset(template_obj, model_args, data_args, training_args, "ppo", **tokenizer_module)
     train_dataset = dataset_module["train_dataset"]
+
+    # Apply sharding if num_shards > 1
+    if num_shards > 1:
+        total_samples = len(train_dataset)
+        shard_size = (total_samples + num_shards - 1) // num_shards  # ceiling division
+        start_idx = shard_id * shard_size
+        end_idx = min(start_idx + shard_size, total_samples)
+        print(f"DEBUG: Sharding enabled - shard {shard_id}/{num_shards}, samples {start_idx}-{end_idx} of {total_samples}")
+        train_dataset = train_dataset.select(range(start_idx, end_idx))
 
     # Configure sampling params with n for multiple generations
     sampling_params = SamplingParams(

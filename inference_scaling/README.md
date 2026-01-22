@@ -178,3 +178,17 @@ Replace the format_fewshot_string function in generate_datasets.py with real exa
 
 Have logs saved to a /logs/inference_scaling/experiment_i folder.
 Make ./inference_scaling/run_pipeline.sh extract save outputs to a file within /logs/inference_scaling/experiment_i folder.
+
+
+check jobs
+
+python3 -c "                                         
+import os; os.environ['GOOGLE_APPLICATION_CREDENTIALS']='/u/jl0796/.config/gcloud/application_default_credentials.json'
+from google import genai
+client = genai.Client(vertexai=True, project='hip-gecko-485003-c4', location='us-central1')
+for job in client.batches.list():
+    print(f'{job.state}: {job.name}')
+"
+
+
+python inference_scaling/scripts/gemini_inference.py submit     --data_dir inference_scaling/data     --output_dir inference_scaling/results/gemini     --project hip-gecko-485003-c4     --gcs_staging gs://jl0796-autoreviewer-staging/inference_scaling     --gcs_base gs://jl0796-autoreviewer-staging     --modality clean,vision

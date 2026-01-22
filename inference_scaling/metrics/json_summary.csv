@@ -1,7 +1,7 @@
 Configuration,JSON Validity Rate,Avg Fields Present,Decision Present,Decision Valid,Total Predictions
-vision/new_fewshot,38.00%,4.6/12,38.00%,100.00%,50
-vision/new,100.00%,12.0/12,100.00%,100.00%,10
-clean_images/new_fewshot,50.00%,6.0/12,50.00%,100.00%,50
-clean_images/new,100.00%,12.0/12,100.00%,100.00%,10
+vision/new_fewshot,63.90%,7.7/12,63.76%,99.95%,10140
+vision/new,99.11%,11.9/12,99.11%,100.00%,2028
+clean_images/new_fewshot,71.11%,8.5/12,71.09%,99.96%,9740
+clean_images/new,90.30%,10.8/12,90.30%,100.00%,1948
 clean/new_fewshot,32.00%,3.8/12,32.00%,100.00%,50
 clean/new,100.00%,12.0/12,100.00%,100.00%,10

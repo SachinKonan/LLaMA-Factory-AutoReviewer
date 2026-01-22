@@ -5,28 +5,25 @@ Gemini Batch Inference for Inference Scaling Experiments.
 Submits batch jobs to Gemini API for all modalities and prompt variants.
 Supports both original (boxed) and new (JSON) prompt formats.
 
+source .venv_vllm_inf/bin/activate
+
 Usage:
     # Submit all inference jobs
     python inference_scaling/scripts/gemini_inference.py submit \
         --data_dir inference_scaling/data \
         --output_dir inference_scaling/results/gemini \
-        --project YOUR_PROJECT
-
-    # Submit specific modality/variant
-    python inference_scaling/scripts/gemini_inference.py submit \
-        --modality clean \
-        --variant new \
-        --project YOUR_PROJECT
+        --project hip-gecko-485003-c4 \
+        --gcs_staging gs://jl0796-autoreviewer-staging/inference_scaling
 
     # Check status of all jobs
     python inference_scaling/scripts/gemini_inference.py status \
         --output_dir inference_scaling/results/gemini \
-        --project YOUR_PROJECT
+        --project hip-gecko-485003-c4
 
     # Retrieve completed results
     python inference_scaling/scripts/gemini_inference.py retrieve \
         --output_dir inference_scaling/results/gemini \
-        --project YOUR_PROJECT
+        --project hip-gecko-485003-c4
 """
 
 import argparse
@@ -52,7 +49,7 @@ LOCAL_IMAGES_PREFIX = "data/images/"
 DEFAULT_MODEL = "gemini-2.5-flash"
 DEFAULT_LOCATION = "us-central1"
 DEFAULT_PROJECT = "ringed-inn-474523-u3"
-DEFAULT_GCS_STAGING = "gs://autoreviewer-data/inference_scaling"
+DEFAULT_GCS_STAGING = "gs://jl0796-autoreviewer-staging/inference_scaling"
 
 MODALITIES = ["clean", "clean_images", "vision"]
 VARIANTS = ["original", "new", "new_fewshot"]
@@ -170,8 +167,8 @@ def create_batch_request(
     variant: str,
     gcs_base: str,
     temperature: float = 0.7,
-    max_tokens: int = 16384,
-    thinking_budget: int = 0,
+    max_tokens: int = 250,
+    thinking_budget: int = 2000,
     n_generations: int = 1,
 ) -> dict:
     """Create a batch request for a single entry.
@@ -231,8 +228,8 @@ def create_batch_jsonl(
     variant: str,
     gcs_base: str,
     temperature: float = 0.7,
-    max_tokens: int = 16384,
-    thinking_budget: int = 0,
+    max_tokens: int = 250,
+    thinking_budget: int = 2000,
     n_generations: int = 1,
 ) -> tuple[str, list[dict]]:
     """Create JSONL file for batch processing.
@@ -282,7 +279,7 @@ def get_client(project: str, location: str) -> genai.Client:
     )
 
 
-def upload_to_gcs(local_path: str, gcs_uri: str) -> str:
+def upload_to_gcs(local_path: str, gcs_uri: str, project: str) -> str:
     """Upload local file to GCS."""
     from google.cloud import storage
 
@@ -290,7 +287,7 @@ def upload_to_gcs(local_path: str, gcs_uri: str) -> str:
     bucket_name = parts[0]
     blob_name = parts[1] if len(parts) > 1 else ""
 
-    client = storage.Client()
+    client = storage.Client(project=project)
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
     blob.upload_from_filename(local_path)
@@ -299,7 +296,7 @@ def upload_to_gcs(local_path: str, gcs_uri: str) -> str:
     return gcs_uri
 
 
-def download_from_gcs(gcs_uri: str, local_path: str) -> str:
+def download_from_gcs(gcs_uri: str, local_path: str, project: str) -> str:
     """Download file from GCS."""
     from google.cloud import storage
 
@@ -307,7 +304,7 @@ def download_from_gcs(gcs_uri: str, local_path: str) -> str:
     bucket_name = parts[0]
     blob_name = parts[1] if len(parts) > 1 else ""
 
-    client = storage.Client()
+    client = storage.Client(project=project)
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
     blob.download_to_filename(local_path)
@@ -315,7 +312,7 @@ def download_from_gcs(gcs_uri: str, local_path: str) -> str:
     return local_path
 
 
-def list_gcs_files(gcs_prefix: str) -> list[str]:
+def list_gcs_files(gcs_prefix: str, project: str) -> list[str]:
     """List files in GCS with prefix."""
     from google.cloud import storage
 
@@ -323,7 +320,7 @@ def list_gcs_files(gcs_prefix: str) -> list[str]:
     bucket_name = parts[0]
     prefix = parts[1] if len(parts) > 1 else ""
 
-    client = storage.Client()
+    client = storage.Client(project=project)
     bucket = client.bucket(bucket_name)
     blobs = bucket.list_blobs(prefix=prefix)
 
@@ -405,13 +402,14 @@ def process_batch_results(
     output_uri: str,
     metadata_list: list[dict],
     output_path: str,
+    project: str,
     n_generations: int = 1,
 ) -> int:
     """Process batch results and save in vllm_infer format."""
     print(f"\nProcessing batch results from: {output_uri}")
 
     # List result files
-    result_files = list_gcs_files(output_uri)
+    result_files = list_gcs_files(output_uri, project)
     result_files = [f for f in result_files if f.endswith(".jsonl")]
 
     if not result_files:
@@ -425,7 +423,7 @@ def process_batch_results(
     with tempfile.TemporaryDirectory() as tmpdir:
         for gcs_file in result_files:
             local_file = os.path.join(tmpdir, os.path.basename(gcs_file))
-            download_from_gcs(gcs_file, local_file)
+            download_from_gcs(gcs_file, local_file, project)
 
             with open(local_file) as f:
                 for line in f:
@@ -515,7 +513,7 @@ def cmd_submit(args):
                 # Upload to GCS
                 input_uri = f"{args.gcs_staging}/{modality}_{variant}_{timestamp}_input.jsonl"
                 output_uri = f"{args.gcs_staging}/{modality}_{variant}_{timestamp}_output/"
-                upload_to_gcs(local_jsonl, input_uri)
+                upload_to_gcs(local_jsonl, input_uri, args.project)
 
                 # Submit job
                 display_name = f"inf_{modality}_{variant}_{timestamp}"
@@ -649,6 +647,7 @@ def cmd_retrieve(args):
                 job_info["output_uri"],
                 metadata_list,
                 str(output_path),
+                project=args.project,
                 n_generations=n_generations,
             )
 
@@ -680,8 +679,8 @@ def main():
     submit_parser.add_argument("--gcs_staging", type=str, default=DEFAULT_GCS_STAGING)
     submit_parser.add_argument("--model", type=str, default=DEFAULT_MODEL)
     submit_parser.add_argument("--temperature", type=float, default=0.7)
-    submit_parser.add_argument("--max_tokens", type=int, default=16384)
-    submit_parser.add_argument("--thinking_budget", type=int, default=0)
+    submit_parser.add_argument("--max_tokens", type=int, default=250)
+    submit_parser.add_argument("--thinking_budget", type=int, default=2000)
     submit_parser.add_argument("--limit", type=int, help="Limit samples per dataset")
 
     # Status command
