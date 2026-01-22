@@ -14,6 +14,7 @@
 
 import gc
 import json
+from typing import Optional
 
 import av
 import fire
@@ -67,7 +68,7 @@ def vllm_infer(
     video_fps: float = 2.0,
     video_maxlen: int = 128,
     batch_size: int = 32,
-    image_mismatch_mode: str = "skip",
+    image_mismatch_mode: str = "crop",
 ):
     r"""Perform batch generation using vLLM engine, which supports tensor parallelism.
 
@@ -159,8 +160,8 @@ def vllm_infer(
         batch = train_dataset[i : min(i + batch_size, len(train_dataset))]
 
         for j in range(len(batch["input_ids"])):
-            total_samples += 1
             skip_this_sample = False
+            video_metadata_kwargs = None
 
             if batch["images"][j] is not None:
                 image = batch["images"][j]
@@ -170,12 +171,19 @@ def vllm_infer(
                 num_placeholders = input_text.count("<image>") + input_text.count("<|image_pad|>")
 
                 if num_images != num_placeholders and num_placeholders > 0:
-                    print(f"DEBUG: Sample {i+j}: {num_images} images vs {num_placeholders} placeholders - truncating images")
-                    if isinstance(image, list):
-                        image = image[:num_placeholders]
-                    # If single image but no placeholder, skip this sample's images
-                    elif num_placeholders == 0:
-                        image = []
+                    if image_mismatch_mode == "skip":
+                        print(f"DEBUG: Sample {i+j}: {num_images} images vs {num_placeholders} placeholders - skipping sample")
+                        skip_this_sample = True
+                    else:  # crop mode
+                        print(f"DEBUG: Sample {i+j}: {num_images} images vs {num_placeholders} placeholders - cropping images")
+                        if isinstance(image, list):
+                            image = image[:num_placeholders]
+                        # If single image but no placeholder, skip this sample's images
+                        elif num_placeholders == 0:
+                            image = []
+
+                if skip_this_sample:
+                    continue
 
                 if not image:
                     multi_modal_data = None
@@ -227,7 +235,7 @@ def vllm_infer(
                 multi_modal_data = None
 
             vllm_input_data = {"prompt_token_ids": batch["input_ids"][j], "multi_modal_data": multi_modal_data}
-            if "video_metadata_kwargs" in locals() and video_metadata_kwargs is not None:
+            if video_metadata_kwargs is not None:
                 vllm_input_data["mm_processor_kwargs"] = video_metadata_kwargs
 
             vllm_inputs.append(vllm_input_data)
@@ -254,11 +262,6 @@ def vllm_infer(
             f.write(json.dumps({"prompt": text, "predict": pred, "label": label}, ensure_ascii=False) + "\n")
 
     print("*" * 70, flush=True)
-    print(f"Total samples processed: {total_samples}", flush=True)
-    if skipped_samples > 0:
-        print(f"Samples skipped (image/tag mismatch): {skipped_samples}", flush=True)
-    if cropped_samples > 0:
-        print(f"Samples with cropped images: {cropped_samples}", flush=True)
     print(f"{len(all_prompts)} total generated results have been saved at {save_name}.", flush=True)
     print("*" * 70, flush=True)
 
