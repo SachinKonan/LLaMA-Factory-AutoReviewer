@@ -21,11 +21,19 @@ from typing import Dict, List, Optional, Tuple
 
 
 def parse_boxed_decision(text: str) -> Optional[str]:
-    """Extract decision from \\boxed{Accept} or \\boxed{Reject} format."""
+    """Extract decision from \\boxed{Accept} or \\boxed{Reject} format, or plain text."""
     # Match \boxed{Accept} or \boxed{Reject}
     match = re.search(r'\\boxed\{(Accept|Reject)\}', text, re.IGNORECASE)
     if match:
         return match.group(1).capitalize()
+
+    # Also try plain "Accept" or "Reject" (e.g., from Gemini)
+    text_stripped = text.strip().lower()
+    if text_stripped == "accept":
+        return "Accept"
+    elif text_stripped == "reject":
+        return "Reject"
+
     return None
 
 

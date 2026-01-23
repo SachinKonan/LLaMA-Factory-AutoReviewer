@@ -106,25 +106,41 @@ submit_metareview() {
 # ============================================================================
 # Step 4: Extract Results
 # ============================================================================
-extract_results() {
-    echo "=============================================="
-    echo "Step 4: Extracting results"
-    echo "=============================================="
+extract_results_for_dir() {
+    # Process a single results directory (either main or gemini)
+    local RESULTS_DIR="$1"
+    local DIR_NAME="$2"
 
-    source .venv_vllm_inf/bin/activate
-
-    RESULTS_DIR="inference_scaling/results"
+    echo "Processing results in ${DIR_NAME}..."
 
     for modality in clean clean_images vision; do
         for variant in original new new_fewshot; do
             pred_file="${RESULTS_DIR}/${modality}/${variant}/predictions.jsonl"
 
             if [ ! -f "${pred_file}" ]; then
-                echo "Skipping ${modality}/${variant}: predictions not found"
+                echo "  Skipping ${modality}/${variant}: predictions not found"
                 continue
             fi
 
-            echo "Processing ${modality}/${variant}..."
+            # Check if predictions are non-empty
+            non_empty=$(python3 -c "
+import json
+count = 0
+with open('${pred_file}') as f:
+    for line in f:
+        if line.strip():
+            data = json.loads(line.strip())
+            if data.get('predict', ''):
+                count += 1
+                break
+print(count)
+")
+            if [ "${non_empty}" == "0" ]; then
+                echo "  Skipping ${modality}/${variant}: all predictions are empty"
+                continue
+            fi
+
+            echo "  Processing ${modality}/${variant}..."
 
             # Single strategy (variants 1-3)
             python inference_scaling/scripts/extract_results.py \
@@ -157,6 +173,22 @@ extract_results() {
             fi
         done
     done
+}
+
+extract_results() {
+    echo "=============================================="
+    echo "Step 4: Extracting results"
+    echo "=============================================="
+
+    source .venv_vllm_inf/bin/activate
+
+    # Process main results (Qwen)
+    extract_results_for_dir "inference_scaling/results" "Qwen results"
+
+    # Process Gemini results if they exist
+    if [ -d "inference_scaling/results/gemini" ]; then
+        extract_results_for_dir "inference_scaling/results/gemini" "Gemini results"
+    fi
 
     echo "Result extraction complete!"
 }

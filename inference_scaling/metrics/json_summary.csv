@@ -1,7 +1,13 @@
-Configuration,JSON Validity Rate,Avg Fields Present,Decision Present,Decision Valid,Total Predictions
-vision/new_fewshot,63.90%,7.7/12,63.76%,99.95%,10140
-vision/new,99.11%,11.9/12,99.11%,100.00%,2028
-clean_images/new_fewshot,71.11%,8.5/12,71.09%,99.96%,9740
-clean_images/new,90.30%,10.8/12,90.30%,100.00%,1948
-clean/new_fewshot,32.00%,3.8/12,32.00%,100.00%,50
-clean/new,100.00%,12.0/12,100.00%,100.00%,10
+Configuration,Format,Validity Rate,Total Predictions,Avg Fields Present,Decision Present,Decision Valid
+vision/new_fewshot,json,63.90%,10140,7.7/12,63.76%,99.95%
+vision/new,json,99.11%,2028,11.9/12,99.11%,100.00%
+vision/original,boxed,97.44%,2028,,,
+clean_images/new_fewshot,json,71.11%,9740,8.5/12,71.09%,99.96%
+clean_images/new,json,90.30%,1948,10.8/12,90.30%,100.00%
+clean_images/original,boxed,93.12%,1948,,,
+clean/new_fewshot,json,32.00%,50,3.8/12,32.00%,100.00%
+clean/new,json,85.42%,2010,10.2/12,84.93%,100.00%
+clean/original,boxed,93.58%,2010,,,
+gemini/clean/new_fewshot,json,0.00%,2010,0.0/12,0.00%,0.00%
+gemini/clean/new,json,0.00%,2010,0.0/12,0.00%,0.00%
+gemini/clean/original,boxed,76.32%,2010,,,

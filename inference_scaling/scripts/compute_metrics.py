@@ -68,6 +68,13 @@ def parse_boxed_from_text(text: str) -> Tuple[Optional[str], str]:
     if match:
         return match.group(1).capitalize(), ""
 
+    # Also try plain "Accept" or "Reject" (e.g., from Gemini)
+    text_stripped = text.strip().lower()
+    if text_stripped == "accept":
+        return "Accept", ""
+    elif text_stripped == "reject":
+        return "Reject", ""
+
     return None, "no_boxed_found"
 
 
@@ -650,25 +657,25 @@ def create_summary_table(all_metrics: Dict[str, Dict], output_path: str):
     return df
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Compute metrics and generate plots")
-    parser.add_argument("--results_dir", type=str, default="./inference_scaling/results",
-                        help="Directory containing results")
-    parser.add_argument("--output_dir", type=str, default="./inference_scaling/metrics",
-                        help="Output directory for metrics and plots")
-    parser.add_argument("--base_data_dir", type=str,
-                        default="/n/fs/vision-mix/sk7524/LLaMA-Factory/data",
-                        help="Base directory containing original datasets (for metadata)")
+def process_results_directory(
+    results_dir: Path,
+    base_data_dir: str,
+    all_metrics: Dict,
+    all_json_metrics: Dict,
+    prefix: str = ""
+):
+    """
+    Process a single results directory and populate metrics dictionaries.
 
-    args = parser.parse_args()
-
-    os.makedirs(args.output_dir, exist_ok=True)
-
-    all_metrics = {}
-    all_json_metrics = {}
-
-    # Find all result files
-    results_dir = Path(args.results_dir)
+    Args:
+        results_dir: Path to results directory
+        base_data_dir: Base directory containing original datasets
+        all_metrics: Dictionary to store computed metrics
+        all_json_metrics: Dictionary to store JSON/format validity metrics
+        prefix: Prefix to add to config names (e.g., "gemini/" for Gemini results)
+    """
+    if not results_dir.exists():
+        return
 
     # Expected structure: results/{modality}/{prompt_variant}/results_{strategy}.jsonl
     for modality_dir in results_dir.iterdir():
@@ -676,6 +683,10 @@ def main():
             continue
 
         modality = modality_dir.name
+
+        # Skip non-modality directories (like 'gemini' subfolder when processing main dir)
+        if modality not in ["clean", "clean_images", "vision"]:
+            continue
 
         for variant_dir in modality_dir.iterdir():
             if not variant_dir.is_dir():
@@ -686,7 +697,24 @@ def main():
             # Compute format validity metrics from predictions.jsonl
             predictions_file = variant_dir / "predictions.jsonl"
             if predictions_file.exists():
-                config_name = f"{modality}/{variant}"
+                # Check if predictions are non-empty
+                has_content = False
+                with open(predictions_file, "r") as f:
+                    for line in f:
+                        if line.strip():
+                            try:
+                                data = json.loads(line.strip())
+                                if data.get("predict"):
+                                    has_content = True
+                                    break
+                            except json.JSONDecodeError:
+                                pass
+
+                if not has_content:
+                    print(f"Skipping {prefix}{modality}/{variant}: predictions are empty")
+                    continue
+
+                config_name = f"{prefix}{modality}/{variant}"
                 if variant in ["new", "new_fewshot"]:
                     # JSON format for new prompts
                     json_metrics = compute_json_metrics(str(predictions_file))
@@ -715,13 +743,13 @@ def main():
             # Find result files
             for result_file in variant_dir.glob("results_*.jsonl"):
                 strategy = result_file.stem.replace("results_", "")
-                config_name = f"{modality}/{variant}/{strategy}"
+                config_name = f"{prefix}{modality}/{variant}/{strategy}"
 
                 results = load_results(str(result_file))
 
                 # Try to load metadata from original dataset
                 base_dataset = f"iclr_2020_2025_85_5_10_split6_balanced_{modality}_binary_noreviews_v6_test"
-                metadata_path = os.path.join(args.base_data_dir, base_dataset)
+                metadata_path = os.path.join(base_data_dir, base_dataset)
                 metadata = load_metadata(metadata_path)
 
                 if len(metadata) != len(results):
@@ -729,8 +757,49 @@ def main():
                     metadata = None
 
                 metrics = compute_metrics(results, metadata)
+                if "error" in metrics:
+                    print(f"Skipping {config_name}: {metrics['error']}")
+                    continue
                 all_metrics[config_name] = metrics
                 print_metrics(metrics, config_name)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Compute metrics and generate plots")
+    parser.add_argument("--results_dir", type=str, default="./inference_scaling/results",
+                        help="Directory containing results")
+    parser.add_argument("--output_dir", type=str, default="./inference_scaling/metrics",
+                        help="Output directory for metrics and plots")
+    parser.add_argument("--base_data_dir", type=str,
+                        default="/n/fs/vision-mix/sk7524/LLaMA-Factory/data",
+                        help="Base directory containing original datasets (for metadata)")
+
+    args = parser.parse_args()
+
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    all_metrics = {}
+    all_json_metrics = {}
+
+    results_dir = Path(args.results_dir)
+
+    # Process main results (Qwen)
+    print("\n" + "=" * 70)
+    print("Processing Qwen results")
+    print("=" * 70)
+    process_results_directory(
+        results_dir, args.base_data_dir, all_metrics, all_json_metrics, prefix=""
+    )
+
+    # Process Gemini results if they exist
+    gemini_dir = results_dir / "gemini"
+    if gemini_dir.exists():
+        print("\n" + "=" * 70)
+        print("Processing Gemini results")
+        print("=" * 70)
+        process_results_directory(
+            gemini_dir, args.base_data_dir, all_metrics, all_json_metrics, prefix="gemini/"
+        )
 
     if all_metrics:
         # Generate plots

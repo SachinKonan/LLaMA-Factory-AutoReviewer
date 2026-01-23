@@ -19,7 +19,10 @@ clean/new_fewshot/majority,0.6667,0.6667,0.0000,1.0000,0.0000,6,,
 clean/new_fewshot/metareview,0.7500,0.7500,0.0000,1.0000,0.0000,4,,
 clean/new_fewshot/calibrated,1.0000,1.0000,0.0000,1.0000,0.0000,4,,
 clean/new_fewshot/single,0.2500,0.2500,0.0000,1.0000,0.0000,4,,
-clean/new/calibrated,0.7000,1.0000,0.0000,0.7000,0.0000,10,,
-clean/new/single,0.7000,0.8571,0.3333,0.7500,0.5000,10,,
-clean/original/calibrated,0.7000,1.0000,0.0000,0.7000,0.0000,10,,
-clean/original/single,0.7000,1.0000,0.0000,0.7000,0.0000,10,,
+clean/new/calibrated,0.4815,1.0000,0.0000,0.4815,0.0000,1707,0.4900,0.4638
+clean/new/single,0.5050,0.8175,0.2147,0.4916,0.5588,1707,0.5108,0.4928
+clean/original/calibrated,0.4902,0.9978,0.0052,0.4893,0.7143,1881,0.4976,0.4755
+clean/original/single,0.4902,0.9978,0.0052,0.4893,0.7143,1881,0.4976,0.4755
+gemini/clean/new_fewshot/metareview,0.5042,0.5221,0.4856,0.5136,0.4942,710,0.5112,0.4924
+gemini/clean/original/calibrated,0.4993,0.2258,0.7787,0.5102,0.4962,1534,0.4964,0.5046
+gemini/clean/original/single,0.4993,0.2258,0.7787,0.5102,0.4962,1534,0.4964,0.5046
