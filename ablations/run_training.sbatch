@@ -1,58 +1,187 @@
 #!/bin/bash
 #SBATCH --job-name=ablation_train
-#SBATCH --output=ablations/logs/training/%j.out
-#SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-node=8
-#SBATCH --cpus-per-task=10
-#SBATCH --time=7:00:00
+#SBATCH --time=24:00:00
+#SBATCH --mem=256G
+#SBATCH --gres=gpu:8
+#SBATCH --array=0-6
+#SBATCH --output=ablations/logs/training/train_%A_%a.out
+#SBATCH --error=ablations/logs/training/train_%A_%a.err
 #SBATCH --comment="Ablation Training"
 
-#SBATCH --array=0-6
+# ============================================================================
+# Ablation Training Job Array
+# ============================================================================
+# Full fine-tuning of Qwen2.5-3B-Instruct using DeepSpeed ZeRO-3
+# Each array job trains on a different ablation dataset.
+#
+# Job Array Configuration (0-6 = 7 jobs):
+#   - Counterfactual reject (clean)
+#   - Only discussion
+#   - Only experimental results
+#   - Only introduction
+#   - Only methodology
+#   - Only related work
+#   - Counterfactual reject (vision)
+#
+# Model Selection:
+#   - clean: Qwen2.5-3B-Instruct
+#   - vision: Qwen2.5-VL-3B-Instruct
+# ============================================================================
 
-source /n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/.venv/bin/activate
+set -e  # Exit on error
 
-# Create logs dir
-mkdir -p ablations/logs
+cd /n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer
+source .venv/bin/activate
 
-# Array of datasets
+# Create logs directory
+mkdir -p ablations/logs/training
+
+# Array of training datasets
 DATASETS=(
-"iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_counterfactual_reject_v6_train"
-# "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_no_discussion_v6_train"
-# "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_no_experimental_results_v6_train"
-# "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_no_introduction_v6_train"
-# "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_no_intro_discussion_v6_train"
-# "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_no_methodology_v6_train"
-# "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_no_related_work_v6_train"
-"iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_discussion_v6_train"
-"iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_experimental_results_v6_train"
-"iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_introduction_v6_train"
-# "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_intro_discussion_v6_train"
-"iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_methodology_v6_train"
-"iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_related_work_v6_train"
-"iclr_2020_2025_85_5_10_split6_original_vision_binary_noreviews_counterfactual_reject_v6_train"
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_counterfactual_reject_v6_train"
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_discussion_v6_train"
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_experimental_results_v6_train"
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_introduction_v6_train"
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_methodology_v6_train"
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_related_work_v6_train"
+    "iclr_2020_2025_85_5_10_split6_original_vision_binary_noreviews_counterfactual_reject_v6_train"
 )
 
-DATASET=${DATASETS[$SLURM_ARRAY_TASK_ID]}
-OUTPUT_DIR="ablations/checkpoints/${DATASET}"
+# Corresponding validation datasets
+EVAL_DATASETS=(
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_counterfactual_reject_v6_validation"
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_discussion_v6_validation"
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_experimental_results_v6_validation"
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_introduction_v6_validation"
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_methodology_v6_validation"
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_related_work_v6_validation"
+    "iclr_2020_2025_85_5_10_split6_original_vision_binary_noreviews_counterfactual_reject_v6_validation"
+)
 
-# Select model and config based on dataset modality
+# Select dataset based on array task ID
+DATASET="${DATASETS[$SLURM_ARRAY_TASK_ID]}"
+EVAL_DATASET="${EVAL_DATASETS[$SLURM_ARRAY_TASK_ID]}"
+
+# Extract a short name for the output directory
+SHORT_NAME=$(echo "$DATASET" | sed 's/iclr_2020_2025_85_5_10_split6_original_//' | sed 's/_v6_train//')
+OUTPUT_DIR="ablations/saves/${SHORT_NAME}"
+
+# Select model and template based on dataset modality
 if [[ "$DATASET" == *"vision"* ]]; then
     MODEL_PATH="Qwen/Qwen2.5-VL-3B-Instruct"
-    CONFIG_FILE="ablations/configs/qwen2_5_vl_3b_ablation.yaml"
+    TEMPLATE="qwen2_vl"
 else
     MODEL_PATH="Qwen/Qwen2.5-3B-Instruct"
-    CONFIG_FILE="ablations/configs/qwen2_5_3b_ablation.yaml"
+    TEMPLATE="qwen"
 fi
 
-echo "Starting training on $DATASET"
-echo "Model: $MODEL_PATH"
-echo "Config: $CONFIG_FILE"
-echo "Output directory: $OUTPUT_DIR"
+echo "=============================================="
+echo "Job ID: $SLURM_JOB_ID, Task: $SLURM_ARRAY_TASK_ID"
+echo "Running on host: $(hostname)"
+echo "GPUs: $CUDA_VISIBLE_DEVICES"
+echo "Number of GPUs: $(nvidia-smi -L | wc -l)"
+echo "=============================================="
+echo "Dataset: ${DATASET}"
+echo "Eval Dataset: ${EVAL_DATASET}"
+echo "Model: ${MODEL_PATH}"
+echo "Template: ${TEMPLATE}"
+echo "Output: ${OUTPUT_DIR}"
+echo "=============================================="
 
-llamafactory-cli train $CONFIG_FILE \
-    --model_name_or_path $MODEL_PATH \
-    --dataset $DATASET \
-    --output_dir $OUTPUT_DIR
+# Set memory allocator for better memory management
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-echo "Done"
+# Create output directory
+mkdir -p "${OUTPUT_DIR}"
+
+echo ""
+echo "Starting full fine-tuning with DeepSpeed ZeRO-3..."
+
+# Run DeepSpeed ZeRO-3 training with torchrun
+torchrun --nproc_per_node=8 \
+    src/train.py \
+    --model_name_or_path "${MODEL_PATH}" \
+    --trust_remote_code true \
+    --flash_attn fa2 \
+    --enable_liger_kernel true \
+    --stage sft \
+    --do_train true \
+    --finetuning_type full \
+    --deepspeed examples/deepspeed/ds_z3_config.json \
+    --dataset "${DATASET}" \
+    --template "${TEMPLATE}" \
+    --cutoff_len 16384 \
+    --max_samples 20000 \
+    --overwrite_cache true \
+    --preprocessing_num_workers 16 \
+    --dataloader_num_workers 4 \
+    --output_dir "${OUTPUT_DIR}" \
+    --logging_steps 10 \
+    --save_steps 500 \
+    --plot_loss true \
+    --overwrite_output_dir true \
+    --save_only_model false \
+    --report_to none \
+    --per_device_train_batch_size 1 \
+    --gradient_accumulation_steps 2 \
+    --learning_rate 1.0e-4 \
+    --num_train_epochs 3.0 \
+    --lr_scheduler_type cosine \
+    --warmup_ratio 0.1 \
+    --bf16 true \
+    --ddp_timeout 180000000 \
+    --gradient_checkpointing true \
+    --do_eval true \
+    --eval_dataset "${EVAL_DATASET}" \
+    --eval_strategy steps \
+    --eval_steps 500 \
+    --per_device_eval_batch_size 1
+
+echo ""
+echo "=============================================="
+echo "Training complete for ${SHORT_NAME}"
+echo "Model saved to: ${OUTPUT_DIR}"
+echo "=============================================="
+
+
+
+
+# # Run DeepSpeed ZeRO-3 training with torchrun
+# torchrun --nproc_per_node=8 \
+#     src/train.py \
+#     --model_name_or_path "Qwen/Qwen2.5-3B-Instruct" \
+#     --trust_remote_code true \
+#     --flash_attn fa2 \
+#     --enable_liger_kernel true \
+#     --stage sft \
+#     --do_train true \
+#     --finetuning_type full \
+#     --deepspeed examples/deepspeed/ds_z3_config.json \
+#     --dataset "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_discussion_v6_train" \
+#     --template "qwen" \
+#     --cutoff_len 16384 \
+#     --max_samples 40000 \
+#     --overwrite_cache true \
+#     --preprocessing_num_workers 16 \
+#     --dataloader_num_workers 4 \
+#     --output_dir "ablations/saves/testing" \
+#     --logging_steps 10 \
+#     --save_steps 500 \
+#     --plot_loss true \
+#     --overwrite_output_dir true \
+#     --save_only_model false \
+#     --report_to none \
+#     --per_device_train_batch_size 1 \
+#     --gradient_accumulation_steps 2 \
+#     --learning_rate 1.0e-4 \
+#     --num_train_epochs 3.0 \
+#     --lr_scheduler_type cosine \
+#     --warmup_ratio 0.1 \
+#     --bf16 true \
+#     --ddp_timeout 180000000 \
+#     --gradient_checkpointing true \
+#     --do_eval true \
+#     --eval_dataset "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_discussion_v6_test" \
+#     --eval_strategy steps \
+#     --eval_steps 500 \
+#     --per_device_eval_batch_size 1

@@ -4,7 +4,7 @@
 #SBATCH --cpus-per-task=10
 #SBATCH --mem=64G
 #SBATCH --gres=gpu:1
-#SBATCH --array=0-25
+#SBATCH --array=0-35
 #SBATCH --output=ablations/logs/inference_%A_%a.out
 #SBATCH --error=ablations/logs/inference_%A_%a.err
 #SBATCH --comment="Ablation Inference"
@@ -14,13 +14,15 @@
 # ============================================================================
 # This script runs inference for ablation study datasets.
 #
-# Job Array Configuration (0-25 = 26 jobs):
+# Job Array Configuration (0-35 = 36 jobs):
 #   - Counterfactual reject datasets (clean, vision)
 #   - Section filtering datasets (only_X, no_X for various sections)
 #   - Critical analysis dataset (clean, 100 samples)
 #   - Core technical (related_work + methodology + experimental_results)
 #   - Method + Related work (methodology + related_work only)
 #   - Fewshot variants with different accept/reject mixtures
+#   - Methodology v2 fewshot (2acc/0rej, 1acc/1rej, 0acc/2rej, 0acc/3rej, 0acc/4rej)
+#   - Related work v2 fewshot (2acc/0rej, 1acc/1rej, 0acc/2rej, 0acc/3rej, 0acc/4rej)
 #
 # Model Selection:
 #   - clean: Qwen2.5-3B-Instruct
@@ -75,6 +77,18 @@ DATASETS=(
     "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_method_related_fewshot_2acc_0rej_v6_test"
     "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_method_related_fewshot_1acc_1rej_v6_test"
     "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_method_related_fewshot_0acc_2rej_v6_test"
+    # Fewshot variants (methodology v2)
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_methodology_v2_fewshot_2acc_0rej_v6_test"
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_methodology_v2_fewshot_1acc_1rej_v6_test"
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_methodology_v2_fewshot_0acc_2rej_v6_test"
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_methodology_v2_fewshot_0acc_3rej_v6_test"
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_methodology_v2_fewshot_0acc_4rej_v6_test"
+    # Fewshot variants (related work v2)
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_related_work_v2_fewshot_2acc_0rej_v6_test"
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_related_work_v2_fewshot_1acc_1rej_v6_test"
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_related_work_v2_fewshot_0acc_2rej_v6_test"
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_related_work_v2_fewshot_0acc_3rej_v6_test"
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_related_work_v2_fewshot_0acc_4rej_v6_test"
 )
 
 DATASET="${DATASETS[$SLURM_ARRAY_TASK_ID]}"
