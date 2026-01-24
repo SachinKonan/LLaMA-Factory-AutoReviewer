@@ -91,97 +91,29 @@ echo "=============================================="
 # Set memory allocator for better memory management
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-# Create output directory
+# Create output directory and config directory
 mkdir -p "${OUTPUT_DIR}"
+mkdir -p "ablations/configs/generated"
 
+# Generate job-specific YAML config from template
+CONFIG_FILE="ablations/configs/generated/${SHORT_NAME}.yaml"
+sed -e "s|PLACEHOLDER_DATASET|${DATASET}|g" \
+    -e "s|PLACEHOLDER_EVAL_DATASET|${EVAL_DATASET}|g" \
+    -e "s|PLACEHOLDER_OUTPUT_DIR|${OUTPUT_DIR}|g" \
+    -e "s|model_name_or_path: Qwen/Qwen2.5-3B-Instruct|model_name_or_path: ${MODEL_PATH}|g" \
+    -e "s|template: qwen|template: ${TEMPLATE}|g" \
+    ablations/configs/ablation_base.yaml > "${CONFIG_FILE}"
+
+echo "Generated config: ${CONFIG_FILE}"
 echo ""
 echo "Starting full fine-tuning with DeepSpeed ZeRO-3..."
 
 # Run DeepSpeed ZeRO-3 training with torchrun
 torchrun --nproc_per_node=8 \
-    src/train.py \
-    --model_name_or_path "${MODEL_PATH}" \
-    --trust_remote_code true \
-    --flash_attn fa2 \
-    --enable_liger_kernel true \
-    --stage sft \
-    --do_train true \
-    --finetuning_type full \
-    --deepspeed examples/deepspeed/ds_z3_config.json \
-    --dataset "${DATASET}" \
-    --template "${TEMPLATE}" \
-    --cutoff_len 16384 \
-    --max_samples 20000 \
-    --overwrite_cache true \
-    --preprocessing_num_workers 16 \
-    --dataloader_num_workers 4 \
-    --output_dir "${OUTPUT_DIR}" \
-    --logging_steps 10 \
-    --save_steps 500 \
-    --plot_loss true \
-    --overwrite_output_dir true \
-    --save_only_model false \
-    --report_to none \
-    --per_device_train_batch_size 1 \
-    --gradient_accumulation_steps 2 \
-    --learning_rate 1.0e-4 \
-    --num_train_epochs 3.0 \
-    --lr_scheduler_type cosine \
-    --warmup_ratio 0.1 \
-    --bf16 true \
-    --ddp_timeout 180000000 \
-    --gradient_checkpointing true \
-    --do_eval true \
-    --eval_dataset "${EVAL_DATASET}" \
-    --eval_strategy steps \
-    --eval_steps 500 \
-    --per_device_eval_batch_size 1
+    src/train.py "${CONFIG_FILE}"
 
 echo ""
 echo "=============================================="
 echo "Training complete for ${SHORT_NAME}"
 echo "Model saved to: ${OUTPUT_DIR}"
 echo "=============================================="
-
-
-
-
-# # Run DeepSpeed ZeRO-3 training with torchrun
-# torchrun --nproc_per_node=8 \
-#     src/train.py \
-#     --model_name_or_path "Qwen/Qwen2.5-3B-Instruct" \
-#     --trust_remote_code true \
-#     --flash_attn fa2 \
-#     --enable_liger_kernel true \
-#     --stage sft \
-#     --do_train true \
-#     --finetuning_type full \
-#     --deepspeed examples/deepspeed/ds_z3_config.json \
-#     --dataset "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_discussion_v6_train" \
-#     --template "qwen" \
-#     --cutoff_len 16384 \
-#     --max_samples 40000 \
-#     --overwrite_cache true \
-#     --preprocessing_num_workers 16 \
-#     --dataloader_num_workers 4 \
-#     --output_dir "ablations/saves/testing" \
-#     --logging_steps 10 \
-#     --save_steps 500 \
-#     --plot_loss true \
-#     --overwrite_output_dir true \
-#     --save_only_model false \
-#     --report_to none \
-#     --per_device_train_batch_size 1 \
-#     --gradient_accumulation_steps 2 \
-#     --learning_rate 1.0e-4 \
-#     --num_train_epochs 3.0 \
-#     --lr_scheduler_type cosine \
-#     --warmup_ratio 0.1 \
-#     --bf16 true \
-#     --ddp_timeout 180000000 \
-#     --gradient_checkpointing true \
-#     --do_eval true \
-#     --eval_dataset "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_discussion_v6_test" \
-#     --eval_strategy steps \
-#     --eval_steps 500 \
-#     --per_device_eval_batch_size 1
