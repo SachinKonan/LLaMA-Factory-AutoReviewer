@@ -5,10 +5,10 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=8
 #SBATCH --cpus-per-task=10
-#SBATCH --time=24:00:00
+#SBATCH --time=7:00:00
 #SBATCH --comment="Ablation Training"
 
-#SBATCH --array=0-13
+#SBATCH --array=0-6
 
 source /n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/.venv/bin/activate
 

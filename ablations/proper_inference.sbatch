@@ -4,7 +4,7 @@
 #SBATCH --cpus-per-task=10
 #SBATCH --mem=64G
 #SBATCH --gres=gpu:1
-#SBATCH --array=0-20
+#SBATCH --array=0-25
 #SBATCH --output=ablations/logs/inference_%A_%a.out
 #SBATCH --error=ablations/logs/inference_%A_%a.err
 #SBATCH --comment="Ablation Inference"
@@ -14,11 +14,12 @@
 # ============================================================================
 # This script runs inference for ablation study datasets.
 #
-# Job Array Configuration (0-20 = 21 jobs):
+# Job Array Configuration (0-25 = 26 jobs):
 #   - Counterfactual reject datasets (clean, vision)
 #   - Section filtering datasets (only_X, no_X for various sections)
 #   - Critical analysis dataset (clean, 100 samples)
 #   - Core technical (related_work + methodology + experimental_results)
+#   - Method + Related work (methodology + related_work only)
 #   - Fewshot variants with different accept/reject mixtures
 #
 # Model Selection:
@@ -63,10 +64,17 @@ DATASETS=(
     # Core technical (related_work + methodology + experimental_results)
     "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_core_technical_v6_test"
     "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_no_core_technical_v6_test"
-    # Fewshot variants
+    # Fewshot variants (core technical)
     "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_core_technical_fewshot_2acc_2rej_v6_test"
     "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_core_technical_fewshot_3acc_1rej_v6_test"
     "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_core_technical_fewshot_1acc_3rej_v6_test"
+    # Method + Related work (methodology + related_work only)
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_method_related_v6_test"
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_no_method_related_v6_test"
+    # Fewshot variants (method + related work)
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_method_related_fewshot_2acc_0rej_v6_test"
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_method_related_fewshot_1acc_1rej_v6_test"
+    "iclr_2020_2025_85_5_10_split6_original_clean_binary_noreviews_only_method_related_fewshot_0acc_2rej_v6_test"
 )
 
 DATASET="${DATASETS[$SLURM_ARRAY_TASK_ID]}"
