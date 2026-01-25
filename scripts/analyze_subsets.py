@@ -301,6 +301,30 @@ def get_subset_analyses(result_name: str, data_dir: str = "data") -> list[tuple[
             lambda d: d["conference"] == "nips"
         ))
 
+    elif result_name.startswith("iclr22_"):
+        # 2022-2025 → 2022-2023 (training years only)
+        analyses.append((
+            "2022-2025 → 2022-2023",
+            lambda d: d["year"] is not None and d["year"] < 2024
+        ))
+        # 2022-2025 → 2024-2025 (recent years)
+        analyses.append((
+            "2022-2025 → 2024-2025",
+            lambda d: d["year"] is not None and d["year"] >= 2024
+        ))
+
+    elif result_name.startswith("iclr24_"):
+        # 2024-2025 → 2024 only
+        analyses.append((
+            "2024-2025 → 2024",
+            lambda d: d["year"] is not None and d["year"] == 2024
+        ))
+        # 2024-2025 → 2025 only (OOD)
+        analyses.append((
+            "2024-2025 → 2025",
+            lambda d: d["year"] is not None and d["year"] == 2025
+        ))
+
     return analyses
 
 

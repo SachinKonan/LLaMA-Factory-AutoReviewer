@@ -26,7 +26,7 @@ read DATASET SHORT_NAME <<< "${CONFIGS[$SLURM_ARRAY_TASK_ID]}"
 CONFIG_FILE="configs/data_sweep_v2_vision.yaml"
 TEMPLATE="qwen2_vl"
 IMAGE_MAX_PIXELS=1003520
-CUTOFF_LEN=43680
+CUTOFF_LEN=50680
 
 # 4 H100 GPUs, per_device=1, grad_accum=4 → batch = 1*4*4 = 16
 PER_DEVICE_BATCH=1
