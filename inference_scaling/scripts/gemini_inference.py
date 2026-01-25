@@ -9,20 +9,26 @@ source .venv_vllm_inf/bin/activate
 
 Usage:
     # Submit all inference jobs
+    # fix prompt to not have thinking trace in output
     python inference_scaling/scripts/gemini_inference.py submit \
         --data_dir inference_scaling/data \
-        --output_dir inference_scaling/results/gemini \
+        --output_dir inference_scaling/results/gemini_pro \
         --project hip-gecko-485003-c4 \
-        --gcs_staging gs://jl0796-autoreviewer-staging/inference_scaling
+        --gcs_staging gs://jl0796-autoreviewer-staging/inference_scaling \
+        --modality clean \
+        --variant new \
+        --model gemini-3-flash-preview \
+        --thinking_budget 1000 \
+        --max_tokens 1000 
 
     # Check status of all jobs
     python inference_scaling/scripts/gemini_inference.py status \
-        --output_dir inference_scaling/results/gemini \
+        --output_dir inference_scaling/results/gemini_pro \
         --project hip-gecko-485003-c4
 
     # Retrieve completed results
     python inference_scaling/scripts/gemini_inference.py retrieve \
-        --output_dir inference_scaling/results/gemini \
+        --output_dir inference_scaling/results/gemini_pro \
         --project hip-gecko-485003-c4
 """
 
@@ -537,11 +543,12 @@ def cmd_submit(args):
                 result_dir = output_dir / modality / variant
                 result_dir.mkdir(parents=True, exist_ok=True)
 
-                metadata_path = result_dir / "gemini_metadata.json"
+                # Use timestamped filenames to preserve history of multiple runs
+                metadata_path = result_dir / f"gemini_metadata_{timestamp}.json"
                 with open(metadata_path, "w") as f:
                     json.dump(metadata_list, f)
 
-                job_info_path = result_dir / "gemini_job_info.json"
+                job_info_path = result_dir / f"gemini_job_info_{timestamp}.json"
                 with open(job_info_path, "w") as f:
                     json.dump(job_info, f, indent=2)
 
@@ -566,39 +573,86 @@ def cmd_submit(args):
     print(f"{'='*70}")
 
 
+def find_job_info_files(output_dir: Path, modality: str, variant: str) -> list[Path]:
+    """Find all job info files for a modality/variant combination.
+
+    Supports both legacy (gemini_job_info.json) and timestamped
+    (gemini_job_info_{timestamp}.json) formats.
+
+    Returns:
+        List of job info file paths, sorted by modification time (newest first)
+    """
+    result_dir = output_dir / modality / variant
+    if not result_dir.exists():
+        return []
+
+    job_files = []
+
+    # Legacy format (single file)
+    legacy_path = result_dir / "gemini_job_info.json"
+    if legacy_path.exists():
+        job_files.append(legacy_path)
+
+    # Timestamped format (multiple files)
+    for f in result_dir.glob("gemini_job_info_*.json"):
+        if f not in job_files:
+            job_files.append(f)
+
+    # Sort by modification time, newest first
+    job_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return job_files
+
+
 def cmd_status(args):
     """Check status of all jobs."""
     output_dir = Path(args.output_dir)
     client = get_client(args.project, args.location)
 
+    # Determine which modalities/variants to check
+    modalities = [args.modality] if args.modality else MODALITIES
+    variants = [args.variant] if args.variant else VARIANTS
+
     print(f"\n{'='*70}")
     print("Job Status")
     print(f"{'='*70}\n")
 
-    for modality in MODALITIES:
-        for variant in VARIANTS:
-            job_info_path = output_dir / modality / variant / "gemini_job_info.json"
+    found_any = False
+    for modality in modalities:
+        for variant in variants:
+            job_files = find_job_info_files(output_dir, modality, variant)
 
-            if not job_info_path.exists():
+            if not job_files:
                 continue
 
-            with open(job_info_path) as f:
-                job_info = json.load(f)
+            for job_info_path in job_files:
+                with open(job_info_path) as f:
+                    job_info = json.load(f)
 
-            status = check_job_status(client, job_info["job_name"])
-            state = status["state"]
+                # Filter by timestamp if specified
+                timestamp = job_info.get("submitted_at", "unknown")
+                if args.timestamp and args.timestamp not in timestamp:
+                    continue
 
-            # Color coding
-            if "SUCCEEDED" in state:
-                marker = "[DONE]"
-            elif "FAILED" in state:
-                marker = "[FAIL]"
-            elif "RUNNING" in state:
-                marker = "[RUN]"
-            else:
-                marker = "[PEND]"
+                found_any = True
+                status = check_job_status(client, job_info["job_name"])
+                state = status["state"]
 
-            print(f"{marker} {modality}/{variant}: {state}")
+                # Color coding
+                if "SUCCEEDED" in state:
+                    marker = "[DONE]"
+                elif "FAILED" in state:
+                    marker = "[FAIL]"
+                elif "RUNNING" in state:
+                    marker = "[RUN]"
+                else:
+                    marker = "[PEND]"
+
+                # Include timestamp and model
+                model = job_info.get("model", "unknown")
+                print(f"{marker} {modality}/{variant} ({timestamp}) [{model}]: {state}")
+
+    if not found_any:
+        print("No jobs found matching the specified filters.")
 
 
 def cmd_retrieve(args):
@@ -613,52 +667,78 @@ def cmd_retrieve(args):
     for modality in modalities:
         for variant in variants:
             result_dir = output_dir / modality / variant
-            job_info_path = result_dir / "gemini_job_info.json"
-            metadata_path = result_dir / "gemini_metadata.json"
+            job_files = find_job_info_files(output_dir, modality, variant)
 
-            if not job_info_path.exists():
+            if not job_files:
                 print(f"Skipping {modality}/{variant}: no job info found")
                 continue
 
-            print(f"\n{'='*70}")
-            print(f"Retrieving: {modality}/{variant}")
-            print(f"{'='*70}")
+            for job_info_path in job_files:
+                # Determine corresponding metadata file
+                # For timestamped: gemini_job_info_{ts}.json -> gemini_metadata_{ts}.json
+                # For legacy: gemini_job_info.json -> gemini_metadata.json
+                job_filename = job_info_path.name
+                if job_filename == "gemini_job_info.json":
+                    metadata_path = result_dir / "gemini_metadata.json"
+                    output_path = result_dir / "predictions.jsonl"
+                else:
+                    # Extract timestamp from filename
+                    ts = job_filename.replace("gemini_job_info_", "").replace(".json", "")
+                    metadata_path = result_dir / f"gemini_metadata_{ts}.json"
+                    output_path = result_dir / f"predictions_{ts}.jsonl"
 
-            with open(job_info_path) as f:
-                job_info = json.load(f)
+                if not metadata_path.exists():
+                    print(f"Skipping {job_info_path.name}: metadata file not found")
+                    continue
 
-            # Check status
-            status = check_job_status(client, job_info["job_name"])
-            print(f"  Status: {status['state']}")
+                with open(job_info_path) as f:
+                    job_info = json.load(f)
 
-            if not status["completed"]:
-                print(f"  Job not completed yet, skipping")
-                continue
+                # Filter by timestamp if specified
+                submitted_at = job_info.get("submitted_at", "unknown")
+                if args.timestamp and args.timestamp not in submitted_at:
+                    continue
 
-            # Load metadata
-            with open(metadata_path) as f:
-                metadata_list = json.load(f)
+                # Skip already retrieved jobs
+                if job_info.get("status") == "retrieved":
+                    print(f"Skipping {modality}/{variant} ({submitted_at}): already retrieved")
+                    continue
 
-            # Process results
-            output_path = result_dir / "predictions.jsonl"
-            n_generations = job_info.get("n_generations", 1)
+                print(f"\n{'='*70}")
+                print(f"Retrieving: {modality}/{variant} ({job_info.get('submitted_at', 'unknown')})")
+                print(f"{'='*70}")
 
-            num_processed = process_batch_results(
-                job_info["output_uri"],
-                metadata_list,
-                str(output_path),
-                project=args.project,
-                n_generations=n_generations,
-            )
+                # Check status
+                status = check_job_status(client, job_info["job_name"])
+                print(f"  Status: {status['state']}")
 
-            # Update job info
-            job_info["status"] = "retrieved"
-            job_info["retrieved_at"] = datetime.now().strftime("%Y%m%d_%H%M%S")
-            job_info["num_results"] = num_processed
-            with open(job_info_path, "w") as f:
-                json.dump(job_info, f, indent=2)
+                if not status["completed"]:
+                    print(f"  Job not completed yet, skipping")
+                    continue
 
-            print(f"  Saved {num_processed} results")
+                # Load metadata
+                with open(metadata_path) as f:
+                    metadata_list = json.load(f)
+
+                # Process results
+                n_generations = job_info.get("n_generations", 1)
+
+                num_processed = process_batch_results(
+                    job_info["output_uri"],
+                    metadata_list,
+                    str(output_path),
+                    project=args.project,
+                    n_generations=n_generations,
+                )
+
+                # Update job info
+                job_info["status"] = "retrieved"
+                job_info["retrieved_at"] = datetime.now().strftime("%Y%m%d_%H%M%S")
+                job_info["num_results"] = num_processed
+                with open(job_info_path, "w") as f:
+                    json.dump(job_info, f, indent=2)
+
+                print(f"  Saved {num_processed} results to: {output_path}")
 
 
 def main():
@@ -678,9 +758,9 @@ def main():
     submit_parser.add_argument("--gcs_base", type=str, default=DEFAULT_GCS_IMAGES_BASE)
     submit_parser.add_argument("--gcs_staging", type=str, default=DEFAULT_GCS_STAGING)
     submit_parser.add_argument("--model", type=str, default=DEFAULT_MODEL)
-    submit_parser.add_argument("--temperature", type=float, default=0.7)
-    submit_parser.add_argument("--max_tokens", type=int, default=250)
-    submit_parser.add_argument("--thinking_budget", type=int, default=2000)
+    submit_parser.add_argument("--temperature", type=float, default=1.0)
+    submit_parser.add_argument("--max_tokens", type=int, default=1000)
+    submit_parser.add_argument("--thinking_budget", type=int, default=500)
     submit_parser.add_argument("--limit", type=int, help="Limit samples per dataset")
 
     # Status command
@@ -688,6 +768,9 @@ def main():
     status_parser.add_argument("--output_dir", type=str, default="inference_scaling/results/gemini")
     status_parser.add_argument("--project", type=str, default=DEFAULT_PROJECT)
     status_parser.add_argument("--location", type=str, default=DEFAULT_LOCATION)
+    status_parser.add_argument("--modality", type=str, choices=MODALITIES, help="Filter by modality")
+    status_parser.add_argument("--variant", type=str, choices=VARIANTS, help="Filter by variant")
+    status_parser.add_argument("--timestamp", type=str, help="Filter by timestamp (e.g., 20260124)")
 
     # Retrieve command
     retrieve_parser = subparsers.add_parser("retrieve", help="Retrieve results")
@@ -696,6 +779,7 @@ def main():
     retrieve_parser.add_argument("--variant", type=str, choices=VARIANTS, help="Specific variant")
     retrieve_parser.add_argument("--project", type=str, default=DEFAULT_PROJECT)
     retrieve_parser.add_argument("--location", type=str, default=DEFAULT_LOCATION)
+    retrieve_parser.add_argument("--timestamp", type=str, help="Filter by timestamp (e.g., 20260124)")
 
     args = parser.parse_args()
 

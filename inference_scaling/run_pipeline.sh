@@ -32,7 +32,7 @@ cd "${PROJECT_DIR}"
 # Configuration: Set LIMIT to control dataset size
 # ============================================================================
 # Set to 2 for testing, or 4000 (larger than all datasets) for full runs
-LIMIT=4000  # Change to 2 for testing
+LIMIT=10  # Change to 2 for testing
 
 # Create necessary directories
 mkdir -p logs/inference_scaling
