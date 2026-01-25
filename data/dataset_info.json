@@ -5119,5 +5119,635 @@
       "assistant_tag": "gpt",
       "system_tag": "system"
     }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_critical_boxed_clean_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_critical_boxed_clean_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_critical_json_clean_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_critical_json_clean_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_less_critical_boxed_clean_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_less_critical_boxed_clean_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_less_critical_json_clean_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_less_critical_json_clean_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_critical_boxed_clean_images_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_critical_boxed_clean_images_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_critical_json_clean_images_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_critical_json_clean_images_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_less_critical_boxed_clean_images_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_less_critical_boxed_clean_images_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_less_critical_json_clean_images_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_less_critical_json_clean_images_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_fullpaper_2acc_0rej_clean_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_fullpaper_2acc_0rej_clean_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_fullpaper_1acc_1rej_clean_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_fullpaper_1acc_1rej_clean_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_fullpaper_0acc_2rej_clean_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_fullpaper_0acc_2rej_clean_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_fullpaper_2acc_0rej_clean_images_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_fullpaper_2acc_0rej_clean_images_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_fullpaper_1acc_1rej_clean_images_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_fullpaper_1acc_1rej_clean_images_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_fullpaper_0acc_2rej_clean_images_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_fullpaper_0acc_2rej_clean_images_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_intro_2acc_0rej_clean_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_intro_2acc_0rej_clean_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_intro_1acc_1rej_clean_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_intro_1acc_1rej_clean_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_intro_0acc_2rej_clean_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_intro_0acc_2rej_clean_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_related_2acc_0rej_clean_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_related_2acc_0rej_clean_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_related_1acc_1rej_clean_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_related_1acc_1rej_clean_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_related_0acc_2rej_clean_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_related_0acc_2rej_clean_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_method_2acc_0rej_clean_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_method_2acc_0rej_clean_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_method_1acc_1rej_clean_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_method_1acc_1rej_clean_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_method_0acc_2rej_clean_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_method_0acc_2rej_clean_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_results_2acc_0rej_clean_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_results_2acc_0rej_clean_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_results_1acc_1rej_clean_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_results_1acc_1rej_clean_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_results_0acc_2rej_clean_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_results_0acc_2rej_clean_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_intro_2acc_0rej_clean_images_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_intro_2acc_0rej_clean_images_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_intro_1acc_1rej_clean_images_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_intro_1acc_1rej_clean_images_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_intro_0acc_2rej_clean_images_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_intro_0acc_2rej_clean_images_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_related_2acc_0rej_clean_images_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_related_2acc_0rej_clean_images_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_related_1acc_1rej_clean_images_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_related_1acc_1rej_clean_images_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_related_0acc_2rej_clean_images_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_related_0acc_2rej_clean_images_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_method_2acc_0rej_clean_images_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_method_2acc_0rej_clean_images_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_method_1acc_1rej_clean_images_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_method_1acc_1rej_clean_images_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_method_0acc_2rej_clean_images_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_method_0acc_2rej_clean_images_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_results_2acc_0rej_clean_images_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_results_2acc_0rej_clean_images_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_results_1acc_1rej_clean_images_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_results_1acc_1rej_clean_images_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_results_0acc_2rej_clean_images_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_results_0acc_2rej_clean_images_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_critical_boxed_vision_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_critical_boxed_vision_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_critical_json_vision_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_critical_json_vision_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_less_critical_boxed_vision_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_less_critical_boxed_vision_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_less_critical_json_vision_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_less_critical_json_vision_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_fullpaper_2acc_0rej_vision_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_fullpaper_2acc_0rej_vision_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_fullpaper_1acc_1rej_vision_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_fullpaper_1acc_1rej_vision_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  },
+  "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_fullpaper_0acc_2rej_vision_test": {
+    "file_name": "iclr_2020_2025_85_5_10_split7_ablation_v1_fewshot_fullpaper_0acc_2rej_vision_test/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
   }
 }
