@@ -524,9 +524,32 @@ class FinetuningArguments(
         default=False,
         metadata={"help": "Whether or not to train model in purely bf16 precision (without AMP)."},
     )
-    stage: Literal["pt", "sft", "rm", "ppo", "grpo", "dpo", "kto"] = field(
+    stage: Literal["pt", "sft", "rm", "ppo", "grpo", "dpo", "kto", "cls"] = field(
         default="sft",
         metadata={"help": "Which stage will be performed in training."},
+    )
+    cls_positive_token: str = field(
+        default="Accept",
+        metadata={"help": "Token/word indicating positive class (Accept) in classification stage."},
+    )
+    cls_negative_token: str = field(
+        default="Reject",
+        metadata={"help": "Token/word indicating negative class (Reject) in classification stage."},
+    )
+    predictions_dir: Optional[str] = field(
+        default=None,
+        metadata={"help": "Directory to save prediction results. If None, uses output_dir."},
+    )
+    cls_backbone_learning_rate: float | None = field(
+        default=None,
+        metadata={
+            "help": (
+                "Learning rate for the backbone in binary classification. "
+                "If specified, the classification head will use the standard learning_rate. "
+                "If None, both backbone and head use the standard learning_rate. "
+                "Only valid for classification stage (stage=cls)."
+            )
+        },
     )
     finetuning_type: Literal["lora", "oft", "freeze", "full"] = field(
         default="lora",
@@ -633,6 +656,9 @@ class FinetuningArguments(
 
         if self.pissa_init and (self.stage in ["ppo", "kto"] or self.use_ref_model):
             raise ValueError("Cannot use PiSSA for current training stage.")
+
+        if self.stage != "cls" and self.cls_backbone_learning_rate is not None:
+            raise ValueError("`cls_backbone_learning_rate` is only valid for classification stage (stage=cls).")
 
         if self.finetuning_type != "lora":
             if self.loraplus_lr_ratio is not None:

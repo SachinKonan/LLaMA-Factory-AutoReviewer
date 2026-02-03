@@ -407,6 +407,69 @@ def _create_loraplus_optimizer(
     return optimizer
 
 
+def _create_cls_optimizer(
+    model: "PreTrainedModel",
+    training_args: "TrainingArguments",
+    finetuning_args: "FinetuningArguments",
+) -> "torch.optim.Optimizer":
+    r"""
+    Create optimizer with different learning rates for backbone vs classification head.
+
+    Uses cls_backbone_learning_rate for backbone, learning_rate for head.
+    """
+    # Verify this is a binary classification model
+    if not hasattr(model, "backbone") or not hasattr(model, "classifier"):
+        raise ValueError(
+            "Model does not have 'backbone' and 'classifier' attributes. "
+            "cls_backbone_learning_rate is only valid for binary classification models."
+        )
+
+    backbone_lr = finetuning_args.cls_backbone_learning_rate
+    head_lr = training_args.learning_rate
+
+    decay_param_names = _get_decay_parameter_names(model)
+
+    # Separate parameters into 4 groups: backbone/head x decay/no-decay
+    backbone_decay_params = []
+    backbone_nodecay_params = []
+    head_decay_params = []
+    head_nodecay_params = []
+
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+
+        # Check if parameter is in classifier (head) or backbone
+        is_classifier = name.startswith("classifier.")
+        has_decay = name in decay_param_names
+
+        if is_classifier:
+            if has_decay:
+                head_decay_params.append(param)
+            else:
+                head_nodecay_params.append(param)
+        else:
+            if has_decay:
+                backbone_decay_params.append(param)
+            else:
+                backbone_nodecay_params.append(param)
+
+    optim_class, optim_kwargs = Trainer.get_optimizer_cls_and_kwargs(training_args)
+
+    param_groups = [
+        dict(params=backbone_nodecay_params, lr=backbone_lr, weight_decay=0.0),
+        dict(params=backbone_decay_params, lr=backbone_lr, weight_decay=training_args.weight_decay),
+        dict(params=head_nodecay_params, lr=head_lr, weight_decay=0.0),
+        dict(params=head_decay_params, lr=head_lr, weight_decay=training_args.weight_decay),
+    ]
+
+    optimizer = optim_class(param_groups, **optim_kwargs)
+    logger.info_rank0(
+        f"Using custom classification optimizer with backbone_lr={backbone_lr:.2e}, head_lr={head_lr:.2e}"
+    )
+    return optimizer
+
+
 def _create_badam_optimizer(
     model: "PreTrainedModel",
     training_args: "TrainingArguments",
@@ -527,6 +590,10 @@ def create_custom_optimizer(
     training_args: "TrainingArguments",
     finetuning_args: "FinetuningArguments",
 ) -> Optional["torch.optim.Optimizer"]:
+    # Check for classification-specific optimizer FIRST
+    if finetuning_args.cls_backbone_learning_rate is not None:
+        return _create_cls_optimizer(model, training_args, finetuning_args)
+
     if finetuning_args.use_galore:
         return _create_galore_optimizer(model, training_args, finetuning_args)
 

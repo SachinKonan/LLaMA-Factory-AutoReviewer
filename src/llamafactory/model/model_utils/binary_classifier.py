@@ -1,0 +1,159 @@
+# Copyright 2025 the LlamaFactory team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from typing import TYPE_CHECKING, Optional
+
+import torch
+import torch.nn as nn
+from transformers.utils import cached_file
+
+from ...extras import logging
+from ...extras.constants import CLS_HEAD_SAFE_WEIGHTS_NAME, CLS_HEAD_WEIGHTS_NAME
+
+
+if TYPE_CHECKING:
+    from ...hparams import ModelArguments
+
+
+logger = logging.get_logger(__name__)
+
+
+class ModelForBinaryClassification(nn.Module):
+    """FSDP2-safe wrapper for binary classification using last token hidden state.
+
+    Compatible with LLaMA-Factory's training infrastructure.
+    All parameters created in __init__ for FSDP2 compatibility.
+    """
+
+    def __init__(self, backbone: nn.Module, hidden_size: int):
+        super().__init__()
+        self.backbone = backbone
+        self.classifier = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
+            nn.GELU(),
+            nn.Linear(hidden_size, 1),
+        )
+        # For compatibility with save/load patterns
+        self._keys_to_ignore_on_save = None
+
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        **kwargs
+    ):
+        # Forward through backbone - pass all kwargs for multimodal support
+        outputs = self.backbone(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            output_hidden_states=True,
+            return_dict=True,
+            **kwargs
+        )
+
+        # Get hidden states - handle both CausalLM outputs and model outputs
+        if hasattr(outputs, "hidden_states") and outputs.hidden_states is not None:
+            hidden_states = outputs.hidden_states[-1]  # Last layer hidden states
+        else:
+            hidden_states = outputs.last_hidden_state  # [B, T, D]
+
+        # Get last non-padding token per sequence
+        if attention_mask is not None:
+            idx = attention_mask.sum(dim=1) - 1
+            pooled = hidden_states[
+                torch.arange(hidden_states.size(0), device=hidden_states.device),
+                idx
+            ]
+        else:
+            pooled = hidden_states[:, -1, :]
+
+        logits = self.classifier(pooled).squeeze(-1)  # [B]
+
+        loss = None
+        if labels is not None:
+            loss = nn.functional.binary_cross_entropy_with_logits(
+                logits.float(), labels.float()
+            )
+
+        return {"loss": loss, "logits": logits}
+
+    # Forward properties/methods to backbone for compatibility
+    @property
+    def config(self):
+        return self.backbone.config
+
+    @property
+    def device(self):
+        return next(self.parameters()).device
+
+    @property
+    def dtype(self):
+        return next(self.parameters()).dtype
+
+    def gradient_checkpointing_enable(self, **kwargs):
+        self.backbone.gradient_checkpointing_enable(**kwargs)
+
+    def gradient_checkpointing_disable(self):
+        self.backbone.gradient_checkpointing_disable()
+
+    def get_input_embeddings(self):
+        return self.backbone.get_input_embeddings()
+
+    def resize_token_embeddings(self, new_num_tokens):
+        return self.backbone.resize_token_embeddings(new_num_tokens)
+
+    def save_pretrained(self, *args, **kwargs):
+        """Delegate to backbone for saving."""
+        return self.backbone.save_pretrained(*args, **kwargs)
+
+    def train(self, mode: bool = True):
+        """Set training mode for both backbone and classifier."""
+        super().train(mode)
+        self.backbone.train(mode)
+        return self
+
+    def eval(self):
+        """Set eval mode for both backbone and classifier."""
+        super().eval()
+        self.backbone.eval()
+        return self
+
+
+def load_cls_head_params(path_or_repo_id: str, model_args: "ModelArguments") -> Optional[dict[str, torch.Tensor]]:
+    """Load classifier head parameters from checkpoint.
+
+    Returns: dict with keys `classifier.0.weight`, `classifier.0.bias`, `classifier.2.weight`, `classifier.2.bias`.
+    """
+    kwargs = {"path_or_repo_id": path_or_repo_id, "cache_dir": model_args.cache_dir, "token": model_args.hf_hub_token}
+    err_text = ""
+
+    try:
+        from safetensors import safe_open
+
+        cls_file = cached_file(filename=CLS_HEAD_SAFE_WEIGHTS_NAME, **kwargs)
+        with safe_open(cls_file, framework="pt", device="cpu") as f:
+            return {key: f.get_tensor(key) for key in f.keys()}
+    except Exception as err:
+        err_text = str(err)
+
+    try:
+        cls_file = cached_file(filename=CLS_HEAD_WEIGHTS_NAME, **kwargs)
+        return torch.load(cls_file, map_location="cpu", weights_only=True)
+    except Exception as err:
+        err_text = str(err)
+
+    logger.info_rank0(f"Provided path ({path_or_repo_id}) does not contain classifier head weights: {err_text}.")
+    logger.info_rank0("Ignore the above message if you are training from scratch.")
+    return None

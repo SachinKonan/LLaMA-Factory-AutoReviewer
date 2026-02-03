@@ -20,6 +20,7 @@ from transformers import (
     AutoModelForCausalLM,
     AutoModelForImageTextToText,
     AutoModelForSeq2SeqLM,
+    AutoModelForSequenceClassification,
     AutoModelForTextToWaveform,
     AutoModelForVision2Seq,
     AutoProcessor,
@@ -134,6 +135,9 @@ def load_model(
     finetuning_args: "FinetuningArguments",
     is_trainable: bool = False,
     add_valuehead: bool = False,
+    add_seqcls: bool = False,
+    num_labels: int = 2,
+    add_binary_cls: bool = False,
 ) -> "PreTrainedModel":
     r"""Load pretrained model."""
     init_kwargs = _get_init_kwargs(model_args)
@@ -202,6 +206,23 @@ def load_model(
         if vhead_params is not None:
             model.load_state_dict(vhead_params, strict=False)
             logger.info_rank0(f"Loaded valuehead from checkpoint: {vhead_path}")
+
+    if add_binary_cls:
+        from .model_utils.binary_classifier import ModelForBinaryClassification, load_cls_head_params
+
+        hidden_size = model.config.hidden_size
+        model = ModelForBinaryClassification(model, hidden_size)
+
+        # Load classifier head weights if resuming
+        if model_args.adapter_name_or_path is not None:
+            cls_head_path = model_args.adapter_name_or_path[-1]
+        else:
+            cls_head_path = model_args.model_name_or_path
+
+        cls_head_params = load_cls_head_params(cls_head_path, model_args)
+        if cls_head_params is not None:
+            model.load_state_dict(cls_head_params, strict=False)
+            logger.info_rank0(f"Loaded classifier head from checkpoint: {cls_head_path}")
 
     if not is_trainable:
         model.requires_grad_(False)

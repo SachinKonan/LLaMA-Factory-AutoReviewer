@@ -266,8 +266,8 @@ def get_train_args(args: dict[str, Any] | list[str] | None = None) -> _TRAIN_CLS
     if finetuning_args.stage == "sft" and training_args.do_predict and not training_args.predict_with_generate:
         raise ValueError("Please enable `predict_with_generate` to save model predictions.")
 
-    if finetuning_args.stage in ["rm", "ppo", "grpo"] and training_args.load_best_model_at_end:
-        raise ValueError("RM, PPO and GRPO stages do not support `load_best_model_at_end`.")
+    if finetuning_args.stage in ["rm", "ppo", "grpo", "cls"] and training_args.load_best_model_at_end:
+        raise ValueError("RM, PPO, GRPO and CLS stages do not support `load_best_model_at_end`.")
 
     if finetuning_args.stage == "ppo":
         if not training_args.do_train:
@@ -420,7 +420,7 @@ def get_train_args(args: dict[str, Any] | list[str] | None = None) -> _TRAIN_CLS
         logger.info_rank0("Set `ddp_find_unused_parameters` to False in DDP training since LoRA is enabled.")
         training_args.ddp_find_unused_parameters = False
 
-    if finetuning_args.stage in ["rm", "ppo", "grpo"] and finetuning_args.finetuning_type in ["full", "freeze"]:
+    if finetuning_args.stage in ["rm", "ppo", "grpo", "cls"] and finetuning_args.finetuning_type in ["full", "freeze"]:
         can_resume_from_checkpoint = False
         if training_args.resume_from_checkpoint is not None:
             logger.warning_rank0("Cannot resume from checkpoint in current stage.")
@@ -447,7 +447,7 @@ def get_train_args(args: dict[str, Any] | list[str] | None = None) -> _TRAIN_CLS
             logger.info_rank0("Change `output_dir` or use `overwrite_output_dir` to avoid.")
 
     if (
-        finetuning_args.stage in ["rm", "ppo", "grpo"]
+        finetuning_args.stage in ["rm", "ppo", "grpo", "cls"]
         and finetuning_args.finetuning_type == "lora"
         and training_args.resume_from_checkpoint is not None
     ):

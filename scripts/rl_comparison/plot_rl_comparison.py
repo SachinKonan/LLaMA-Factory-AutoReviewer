@@ -436,7 +436,7 @@ def get_majority_vote(predictions: list[str], tie_breaker: str = "rejected") -> 
 
 
 def load_test_metadata() -> pd.DataFrame:
-    """Load test data metadata with submission_id, year, and ground truth."""
+    """Load test data metadata with submission_id, year, ground truth, and pct_rating."""
     test_data_path = Path("data/iclr_2020_2025_85_5_10_split6_balanced_clean_binary_noreviews_v6_test/data.json")
     with open(test_data_path) as f:
         test_data = json.load(f)
@@ -449,6 +449,7 @@ def load_test_metadata() -> pd.DataFrame:
             "submission_id": meta.get("submission_id"),
             "year": meta.get("year"),
             "ground_truth": normalize_binary(meta.get("answer")),
+            "pct_rating": meta.get("pct_rating"),
         })
     return pd.DataFrame(rows)
 
@@ -562,23 +563,25 @@ def plot_accuracy_by_length(variants_config: dict, colors: dict) -> None:
                 ax.text(0.5, 0.5, "Insufficient bins", ha='center', va='center', transform=ax.transAxes)
                 continue
 
-            x = bin_centers[bin_stats["length_bin"].astype(int)] / 1000  # k tokens
-            y = bin_stats["accuracy"].values
+            x_bins = bin_centers[bin_stats["length_bin"].astype(int)] / 1000  # k tokens
+            y_bins = bin_stats["accuracy"].values
             sizes = bin_stats["count"].values
 
             # Scatter plot (size proportional to count)
-            ax.scatter(x, y, s=sizes * 3, alpha=0.7, color=color, edgecolor='white', linewidth=0.5)
+            ax.scatter(x_bins, y_bins, s=sizes * 3, alpha=0.7, color=color, edgecolor='white', linewidth=0.5)
 
-            # Linear regression
-            slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
+            # Linear regression on individual samples (not bin means)
+            x_individual = year_data["num_text_tokens"].values / 1000
+            y_individual = year_data["correct"].values
+            slope, intercept, r_value, p_value, std_err = stats.linregress(x_individual, y_individual)
             x_line = np.linspace(0, 25, 100)
             y_line = slope * x_line + intercept
             ax.plot(x_line, y_line, color='black', linewidth=2, linestyle='-',
                    label=f'r = {r_value:.3f}')
 
-            # Mean paper length as vertical dotted line
+            # Mean paper length as vertical dotted line (bolder)
             mean_tokens = year_data["num_text_tokens"].mean() / 1000
-            ax.axvline(x=mean_tokens, color='gray', linestyle=':', linewidth=2,
+            ax.axvline(x=mean_tokens, color='gray', linestyle=':', linewidth=3,
                       label=f'Mean = {mean_tokens:.1f}k')
 
             # Labels
@@ -601,6 +604,239 @@ def plot_accuracy_by_length(variants_config: dict, colors: dict) -> None:
     plt.savefig(OUTPUT_DIR / "accuracy_by_length.png", dpi=150, bbox_inches="tight")
     plt.close()
     print(f"Saved: {OUTPUT_DIR / 'accuracy_by_length.png'}")
+
+
+def plot_acceptance_rate_by_length(variants_config: dict, colors: dict) -> None:
+    """Plot acceptance rate vs paper length with GT column first (binned)."""
+    from scipy import stats
+
+    print("Loading test metadata and paper lengths for acceptance rate plot...")
+    test_meta = load_test_metadata()
+    paper_lengths = load_paper_lengths()
+
+    # Merge test metadata with paper lengths
+    df = test_meta.merge(paper_lengths, on="submission_id", how="left")
+
+    # Load predictions for each variant
+    variant_predictions = {}
+    for variant_name, config in variants_config.items():
+        preds = load_predictions_with_labels(variant_name, config)
+        if preds is not None:
+            preds = preds.merge(paper_lengths, on="submission_id", how="left")
+            variant_predictions[variant_name] = preds
+
+    if not variant_predictions:
+        print("No predictions found for any variant, skipping acceptance_rate_by_length plot")
+        return
+
+    years = sorted(df["year"].dropna().unique().astype(int))
+    n_years = len(years)
+    model_names = list(variant_predictions.keys())
+    # Add GT as first column
+    all_columns = ["GT"] + model_names
+    n_cols = len(all_columns)
+
+    # Define length bins
+    bin_size = 2000
+    bin_edges = np.arange(0, 30000, bin_size)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+
+    # nrows = years, ncols = GT + models
+    fig, axes = plt.subplots(n_years, n_cols, figsize=(4.5 * n_cols, 3.5 * n_years))
+    if n_years == 1:
+        axes = axes.reshape(1, -1)
+
+    for y_idx, year in enumerate(years):
+        for m_idx, col_name in enumerate(all_columns):
+            ax = axes[y_idx, m_idx]
+
+            if col_name == "GT":
+                # Use test metadata for ground truth
+                year_data = df[df["year"] == year].copy()
+                year_data = year_data.dropna(subset=["num_text_tokens", "ground_truth"])
+                color = "#333333"  # Gray for GT
+
+                if len(year_data) < 10:
+                    ax.text(0.5, 0.5, "Insufficient data", ha='center', va='center', transform=ax.transAxes)
+                    continue
+
+                # Convert ground truth to binary (1=accept, 0=reject)
+                year_data["is_accept"] = (year_data["ground_truth"] == "accepted").astype(int)
+            else:
+                # Use model predictions
+                preds_df = variant_predictions[col_name]
+                color = colors.get(col_name, "#333333")
+
+                year_data = preds_df[preds_df["year"] == year].copy()
+                year_data = year_data.dropna(subset=["num_text_tokens", "prediction"])
+
+                if len(year_data) < 10:
+                    ax.text(0.5, 0.5, "Insufficient data", ha='center', va='center', transform=ax.transAxes)
+                    continue
+
+                # Convert prediction to binary (1=accept, 0=reject)
+                year_data["is_accept"] = (year_data["prediction"] == "accepted").astype(int)
+
+            # Bin by length and compute acceptance rate per bin
+            year_data["length_bin"] = pd.cut(year_data["num_text_tokens"], bins=bin_edges, labels=False)
+            bin_stats = year_data.groupby("length_bin").agg(
+                accept_rate=("is_accept", "mean"),
+                count=("is_accept", "count")
+            ).reset_index()
+
+            # Get valid bins with enough samples
+            bin_stats = bin_stats[bin_stats["count"] >= 5]
+            if len(bin_stats) < 3:
+                ax.text(0.5, 0.5, "Insufficient bins", ha='center', va='center', transform=ax.transAxes)
+                continue
+
+            x_bins = bin_centers[bin_stats["length_bin"].astype(int)] / 1000  # k tokens
+            y_bins = bin_stats["accept_rate"].values
+            sizes = bin_stats["count"].values
+
+            # Scatter plot (size proportional to count)
+            ax.scatter(x_bins, y_bins, s=sizes * 3, alpha=0.7, color=color, edgecolor='white', linewidth=0.5)
+
+            # Linear regression on individual samples (not bin means)
+            x_individual = year_data["num_text_tokens"].values / 1000
+            y_individual = year_data["is_accept"].values
+            slope, intercept, r_value, p_value, std_err = stats.linregress(x_individual, y_individual)
+            x_line = np.linspace(0, 25, 100)
+            y_line = slope * x_line + intercept
+            ax.plot(x_line, y_line, color='black', linewidth=2, linestyle='-',
+                   label=f'r = {r_value:.3f}')
+
+            # Mean paper length as vertical dotted line (bolder)
+            mean_tokens = year_data["num_text_tokens"].mean() / 1000
+            ax.axvline(x=mean_tokens, color='gray', linestyle=':', linewidth=3,
+                      label=f'Mean = {mean_tokens:.1f}k')
+
+            # Labels
+            ax.set_xlabel("Length (k tokens)", fontsize=10)
+            if m_idx == 0:
+                ax.set_ylabel(f"{year}\nAccept Rate", fontsize=11, fontweight="bold")
+            if y_idx == 0:
+                ax.set_title(f"{col_name}", fontsize=12, fontweight="bold")
+
+            ax.set_ylim(0.2, 0.8)
+            ax.set_xlim(0, 25)
+            ax.yaxis.set_major_formatter(PercentFormatter(1))
+            ax.grid(alpha=0.3)
+
+            # Legend on each subplot
+            ax.legend(loc='upper right', fontsize=11, framealpha=0.9)
+
+    plt.suptitle("Acceptance Rate vs Paper Length (Binned, with Linear Regression)", fontsize=15, fontweight="bold")
+    plt.tight_layout()
+    plt.savefig(OUTPUT_DIR / "acceptance_rate_by_length.png", dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {OUTPUT_DIR / 'acceptance_rate_by_length.png'}")
+
+
+def plot_accuracy_by_rating(variants_config: dict, colors: dict) -> None:
+    """Plot accuracy vs pct_rating (review score percentile) as bar chart.
+
+    Rows: All years, 2020-2024 (ID), 2025 (OOD)
+    Columns: Models
+    """
+    print("Loading test metadata for accuracy by rating plot...")
+    test_meta = load_test_metadata()
+
+    # Load predictions for each variant
+    variant_predictions = {}
+    for variant_name, config in variants_config.items():
+        preds = load_predictions_with_labels(variant_name, config)
+        if preds is not None:
+            # Merge with test_meta to get pct_rating
+            preds = preds.merge(test_meta[["submission_id", "pct_rating"]], on="submission_id", how="left")
+            variant_predictions[variant_name] = preds
+
+    if not variant_predictions:
+        print("No predictions found for any variant, skipping accuracy_by_rating plot")
+        return
+
+    model_names = list(variant_predictions.keys())
+    n_models = len(model_names)
+
+    # Define rating bins: [0, 0.2], [0.2, 0.4], [0.4, 0.6], [0.6, 0.8], [0.8, 1.0]
+    bin_edges = [0, 0.2, 0.4, 0.6, 0.8, 1.0]
+    bin_labels = ["0-20%", "20-40%", "40-60%", "60-80%", "80-100%"]
+
+    # Row configurations: (label, year_filter)
+    row_configs = [
+        ("All Years", None),  # All years
+        ("2020-2024 (ID)", [2020, 2021, 2022, 2023, 2024]),  # ID years
+        ("2025 (OOD)", [2025]),  # OOD year
+    ]
+    n_rows = len(row_configs)
+
+    # nrows = 3 (all, ID, OOD), ncols = models
+    fig, axes = plt.subplots(n_rows, n_models, figsize=(4.5 * n_models, 3.5 * n_rows))
+    if n_rows == 1:
+        axes = axes.reshape(1, -1)
+    if n_models == 1:
+        axes = axes.reshape(-1, 1)
+
+    for r_idx, (row_label, year_filter) in enumerate(row_configs):
+        for m_idx, variant_name in enumerate(model_names):
+            ax = axes[r_idx, m_idx]
+            preds_df = variant_predictions[variant_name]
+            color = colors.get(variant_name, "#333333")
+
+            # Filter by years
+            if year_filter is None:
+                year_data = preds_df.copy()
+            else:
+                year_data = preds_df[preds_df["year"].isin(year_filter)].copy()
+
+            year_data = year_data.dropna(subset=["pct_rating", "prediction", "ground_truth"])
+
+            if len(year_data) < 10:
+                ax.text(0.5, 0.5, "Insufficient data", ha='center', va='center', transform=ax.transAxes)
+                continue
+
+            # Compute correctness
+            year_data["correct"] = (year_data["prediction"] == year_data["ground_truth"]).astype(int)
+
+            # Bin by pct_rating
+            year_data["rating_bin"] = pd.cut(year_data["pct_rating"], bins=bin_edges, labels=bin_labels, include_lowest=True)
+            bin_stats = year_data.groupby("rating_bin", observed=True).agg(
+                accuracy=("correct", "mean"),
+                count=("correct", "count")
+            ).reindex(bin_labels)
+
+            # Bar chart
+            x = np.arange(len(bin_labels))
+            accuracies = bin_stats["accuracy"].values
+            ax.bar(x, accuracies, color=color, edgecolor='white', linewidth=0.5, alpha=0.8)
+
+            # Add value labels on bars
+            for i, (acc, cnt) in enumerate(zip(bin_stats["accuracy"], bin_stats["count"])):
+                if not np.isnan(acc):
+                    ax.annotate(f'{acc:.0%}',
+                               xy=(i, acc),
+                               xytext=(0, 3),
+                               textcoords="offset points",
+                               ha='center', va='bottom', fontsize=8)
+
+            # Labels
+            ax.set_xlabel("Rating Percentile", fontsize=10)
+            if m_idx == 0:
+                ax.set_ylabel(f"{row_label}\nAccuracy", fontsize=11, fontweight="bold")
+            if r_idx == 0:
+                ax.set_title(f"{variant_name}", fontsize=12, fontweight="bold")
+
+            ax.set_ylim(0, 1.0)
+            ax.set_xticks(x)
+            ax.set_xticklabels(bin_labels, rotation=45, ha='right', fontsize=8)
+            ax.yaxis.set_major_formatter(PercentFormatter(1))
+            ax.grid(axis='y', alpha=0.3)
+
+    plt.suptitle("Accuracy by Rating Percentile", fontsize=15, fontweight="bold")
+    plt.tight_layout()
+    plt.savefig(OUTPUT_DIR / "accuracy_by_rating.png", dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {OUTPUT_DIR / 'accuracy_by_rating.png'}")
 
 
 def load_train_metadata() -> pd.DataFrame:
@@ -908,6 +1144,12 @@ def main():
 
     # Plot 6: Accuracy by paper length
     plot_accuracy_by_length(VARIANTS, COLORS)
+
+    # Plot 6b: Acceptance rate by paper length (with GT column)
+    plot_acceptance_rate_by_length(VARIANTS, COLORS)
+
+    # Plot 6c: Accuracy by rating percentile
+    plot_accuracy_by_rating(VARIANTS, COLORS)
 
     # Plot 7: Prediction analysis (R² comparison)
     plot_prediction_analysis(VARIANTS, COLORS)

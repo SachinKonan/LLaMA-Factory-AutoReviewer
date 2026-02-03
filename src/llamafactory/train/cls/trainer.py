@@ -1,0 +1,176 @@
+# Copyright 2025 the LlamaFactory team.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import json
+import os
+from collections import defaultdict
+from types import MethodType
+from typing import TYPE_CHECKING, Optional, Union
+
+import torch
+from transformers import Trainer
+from typing_extensions import override
+
+from ...extras import logging
+from ...extras.packages import is_transformers_version_greater_than
+from ..callbacks import FixClsModelCallback, SaveProcessorCallback
+from ..trainer_utils import create_custom_optimizer, create_custom_scheduler
+
+
+if TYPE_CHECKING:
+    from transformers import PreTrainedModel, ProcessorMixin
+    from transformers.trainer import PredictionOutput
+
+    from ...hparams import FinetuningArguments
+
+
+logger = logging.get_logger(__name__)
+
+
+class BinaryClassificationTrainer(Trainer):
+    r"""Inherits Trainer to compute binary classification loss with BCE."""
+
+    def __init__(
+        self, finetuning_args: "FinetuningArguments", processor: Optional["ProcessorMixin"], **kwargs
+    ) -> None:
+        if is_transformers_version_greater_than("4.46"):
+            kwargs["processing_class"] = kwargs.pop("tokenizer")
+
+        super().__init__(**kwargs)
+        self.model_accepts_loss_kwargs = False  # overwrite trainer's default behavior
+        self.finetuning_args = finetuning_args
+        self.can_return_loss = True  # override property to return eval_loss
+        self._stored_metrics = defaultdict(lambda: defaultdict(list))
+        self.add_callback(FixClsModelCallback)
+
+        if processor is not None:
+            self.add_callback(SaveProcessorCallback(processor))
+
+        if finetuning_args.use_badam:
+            from badam import BAdamCallback, clip_grad_norm_old_version  # type: ignore
+
+            self.accelerator.clip_grad_norm_ = MethodType(clip_grad_norm_old_version, self.accelerator)
+            self.add_callback(BAdamCallback)
+
+    @override
+    def create_optimizer(self) -> "torch.optim.Optimizer":
+        if self.optimizer is None:
+            self.optimizer = create_custom_optimizer(self.model, self.args, self.finetuning_args)
+        return super().create_optimizer()
+
+    @override
+    def create_scheduler(
+        self, num_training_steps: int, optimizer: Optional["torch.optim.Optimizer"] = None
+    ) -> "torch.optim.lr_scheduler.LRScheduler":
+        create_custom_scheduler(self.args, num_training_steps, optimizer)
+        return super().create_scheduler(num_training_steps, optimizer)
+
+    @override
+    def _get_train_sampler(self, *args, **kwargs) -> Optional["torch.utils.data.Sampler"]:
+        if self.finetuning_args.disable_shuffling:
+            return torch.utils.data.SequentialSampler(self.train_dataset)
+
+        return super()._get_train_sampler(*args, **kwargs)
+
+    @override
+    def compute_loss(
+        self, model: "PreTrainedModel", inputs: dict[str, "torch.Tensor"], return_outputs: bool = False, **kwargs
+    ) -> Union["torch.Tensor", tuple["torch.Tensor", list["torch.Tensor"]]]:
+        r"""Compute binary classification loss using BCE, with accuracy tracking."""
+        labels = inputs.pop("labels")  # Binary labels (0 or 1)
+        inputs.pop("_metadata", None)  # Remove metadata before forward (not needed by model)
+
+        # Forward pass - model returns {"loss": loss, "logits": logits}
+        outputs = model(**inputs, labels=labels)
+        loss = outputs["loss"]
+        logits = outputs["logits"]
+
+        # Compute and store accuracy for logging
+        with torch.no_grad():
+            probs = torch.sigmoid(logits)
+            preds = (probs > 0.5).long()
+            accuracy = (preds == labels.long()).float().mean()
+
+        # Store metrics for aggregation in log() method (keep on device for gather)
+        train_eval = "train" if model.training else "eval"
+        prefix = "eval_" if train_eval == "eval" else ""
+        self._stored_metrics[train_eval][f"{prefix}accuracy"].append(accuracy.detach())
+
+        if return_outputs:
+            return loss, (loss, logits, labels)
+        return loss
+
+    @override
+    def log(self, logs: dict[str, float], start_time: Optional[float] = None) -> None:
+        r"""Log metrics including aggregated training accuracy.
+
+        Aggregates stored batch metrics and adds them to logs before calling parent.
+        Handles both training ("loss" in logs) and evaluation ("eval_loss" in logs).
+        """
+        # Determine phase based on what's in logs
+        train_eval = "train" if "loss" in logs else "eval"
+
+        # Aggregate stored metrics for this phase
+        if train_eval in self._stored_metrics:
+            for key, values in self._stored_metrics[train_eval].items():
+                if len(values) > 0:
+                    # Convert list of tensors to single averaged value
+                    metric_tensor = torch.stack(values)
+                    # Reduce across devices if using distributed training
+                    if self.accelerator is not None and self.accelerator.num_processes > 1:
+                        metric_tensor = self.accelerator.gather(metric_tensor)
+                    # Move to CPU and compute mean
+                    logs[key] = metric_tensor.cpu().mean().item()
+
+            # Clear stored metrics after logging
+            self._stored_metrics[train_eval].clear()
+
+        # Call parent to actually write logs
+        super().log(logs, start_time)
+
+    def save_predictions(self, predict_results: "PredictionOutput") -> None:
+        r"""Save model predictions to `predictions_dir` (or `output_dir` if not set)."""
+        if not self.is_world_process_zero():
+            return
+
+        # Use predictions_dir if set, otherwise fall back to output_dir
+        predictions_dir = self.finetuning_args.predictions_dir or self.args.output_dir
+        os.makedirs(predictions_dir, exist_ok=True)
+        output_prediction_file = os.path.join(predictions_dir, "generated_predictions.jsonl")
+        logger.info_rank0(f"Saving prediction results to {output_prediction_file}")
+        logits, labels = predict_results.predictions
+
+        # Get metadata from eval_dataset if available (predictions are in order)
+        metadata_list = None
+        if hasattr(self, "eval_dataset") and self.eval_dataset is not None:
+            if "_metadata" in self.eval_dataset.column_names:
+                metadata_list = self.eval_dataset["_metadata"]
+
+        with open(output_prediction_file, "w", encoding="utf-8") as writer:
+            res: list[str] = []
+            for i, (logit, label) in enumerate(zip(logits, labels)):
+                prob = 1 / (1 + float(torch.exp(torch.tensor(-logit))))  # sigmoid
+                pred = 1 if prob > 0.5 else 0
+                result = {
+                    "logit": round(float(logit), 4),
+                    "prob": round(prob, 4),
+                    "pred": pred,
+                    "label": int(label)
+                }
+                # Add metadata if available
+                if metadata_list is not None and i < len(metadata_list):
+                    result["_metadata"] = metadata_list[i]
+                res.append(json.dumps(result))
+
+            writer.write("\n".join(res))

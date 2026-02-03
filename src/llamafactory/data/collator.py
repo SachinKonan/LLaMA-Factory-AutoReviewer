@@ -329,3 +329,30 @@ class KTODataCollatorWithPadding(MultiModalDataCollatorForSeq2Seq):
 
         batch["kto_tags"] = torch.tensor(kto_tags)
         return batch
+
+
+@dataclass
+class ClassificationDataCollator(MultiModalDataCollatorForSeq2Seq):
+    r"""Data collator for binary classification data.
+
+    Extracts binary labels before parent processing and adds them back as float tensor.
+    """
+
+    def __call__(self, features: list[dict[str, Any]]) -> dict[str, "torch.Tensor"]:
+        # Extract binary labels and metadata before parent processing
+        labels = [f.pop("labels") for f in features]
+        metadata = [f.pop("_metadata", None) for f in features]
+
+        # For classification, we don't have sequence labels, so create dummy labels for parent collator
+        for feature in features:
+            feature["labels"] = feature["input_ids"].copy()  # dummy labels, won't be used
+
+        # Parent handles padding, multimodal inputs, etc.
+        batch = super().__call__(features)
+
+        # Remove the dummy labels and add binary classification labels as float tensor
+        # Labels are created on CPU; trainer's _prepare_inputs handles device placement
+        batch["labels"] = torch.tensor(labels, dtype=torch.float)
+        # Keep metadata as list (not tensor) for predictions
+        batch["_metadata"] = metadata
+        return batch

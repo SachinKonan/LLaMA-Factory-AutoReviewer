@@ -108,6 +108,10 @@ V_HEAD_WEIGHTS_NAME = "value_head.bin"
 
 V_HEAD_SAFE_WEIGHTS_NAME = "value_head.safetensors"
 
+CLS_HEAD_WEIGHTS_NAME = "cls_head.bin"
+
+CLS_HEAD_SAFE_WEIGHTS_NAME = "cls_head.safetensors"
+
 
 class AttentionFunction(str, Enum):
     AUTO = "auto"

@@ -30,7 +30,13 @@ from transformers.utils import SAFE_WEIGHTS_NAME, WEIGHTS_NAME
 from typing_extensions import override
 
 from ..extras import logging
-from ..extras.constants import TRAINER_LOG, V_HEAD_SAFE_WEIGHTS_NAME, V_HEAD_WEIGHTS_NAME
+from ..extras.constants import (
+    CLS_HEAD_SAFE_WEIGHTS_NAME,
+    CLS_HEAD_WEIGHTS_NAME,
+    TRAINER_LOG,
+    V_HEAD_SAFE_WEIGHTS_NAME,
+    V_HEAD_WEIGHTS_NAME,
+)
 from ..extras.misc import get_peak_memory, is_env_enabled, use_ray
 from ..extras.packages import is_safetensors_available
 
@@ -45,6 +51,7 @@ if TYPE_CHECKING:
     from trl import AutoModelForCausalLMWithValueHead
 
     from ..hparams import DataArguments, FinetuningArguments, GeneratingArguments, ModelArguments
+    from ..model.model_utils.binary_classifier import ModelForBinaryClassification
 
 
 logger = logging.get_logger(__name__)
@@ -103,6 +110,67 @@ class FixValueHeadModelCallback(TrainerCallback):
         if args.should_save:
             output_dir = os.path.join(args.output_dir, f"{PREFIX_CHECKPOINT_DIR}-{state.global_step}")
             fix_valuehead_checkpoint(
+                model=kwargs.pop("model"), output_dir=output_dir, safe_serialization=args.save_safetensors
+            )
+
+
+def fix_cls_checkpoint(
+    model: "ModelForBinaryClassification", output_dir: str, safe_serialization: bool
+) -> None:
+    r"""Fix the classifier checkpoint files.
+
+    Splits saved weights into:
+    - backbone weights (saved via save_pretrained)
+    - classifier head weights (saved to cls_head.safetensors/bin)
+    """
+    from ..model.model_utils.binary_classifier import ModelForBinaryClassification
+
+    if not isinstance(model, ModelForBinaryClassification):
+        return
+
+    if not isinstance(model.backbone, (PreTrainedModel, PeftModel)):
+        return
+
+    if safe_serialization:
+        path_to_checkpoint = os.path.join(output_dir, SAFE_WEIGHTS_NAME)
+        with safe_open(path_to_checkpoint, framework="pt", device="cpu") as f:
+            state_dict: dict[str, torch.Tensor] = {key: f.get_tensor(key).clone() for key in f.keys()}
+    else:
+        path_to_checkpoint = os.path.join(output_dir, WEIGHTS_NAME)
+        state_dict: dict[str, torch.Tensor] = torch.load(path_to_checkpoint, map_location="cpu", weights_only=True)
+
+    os.remove(path_to_checkpoint)
+    backbone_state_dict, cls_head_state_dict = {}, {}
+
+    for name, param in state_dict.items():
+        if name.startswith("classifier."):
+            cls_head_state_dict[name] = param
+        else:
+            # Remove "backbone." prefix if present
+            backbone_state_dict[name.replace("backbone.", "", 1)] = param
+
+    # Save backbone (handles LoRA adapters automatically)
+    model.backbone.save_pretrained(
+        output_dir, state_dict=backbone_state_dict or None, safe_serialization=safe_serialization
+    )
+
+    # Save classifier head separately
+    if safe_serialization:
+        save_file(cls_head_state_dict, os.path.join(output_dir, CLS_HEAD_SAFE_WEIGHTS_NAME), metadata={"format": "pt"})
+    else:
+        torch.save(cls_head_state_dict, os.path.join(output_dir, CLS_HEAD_WEIGHTS_NAME))
+
+    logger.info_rank0(f"Classifier model saved at: {output_dir}")
+
+
+class FixClsModelCallback(TrainerCallback):
+    r"""A callback for fixing the checkpoint for classification models."""
+
+    @override
+    def on_save(self, args: "TrainingArguments", state: "TrainerState", control: "TrainerControl", **kwargs):
+        if args.should_save:
+            output_dir = os.path.join(args.output_dir, f"{PREFIX_CHECKPOINT_DIR}-{state.global_step}")
+            fix_cls_checkpoint(
                 model=kwargs.pop("model"), output_dir=output_dir, safe_serialization=args.save_safetensors
             )
 

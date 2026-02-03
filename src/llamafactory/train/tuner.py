@@ -28,6 +28,7 @@ from ..extras.packages import is_mcore_adapter_available, is_ray_available
 from ..hparams import get_infer_args, get_ray_args, get_train_args, read_args
 from ..model import load_model, load_tokenizer
 from .callbacks import LogCallback, PissaConvertCallback, ReporterCallback
+from .cls import run_cls
 from .dpo import run_dpo
 from .grpo import run_grpo
 from .kto import run_kto
@@ -97,6 +98,8 @@ def _training_function(config: dict[str, Any]) -> None:
         run_dpo(model_args, data_args, training_args, finetuning_args, callbacks)
     elif finetuning_args.stage == "kto":
         run_kto(model_args, data_args, training_args, finetuning_args, callbacks)
+    elif finetuning_args.stage == "cls":
+        run_cls(model_args, data_args, training_args, finetuning_args, callbacks)
     else:
         raise ValueError(f"Unknown task: {finetuning_args.stage}.")
 
@@ -177,7 +180,7 @@ def export_model(args: Optional[dict[str, Any]] = None) -> None:
             safe_serialization=(not model_args.export_legacy_format),
         )
 
-    if finetuning_args.stage == "rm":
+    if finetuning_args.stage in ["rm", "cls"]:
         if model_args.adapter_name_or_path is not None:
             vhead_path = model_args.adapter_name_or_path[-1]
         else:

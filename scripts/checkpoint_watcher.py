@@ -2,8 +2,11 @@
 """
 Checkpoint Watcher for Auto-Inference
 
-Monitors saves/final_sweep_v7/ and saves/final_sweep_v7_pli/ for new checkpoints
-and automatically spawns inference jobs on the pli partition.
+Monitors saves directories for new checkpoints and automatically spawns inference jobs.
+
+Supported experiments:
+- saves/final_sweep_v7/ and saves/final_sweep_v7_pli/ (v7 experiments)
+- saves/testing_v8/ (v8 experiments)
 
 Usage:
     python scripts/checkpoint_watcher.py              # Run once
@@ -20,17 +23,30 @@ from typing import Optional
 
 # Base directories to monitor
 BASE_DIR = Path("/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer")
-SAVE_DIRS = [
-    BASE_DIR / "saves" / "final_sweep_v7",
-    BASE_DIR / "saves" / "final_sweep_v7_pli",
-]
-SBATCH_SCRIPT = BASE_DIR / "sbatch" / "final_sweep_v7" / "infer_checkpoint.sbatch"
 
-# Inference parameters
+# Save directories and their corresponding sbatch scripts
+EXPERIMENT_CONFIGS = {
+    "final_sweep_v7": {
+        "save_dirs": [
+            BASE_DIR / "saves" / "final_sweep_v7",
+            BASE_DIR / "saves" / "final_sweep_v7_pli",
+        ],
+        "sbatch_script": BASE_DIR / "sbatch" / "final_sweep_v7" / "infer_checkpoint.sbatch",
+        "image_max_pixels": 1003520,
+    },
+    "testing_v8": {
+        "save_dirs": [
+            BASE_DIR / "saves" / "testing_v8",
+        ],
+        "sbatch_script": BASE_DIR / "sbatch" / "testing_v8" / "infer_checkpoint.sbatch",
+        "image_max_pixels": 5000000,  # 5e6 for v8 vision
+    },
+}
+
+# Inference parameters (common)
 CUTOFF_LEN = 24480
 MAX_NEW_TOKENS = 1280
 IMAGE_MIN_PIXELS = 784
-IMAGE_MAX_PIXELS = 1003520
 
 # Dataset mappings
 # Text-only datasets (template: qwen)
@@ -48,6 +64,8 @@ VISION_DATASETS = {
     "balanced_trainagreeing_vision": "iclr_2020_2025_85_5_10_split7_balanced_trainagreeing_vision_binary_noreviews_v7",
     "balanced_2024_2025_vision": "iclr_2024_2025_85_5_10_split7_balanced_vision_binary_noreviews_v7",
     "balanced_2017_2025_vision": "iclr_2017_2025_85_5_10_split7_balanced_vision_binary_noreviews_v7",
+    "balanced_no2024_vision": "iclr_2020_2023_2025_85_5_10_split7_balanced_vision_binary_noreviews_v7",
+    "balanced_trainagreeing_no2024_vision": "iclr_2020_2023_2025_85_5_10_split7_balanced_trainagreeing_vision_binary_noreviews_v7",
 }
 
 # Images datasets (template: qwen2_vl, with image params)
@@ -56,6 +74,34 @@ IMAGES_DATASETS = {
     "balanced_trainagreeing_images": "iclr_2020_2025_85_5_10_split7_balanced_trainagreeing_clean_images_binary_noreviews_v7",
     "balanced_2024_2025_images": "iclr_2024_2025_85_5_10_split7_balanced_clean_images_binary_noreviews_v7",
     "balanced_2017_2025_images": "iclr_2017_2025_85_5_10_split7_balanced_clean_images_binary_noreviews_v7",
+}
+
+# ============================================================================
+# V8 Dataset Mappings (testing_v8)
+# ============================================================================
+
+# V8 Text datasets (template: qwen)
+V8_TEXT_DATASETS = {
+    # Binary experiments
+    "26ood_text": "2020_2025_train_2020_2026_valtest_clean_binary_noreviews_v8",
+    "26ood_rm24_text": "2020_2023_2025_train_2020_2026_valtest_clean_binary_noreviews_v8",
+    "balanced_text": "2020_2026_balanced_clean_binary_noreviews_v8",
+    "26ood_text_bz32": "2020_2025_train_2020_2026_valtest_clean_binary_noreviews_v8",
+    # Ratingbinary experiments
+    "ood_text_rating": "2020_2025_train_2020_2026_valtest_clean_ratingbinary_noreviews_v8",
+    "balanced_text_rating": "2020_2026_balanced_clean_ratingbinary_noreviews_v8",
+}
+
+# V8 Vision datasets (template: qwen2_vl, with image params)
+V8_VISION_DATASETS = {
+    # Binary experiments
+    "26ood_vision": "2020_2025_train_2020_2026_valtest_vision_binary_noreviews_v8",
+    "26ood_rm24_vision": "2020_2023_2025_train_2020_2026_valtest_vision_binary_noreviews_v8",
+    "balanced_vision": "2020_2026_balanced_vision_binary_noreviews_v8",
+    "26ood_vision_bz32": "2020_2025_train_2020_2026_valtest_vision_binary_noreviews_v8",
+    # Ratingbinary experiments
+    "ood_vision_rating": "2020_2025_train_2020_2026_valtest_vision_ratingbinary_noreviews_v8",
+    "balanced_vision_rating": "2020_2026_balanced_vision_ratingbinary_noreviews_v8",
 }
 
 
@@ -69,17 +115,25 @@ def get_model_type(short_name: str) -> str:
         return "text"
 
 
-def get_dataset_and_template(short_name: str) -> Optional[tuple[str, str, bool]]:
+def get_dataset_and_template(short_name: str, experiment_type: str = "final_sweep_v7") -> Optional[tuple[str, str, bool]]:
     """
     Get dataset name, template, and whether image params are needed.
     Returns: (dataset_name, template, needs_image_params) or None if not found.
     """
-    if short_name in TEXT_DATASETS:
-        return TEXT_DATASETS[short_name], "qwen", False
-    elif short_name in VISION_DATASETS:
-        return VISION_DATASETS[short_name], "qwen2_vl", True
-    elif short_name in IMAGES_DATASETS:
-        return IMAGES_DATASETS[short_name], "qwen2_vl", True
+    if experiment_type == "testing_v8":
+        # V8 datasets
+        if short_name in V8_TEXT_DATASETS:
+            return V8_TEXT_DATASETS[short_name], "qwen", False
+        elif short_name in V8_VISION_DATASETS:
+            return V8_VISION_DATASETS[short_name], "qwen2_vl", True
+    else:
+        # V7 datasets (final_sweep_v7)
+        if short_name in TEXT_DATASETS:
+            return TEXT_DATASETS[short_name], "qwen", False
+        elif short_name in VISION_DATASETS:
+            return VISION_DATASETS[short_name], "qwen2_vl", True
+        elif short_name in IMAGES_DATASETS:
+            return IMAGES_DATASETS[short_name], "qwen2_vl", True
     return None
 
 
@@ -159,8 +213,13 @@ def submit_inference_job(
     ckpt_step: int,
     needs_image_params: bool,
     results_dir: Path,
-) -> bool:
-    """Submit an sbatch job for inference on a checkpoint."""
+    sbatch_script: Path,
+    image_max_pixels: int,
+) -> Optional[str]:
+    """Submit an sbatch job for inference on a checkpoint.
+
+    Returns the job ID if successful, None otherwise.
+    """
     # Prepare environment variables for sbatch
     env = os.environ.copy()
     env["CHECKPOINT_DIR"] = str(checkpoint_dir)
@@ -173,14 +232,14 @@ def submit_inference_job(
     env["MAX_NEW_TOKENS"] = str(MAX_NEW_TOKENS)
 
     if needs_image_params:
-        env["IMAGE_PARAMS"] = f"--image_min_pixels {IMAGE_MIN_PIXELS} --image_max_pixels {IMAGE_MAX_PIXELS}"
+        env["IMAGE_PARAMS"] = f"--image_min_pixels {IMAGE_MIN_PIXELS} --image_max_pixels {image_max_pixels}"
     else:
         env["IMAGE_PARAMS"] = ""
 
     # Submit the job
     try:
         result = subprocess.run(
-            ["sbatch", str(SBATCH_SCRIPT)],
+            ["sbatch", str(sbatch_script)],
             env=env,
             capture_output=True,
             text=True,
@@ -188,18 +247,30 @@ def submit_inference_job(
         )
 
         if result.returncode == 0:
-            job_id = result.stdout.strip()
-            print(f"  Submitted job: {job_id}")
-            return True
+            # Parse job ID from "Submitted batch job 12345"
+            job_output = result.stdout.strip()
+            print(f"  Submitted job: {job_output}")
+            # Extract just the job ID number
+            job_id = job_output.split()[-1] if job_output else None
+            return job_id
         else:
             print(f"  ERROR submitting job: {result.stderr}")
-            return False
+            return None
     except Exception as e:
         print(f"  ERROR: {e}")
-        return False
+        return None
 
 
-def process_checkpoint(checkpoint_dir: Path, model_dir: Path, short_name: str, save_dir: Path, dry_run: bool = False) -> bool:
+def process_checkpoint(
+    checkpoint_dir: Path,
+    model_dir: Path,
+    short_name: str,
+    save_dir: Path,
+    experiment_type: str,
+    sbatch_script: Path,
+    image_max_pixels: int,
+    dry_run: bool = False,
+) -> bool:
     """
     Process a single checkpoint.
     Returns True if a job was submitted (or would be in dry-run), False otherwise.
@@ -221,9 +292,9 @@ def process_checkpoint(checkpoint_dir: Path, model_dir: Path, short_name: str, s
         return False
 
     # Get dataset info
-    dataset_info = get_dataset_and_template(short_name)
+    dataset_info = get_dataset_and_template(short_name, experiment_type)
     if dataset_info is None:
-        print(f"  WARNING: Unknown short_name '{short_name}', skipping")
+        print(f"  WARNING: Unknown short_name '{short_name}' for {experiment_type}, skipping")
         return False
 
     dataset, template, needs_image_params = dataset_info
@@ -249,11 +320,8 @@ def process_checkpoint(checkpoint_dir: Path, model_dir: Path, short_name: str, s
     print(f"    Step: {ckpt_step}")
     print(f"    Results: {results_dir}")
 
-    # Create touch file BEFORE submitting to prevent duplicate submissions
-    touch_file.touch()
-
     # Submit inference job
-    success = submit_inference_job(
+    job_id = submit_inference_job(
         checkpoint_dir=checkpoint_dir,
         dataset=dataset,
         template=template,
@@ -261,12 +329,15 @@ def process_checkpoint(checkpoint_dir: Path, model_dir: Path, short_name: str, s
         ckpt_step=ckpt_step,
         needs_image_params=needs_image_params,
         results_dir=results_dir,
+        sbatch_script=sbatch_script,
+        image_max_pixels=image_max_pixels,
     )
 
-    if not success:
-        # Remove touch file if submission failed
-        touch_file.unlink(missing_ok=True)
+    if job_id is None:
         return False
+
+    # Write touch file with job ID to prevent duplicate submissions
+    touch_file.write_text(f"{job_id}\n")
 
     return True
 
@@ -275,39 +346,52 @@ def scan_and_process(dry_run: bool = False):
     """Scan all save directories and process new checkpoints."""
     total_submitted = 0
 
-    for save_dir in SAVE_DIRS:
-        if not save_dir.exists():
-            print(f"Save directory does not exist: {save_dir}")
-            continue
+    for experiment_type, config in EXPERIMENT_CONFIGS.items():
+        sbatch_script = config["sbatch_script"]
+        image_max_pixels = config["image_max_pixels"]
 
-        print(f"\nScanning: {save_dir}")
-
-        # Find all model directories (short_name directories)
-        for model_dir in save_dir.iterdir():
-            if not model_dir.is_dir():
+        for save_dir in config["save_dirs"]:
+            if not save_dir.exists():
+                print(f"Save directory does not exist: {save_dir}")
                 continue
 
-            short_name = model_dir.name
+            print(f"\nScanning: {save_dir} ({experiment_type})")
 
-            # Skip if not a known short_name
-            if get_dataset_and_template(short_name) is None:
-                continue
+            # Find all model directories (short_name directories)
+            for model_dir in save_dir.iterdir():
+                if not model_dir.is_dir():
+                    continue
 
-            print(f"\n  Model: {short_name}")
+                short_name = model_dir.name
 
-            # Get all checkpoints
-            checkpoints = get_all_checkpoints(model_dir)
+                # Skip if not a known short_name for this experiment type
+                if get_dataset_and_template(short_name, experiment_type) is None:
+                    continue
 
-            if not checkpoints:
-                print(f"    No checkpoints found")
-                continue
+                print(f"\n  Model: {short_name}")
 
-            print(f"    Found {len(checkpoints)} checkpoint(s)")
+                # Get all checkpoints
+                checkpoints = get_all_checkpoints(model_dir)
 
-            # Process each checkpoint
-            for ckpt_dir in checkpoints:
-                if process_checkpoint(ckpt_dir, model_dir, short_name, save_dir, dry_run=dry_run):
-                    total_submitted += 1
+                if not checkpoints:
+                    print(f"    No checkpoints found")
+                    continue
+
+                print(f"    Found {len(checkpoints)} checkpoint(s)")
+
+                # Process each checkpoint
+                for ckpt_dir in checkpoints:
+                    if process_checkpoint(
+                        ckpt_dir,
+                        model_dir,
+                        short_name,
+                        save_dir,
+                        experiment_type=experiment_type,
+                        sbatch_script=sbatch_script,
+                        image_max_pixels=image_max_pixels,
+                        dry_run=dry_run,
+                    ):
+                        total_submitted += 1
 
     print(f"\n{'='*60}")
     if dry_run:
@@ -335,10 +419,12 @@ def main():
         print("[DRY-RUN MODE - No jobs will be submitted]")
     print("=" * 60)
 
-    # Verify sbatch script exists
-    if not SBATCH_SCRIPT.exists():
-        print(f"ERROR: Sbatch script not found: {SBATCH_SCRIPT}")
-        sys.exit(1)
+    # Verify sbatch scripts exist
+    for experiment_type, config in EXPERIMENT_CONFIGS.items():
+        sbatch_script = config["sbatch_script"]
+        if not sbatch_script.exists():
+            print(f"ERROR: Sbatch script not found for {experiment_type}: {sbatch_script}")
+            sys.exit(1)
 
     scan_and_process(dry_run=args.dry_run)
 
