@@ -143,7 +143,9 @@ def load_model(
     init_kwargs = _get_init_kwargs(model_args)
     config = load_config(model_args)
     patch_config(config, tokenizer, model_args, init_kwargs, is_trainable)
-    apply_liger_kernel(config, model_args, is_trainable, require_logits=(finetuning_args.stage not in ["pt", "sft"]))
+    # Require logits if: not pt/sft stage, OR sft_train_accuracy is enabled (needs logits for accuracy computation)
+    require_logits = (finetuning_args.stage not in ["pt", "sft"]) or getattr(finetuning_args, "sft_train_accuracy", False)
+    apply_liger_kernel(config, model_args, is_trainable, require_logits=require_logits)
 
     model = None
     lazy_load = False
@@ -211,7 +213,8 @@ def load_model(
         from .model_utils.binary_classifier import ModelForBinaryClassification, load_cls_head_params
 
         hidden_size = model.config.hidden_size
-        model = ModelForBinaryClassification(model, hidden_size)
+        add_rating_head = getattr(finetuning_args, "add_predict_ratings", False)
+        model = ModelForBinaryClassification(model, hidden_size, add_rating_head=add_rating_head)
 
         # Load classifier head weights if resuming
         if model_args.adapter_name_or_path is not None:
@@ -221,6 +224,7 @@ def load_model(
 
         cls_head_params = load_cls_head_params(cls_head_path, model_args)
         if cls_head_params is not None:
+            # strict=False handles missing rating_head.* keys when loading old checkpoints
             model.load_state_dict(cls_head_params, strict=False)
             logger.info_rank0(f"Loaded classifier head from checkpoint: {cls_head_path}")
 

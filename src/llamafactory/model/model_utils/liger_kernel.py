@@ -33,7 +33,9 @@ def apply_liger_kernel(
     is_trainable: bool,
     require_logits: bool,
 ) -> None:
-    if not is_trainable or not model_args.enable_liger_kernel:
+    # Allow Liger kernel for both training and inference (fused ops help with memory)
+    # For inference, require_logits=True ensures we don't use fused_linear_cross_entropy
+    if not model_args.enable_liger_kernel:
         return
 
     model_type = getattr(config, "model_type", None)

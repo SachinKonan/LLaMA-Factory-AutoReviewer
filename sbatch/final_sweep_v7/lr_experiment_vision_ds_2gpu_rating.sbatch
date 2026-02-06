@@ -1,13 +1,18 @@
 #!/bin/bash
-#SBATCH --job-name=lr_exp_vision
-#SBATCH --time=24:00:00
-#SBATCH --cpus-per-task=10
+#SBATCH --job-name=lr_exp_vision_rating
+#SBATCH --time=36:00:00
+#SBATCH --cpus-per-task=20
 #SBATCH --mem=350G
 #SBATCH --gres=gpu:2
 #SBATCH --partition=ailab
-#SBATCH --array=0-2
 #SBATCH --output=logs/lr_experiment_v7/%A_%a.out
 #SBATCH --error=logs/lr_experiment_v7/%A_%a.err
+#SBATCH --array=0-1
+
+# Vision training on 2 GPUs with head_lr=2e-5, backbone_lr=2e-6, batch size 16, 3 epochs
+# Multi-task learning: binary classification + pct_rating prediction
+# Array job: 0=trainagreeing, 1=balanced (both exclude 2024)
+# Use: sbatch --array=1 to run only balanced
 
 set -e
 cd /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer
@@ -15,43 +20,55 @@ source .venv/bin/activate
 export TRANSFORMERS_OFFLINE=1
 export WANDB_DISABLED=true
 
-# LR Configurations
-# Index 0: LR=2e-5 (both backbone and head)
-# Index 1: LR=2e-6 (both backbone and head)
-# Index 2: LR=2e-5 (head), 2e-6 (backbone) - separate LRs
-LR_CONFIGS=(
-    "2e-5 none lr_2e5"              # Index 0: uniform 2e-5
-    "2e-6 none lr_2e6"              # Index 1: uniform 2e-6
-    "2e-5 2e-6 lr_2e5_backbone_2e6" # Index 2: separate LRs
-)
-
-read HEAD_LR BACKBONE_LR SHORT_NAME <<< "${LR_CONFIGS[$SLURM_ARRAY_TASK_ID]}"
-
-# Model and dataset configuration
+# Model configuration
 MODEL="Qwen/Qwen2.5-VL-7B-Instruct"
-DATASET="iclr_2020_2023_2025_85_5_10_split7_balanced_trainagreeing_vision_binary_noreviews_v7"
 TEMPLATE="qwen2_vl"
 CUTOFF_LEN=24480
 IMAGE_MIN_PIXELS=784
 IMAGE_MAX_PIXELS=1003520
 
-# Batch configuration: 2 GPUs, per_device=4, grad_accum=2 → batch = 4*2*2 = 16
+# Training configuration (head_lr=2e-5, backbone_lr=2e-6)
+HEAD_LEARNING_RATE="2e-5"
+BACKBONE_LEARNING_RATE="2e-6"
+WEIGHT_DECAY=0.015
+LABEL_SMOOTHING_EPS=0.05
+NUM_EPOCHS=4
+
+# Multi-task learning configuration
+ADD_PREDICT_RATINGS=true
+RATING_LOSS_WEIGHT=0.1
+
+# Batch configuration: 2 GPUs, per_device=2, grad_accum=4 → batch = 2*2*4 = 16
 PER_DEVICE_BATCH=2
 GRAD_ACCUM=4
 NUM_GPUS=2
 
+# Dataset selection based on array task ID
+if [ $SLURM_ARRAY_TASK_ID -eq 0 ]; then
+    DATASET="iclr_2020_2023_2025_85_5_10_split7_balanced_trainagreeing_vision_binary_noreviews_v7"
+    SHORT_NAME="trainagreeing_no2024_head2e5_bb2e6_bs16_3epoch_rating"
+else
+    DATASET="iclr_2020_2023_2025_85_5_10_split7_balanced_vision_binary_noreviews_v7"
+    SHORT_NAME="balanced_no2024_head2e5_bb2e6_bs16_3epoch_rating"
+fi
+
 # Output directories
-MODEL_DIR="saves/lr_experiment_v7/vision_trainagreeing_${SHORT_NAME}"
-RESULTS_DIR="results/lr_experiment_v7/vision_trainagreeing_${SHORT_NAME}"
-MASTER_PORT=$((29700 + SLURM_ARRAY_TASK_ID))
+MODEL_DIR="saves/lr_experiment_v7/vision_${SHORT_NAME}"
+RESULTS_DIR="results/lr_experiment_v7/vision_${SHORT_NAME}"
+MASTER_PORT=$((29701 + SLURM_ARRAY_TASK_ID))
 
 echo "=============================================="
-echo "Job: $SLURM_JOB_ID, Task: $SLURM_ARRAY_TASK_ID"
+echo "Job: $SLURM_JOB_ID, Array Task: $SLURM_ARRAY_TASK_ID"
 echo "Model: ${MODEL}"
 echo "Dataset: ${DATASET}"
-echo "Short Name: ${SHORT_NAME}"
-echo "Learning Rates: head=${HEAD_LR}, backbone=${BACKBONE_LR}"
-echo "GPUs: ${NUM_GPUS} (H200), per_device: ${PER_DEVICE_BATCH}, grad_accum: ${GRAD_ACCUM}"
+echo "Head Learning Rate: ${HEAD_LEARNING_RATE}"
+echo "Backbone Learning Rate: ${BACKBONE_LEARNING_RATE}"
+echo "Weight Decay: ${WEIGHT_DECAY}"
+echo "Label Smoothing Eps: ${LABEL_SMOOTHING_EPS}"
+echo "Epochs: ${NUM_EPOCHS}"
+echo "Add Predict Ratings: ${ADD_PREDICT_RATINGS}"
+echo "Rating Loss Weight: ${RATING_LOSS_WEIGHT}"
+echo "GPUs: ${NUM_GPUS}, per_device: ${PER_DEVICE_BATCH}, grad_accum: ${GRAD_ACCUM}"
 echo "Effective batch: $((PER_DEVICE_BATCH * NUM_GPUS * GRAD_ACCUM))"
 echo "Cutoff len: ${CUTOFF_LEN}"
 echo "Image pixels: min=${IMAGE_MIN_PIXELS}, max=${IMAGE_MAX_PIXELS}"
@@ -62,11 +79,10 @@ echo "=============================================="
 mkdir -p logs/lr_experiment_v7 "${MODEL_DIR}" "${RESULTS_DIR}"
 
 echo ""
-echo "=== CLS VISION TRAINING + PREDICT ==="
+echo "=== CLS VISION TRAINING + RATING PREDICTION ==="
 echo ""
 
-# Build the command with conditional cls_backbone_learning_rate flag
-CMD="accelerate launch \
+accelerate launch \
     --config_file configs/fsdp2_2gpu_config.yaml \
     --main_process_port ${MASTER_PORT} \
     src/train.py \
@@ -83,22 +99,20 @@ CMD="accelerate launch \
     --per_device_train_batch_size ${PER_DEVICE_BATCH} \
     --per_device_eval_batch_size ${PER_DEVICE_BATCH} \
     --gradient_accumulation_steps ${GRAD_ACCUM} \
-    --learning_rate ${HEAD_LR}"
-
-# Add backbone learning rate only if not "none"
-if [ "$BACKBONE_LR" != "none" ]; then
-    CMD="$CMD --cls_backbone_learning_rate ${BACKBONE_LR}"
-fi
-
-# Continue with remaining arguments
-CMD="$CMD \
-    --num_train_epochs 6.0 \
+    --learning_rate ${HEAD_LEARNING_RATE} \
+    --cls_backbone_learning_rate ${BACKBONE_LEARNING_RATE} \
+    --weight_decay ${WEIGHT_DECAY} \
+    --label_smoothing_eps ${LABEL_SMOOTHING_EPS} \
+    --add_predict_ratings ${ADD_PREDICT_RATINGS} \
+    --rating_loss_weight ${RATING_LOSS_WEIGHT} \
+    --num_train_epochs ${NUM_EPOCHS} \
     --lr_scheduler_type cosine \
     --warmup_steps 5 \
     --logging_steps 10 \
     --save_strategy epoch \
     --save_total_limit 3 \
     --eval_strategy epoch \
+    --eval_on_start true \
     --bf16 true \
     --report_to none \
     --do_train \
@@ -112,12 +126,9 @@ CMD="$CMD \
     --ddp_timeout 180000000 \
     --media_dir /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/data/images \
     --preprocessing_num_workers 16 \
-    --dataloader_num_workers 4"
-
-# Execute the command
-eval $CMD
+    --dataloader_num_workers 4
 
 echo ""
 echo "=============================================="
-echo "COMPLETED: vision_trainagreeing_${SHORT_NAME}"
+echo "COMPLETED: vision_${SHORT_NAME}"
 echo "=============================================="

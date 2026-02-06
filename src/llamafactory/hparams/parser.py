@@ -466,6 +466,15 @@ def get_train_args(args: dict[str, Any] | list[str] | None = None) -> _TRAIN_CLS
     model_args.block_diag_attn = data_args.neat_packing
     data_args.packing = data_args.packing if data_args.packing is not None else finetuning_args.stage == "pt"
 
+    # Auto-add think token to special tokens if think_num_tokens > 0
+    if data_args.think_num_tokens > 0:
+        think_token = data_args.think_token
+        if model_args.add_special_tokens is None:
+            model_args.add_special_tokens = [think_token]
+        elif think_token not in model_args.add_special_tokens:
+            model_args.add_special_tokens.append(think_token)
+        logger.info_rank0(f"Think tokens enabled: {data_args.think_num_tokens} x '{think_token}' at '{data_args.think_token_placement}'")
+
     # Log on each process the small summary
     logger.info(
         f"Process rank: {training_args.process_index}, "

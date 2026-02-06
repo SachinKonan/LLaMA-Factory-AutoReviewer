@@ -1,75 +1,59 @@
 #!/bin/bash
-#SBATCH --job-name=v7_vision
-#SBATCH --time=40:00:00
+#SBATCH --job-name=v7_think_tokens
+#SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=10
-#SBATCH --mem=350G
-#SBATCH --gres=gpu:2
-#SBATCH --partition=ailab
-#SBATCH --array=0-6
-#SBATCH --output=logs/final_sweep_v7/%A_%a.out
-#SBATCH --error=logs/final_sweep_v7/%A_%a.err
+#SBATCH --mem=300G
+#SBATCH --gres=gpu:4
+#SBATCH --partition=pli
+#SBATCH --account=llm_explore
+#SBATCH --array=0-5
+#SBATCH --output=logs/final_sweep_v7_pli/%A_%a.out
+#SBATCH --error=logs/final_sweep_v7_pli/%A_%a.err
 
 set -e
 cd /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer
 source .venv/bin/activate
 export TRANSFORMERS_OFFLINE=1
 
-# 7 vision v7 datasets (last one uses lr=1e-6 instead of default 2e-6)
-CONFIGS=(
-    "iclr_2020_2025_85_5_10_split7_balanced_vision_binary_noreviews_v7 balanced_vision"
-    "iclr_2020_2025_85_5_10_split7_balanced_trainagreeing_vision_binary_noreviews_v7 balanced_trainagreeing_vision"
-    "iclr_2024_2025_85_5_10_split7_balanced_vision_binary_noreviews_v7 balanced_2024_2025_vision"
-    "iclr_2017_2025_85_5_10_split7_balanced_vision_binary_noreviews_v7 balanced_2017_2025_vision"
-    "iclr_2020_2023_2025_85_5_10_split7_balanced_vision_binary_noreviews_v7 balanced_no2024_vision"
-    "iclr_2020_2023_2025_85_5_10_split7_balanced_trainagreeing_vision_binary_noreviews_v7 balanced_trainagreeing_no2024_vision_lr2e-6_10epoch"
-    "iclr_2020_2023_2025_85_5_10_split7_balanced_trainagreeing_vision_binary_noreviews_v7 balanced_trainagreeing_no2024_vision_lr1e-6"
-)
+# 6 think token configurations: (1, 10, 100) x (input, label)
+THINK_NUM_TOKENS=(10 10 100 100 1000 1000)
+THINK_PLACEMENTS=("input" "label" "input" "label" "input" "label")
 
-read DATASET SHORT_NAME <<< "${CONFIGS[$SLURM_ARRAY_TASK_ID]}"
+NUM_TOKENS=${THINK_NUM_TOKENS[$SLURM_ARRAY_TASK_ID]}
+PLACEMENT=${THINK_PLACEMENTS[$SLURM_ARRAY_TASK_ID]}
+
+DATASET="iclr_2020_2023_2025_85_5_10_split7_balanced_trainagreeing_vision_binary_noreviews_v7"
+SHORT_NAME="trainagreeing_vision_think${NUM_TOKENS}_${PLACEMENT}"
 
 CONFIG_FILE="configs/final_sweep_v7_vision.yaml"
-
-# Override learning rate for lr1e-6 config
-if [[ "$SHORT_NAME" == *"lr1e-6"* ]]; then
-    LR_OVERRIDE="1e-6"
-else
-    LR_OVERRIDE=""
-fi
-
-# Override epochs for 10epoch config
-if [[ "$SHORT_NAME" == *"10epoch"* ]]; then
-    EPOCH_OVERRIDE="10"
-else
-    EPOCH_OVERRIDE=""
-fi
 TEMPLATE="qwen2_vl"
-CUTOFF_LEN=24480
+CUTOFF_LEN=26480
 IMAGE_MIN_PIXELS=784
 IMAGE_MAX_PIXELS=1003520
 
-# 2 H200 GPUs, per_device=2, grad_accum=4 → batch = 2*2*4 = 16
-PER_DEVICE_BATCH=2
+# 4 H100 GPUs, per_device=2, grad_accum=2 → batch = 2*4*2 = 16
+PER_DEVICE_BATCH=1
 GRAD_ACCUM=4
-NUM_GPUS=2
+NUM_GPUS=4
 
-MODEL_DIR="saves/final_sweep_v7/${SHORT_NAME}"
-RESULTS_DIR="results/final_sweep_v7/${SHORT_NAME}"
+MODEL_DIR="saves/final_sweep_v7_pli/${SHORT_NAME}"
+RESULTS_DIR="results/final_sweep_v7_pli/${SHORT_NAME}"
 MASTER_PORT=$((29700 + SLURM_ARRAY_TASK_ID))
 
 echo "=============================================="
 echo "Job: $SLURM_JOB_ID, Task: $SLURM_ARRAY_TASK_ID"
 echo "Dataset: ${DATASET}"
 echo "Short Name: ${SHORT_NAME}"
+echo "Think Tokens: ${NUM_TOKENS}"
+echo "Think Placement: ${PLACEMENT}"
 echo "GPUs: ${NUM_GPUS} (H200), per_device: ${PER_DEVICE_BATCH}, grad_accum: ${GRAD_ACCUM}"
 echo "Effective batch: $((PER_DEVICE_BATCH * NUM_GPUS * GRAD_ACCUM))"
 echo "Cutoff len: ${CUTOFF_LEN}"
 echo "Config: ${CONFIG_FILE}"
-echo "LR Override: ${LR_OVERRIDE:-none (using config default 2e-6)}"
-echo "Epoch Override: ${EPOCH_OVERRIDE:-none (using config default 6)}"
 echo "Model Dir: ${MODEL_DIR}"
 echo "=============================================="
 
-mkdir -p logs/final_sweep_v7 "${MODEL_DIR}" "${RESULTS_DIR}"
+mkdir -p logs/final_sweep_v7_pli "${MODEL_DIR}" "${RESULTS_DIR}"
 
 # ======================
 # Start auto-inference watcher in background
@@ -83,6 +67,7 @@ python scripts/auto_infer_watcher.py \
     --max_new_tokens 1280 \
     --image_min_pixels "${IMAGE_MIN_PIXELS}" \
     --image_max_pixels "${IMAGE_MAX_PIXELS}" \
+    --compute_train_accuracy \
     --poll_interval 60 &
 AUTO_INFER_PID=$!
 echo "Started auto-inference watcher (PID: ${AUTO_INFER_PID})"
@@ -95,7 +80,7 @@ echo "=== PHASE 1: TRAINING ==="
 echo ""
 
 accelerate launch \
-    --config_file configs/fsdp2_2gpu_config.yaml \
+    --config_file configs/fsdp2_4gpu_config.yaml \
     --main_process_port "${MASTER_PORT}" \
     src/train.py "${CONFIG_FILE}" \
     dataset="${DATASET}_train" \
@@ -104,12 +89,8 @@ accelerate launch \
     per_device_train_batch_size="${PER_DEVICE_BATCH}" \
     gradient_accumulation_steps="${GRAD_ACCUM}" \
     cutoff_len="${CUTOFF_LEN}" \
-    sft_train_accuracy=true \
-    sft_train_accuracy_format=boxed \
-    sft_positive_token=Accept \
-    sft_negative_token=Reject \
-    ${LR_OVERRIDE:+learning_rate="${LR_OVERRIDE}"} \
-    ${EPOCH_OVERRIDE:+num_train_epochs="${EPOCH_OVERRIDE}"}
+    think_num_tokens="${NUM_TOKENS}" \
+    think_token_placement="${PLACEMENT}"
 
 echo ""
 echo "=== Training complete! ==="

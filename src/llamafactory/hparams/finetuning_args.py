@@ -551,6 +551,24 @@ class FinetuningArguments(
             )
         },
     )
+    label_smoothing_eps: float = field(
+        default=0.0,
+        metadata={
+            "help": (
+                "Label smoothing epsilon for binary classification. "
+                "Transforms labels: 0 → eps, 1 → 1-eps. "
+                "Common value: 0.05 (labels become 0.05 and 0.95). Default: 0.0 (disabled)."
+            )
+        },
+    )
+    add_predict_ratings: bool = field(
+        default=False,
+        metadata={"help": "Add secondary head for pct_rating prediction. Only for stage=cls."},
+    )
+    rating_loss_weight: float = field(
+        default=0.1,
+        metadata={"help": "Weight for rating SmoothL1 loss. Total = BCE + weight * SmoothL1."},
+    )
     finetuning_type: Literal["lora", "oft", "freeze", "full"] = field(
         default="lora",
         metadata={"help": "Which fine-tuning method to use."},
@@ -596,6 +614,22 @@ class FinetuningArguments(
         default=False,
         metadata={"help": "Whether or not to compute the token-level accuracy at evaluation."},
     )
+    sft_train_accuracy: bool = field(
+        default=False,
+        metadata={"help": "Whether to compute classification accuracy during SFT training."},
+    )
+    sft_train_accuracy_format: Literal["boxed", "yesno"] = field(
+        default="boxed",
+        metadata={"help": "Output format for SFT train accuracy: 'boxed' for \\boxed{Accept/Reject}, 'yesno' for Y/N."},
+    )
+    sft_positive_token: str = field(
+        default="Accept",
+        metadata={"help": "Token/word indicating positive class in SFT train accuracy (e.g., 'Accept' or 'Y')."},
+    )
+    sft_negative_token: str = field(
+        default="Reject",
+        metadata={"help": "Token/word indicating negative class in SFT train accuracy (e.g., 'Reject' or 'N')."},
+    )
     disable_shuffling: bool = field(
         default=False,
         metadata={"help": "Whether or not to disable the shuffling of the training set."},
@@ -612,7 +646,6 @@ class FinetuningArguments(
         default=False,
         metadata={"help": "Whether or not to compute effective tokens per second."},
     )
-
     def __post_init__(self):
         def split_arg(arg):
             if isinstance(arg, str):
@@ -659,6 +692,12 @@ class FinetuningArguments(
 
         if self.stage != "cls" and self.cls_backbone_learning_rate is not None:
             raise ValueError("`cls_backbone_learning_rate` is only valid for classification stage (stage=cls).")
+
+        if not (0 <= self.label_smoothing_eps < 0.5):
+            raise ValueError("`label_smoothing_eps` must be in the range [0, 0.5).")
+
+        if self.add_predict_ratings and self.stage != "cls":
+            raise ValueError("`add_predict_ratings` is only valid for stage=cls.")
 
         if self.finetuning_type != "lora":
             if self.loraplus_lr_ratio is not None:

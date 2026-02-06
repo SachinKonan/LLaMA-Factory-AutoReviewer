@@ -16,8 +16,9 @@ import json
 import os
 from collections import defaultdict
 from types import MethodType
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Optional, Tuple, Union
 
+import numpy as np
 import torch
 from transformers import Trainer
 from typing_extensions import override
@@ -89,23 +90,47 @@ class BinaryClassificationTrainer(Trainer):
     ) -> Union["torch.Tensor", tuple["torch.Tensor", list["torch.Tensor"]]]:
         r"""Compute binary classification loss using BCE, with accuracy tracking."""
         labels = inputs.pop("labels")  # Binary labels (0 or 1)
+        ratings = inputs.pop("ratings", None)  # Rating values for multi-task learning
         inputs.pop("_metadata", None)  # Remove metadata before forward (not needed by model)
 
-        # Forward pass - model returns {"loss": loss, "logits": logits}
-        outputs = model(**inputs, labels=labels)
+        # Store original binary labels for accuracy computation before smoothing
+        original_labels = labels
+
+        # Apply label smoothing if configured
+        # Transforms: 0 → eps, 1 → 1-eps
+        eps = self.finetuning_args.label_smoothing_eps
+        if eps > 0:
+            labels = labels.float() * (1 - 2 * eps) + eps
+
+        # Build forward kwargs
+        forward_kwargs = {"labels": labels}
+        if self.finetuning_args.add_predict_ratings and ratings is not None:
+            forward_kwargs["ratings"] = ratings
+            forward_kwargs["rating_loss_weight"] = self.finetuning_args.rating_loss_weight
+
+        # Forward pass - model returns {"loss": loss, "logits": logits, ...}
+        outputs = model(**inputs, **forward_kwargs)
         loss = outputs["loss"]
         logits = outputs["logits"]
 
-        # Compute and store accuracy for logging
+        # Compute and store accuracy for logging (use original binary labels)
         with torch.no_grad():
             probs = torch.sigmoid(logits)
             preds = (probs > 0.5).long()
-            accuracy = (preds == labels.long()).float().mean()
+            accuracy = (preds == original_labels.long()).float().mean()
 
         # Store metrics for aggregation in log() method (keep on device for gather)
         train_eval = "train" if model.training else "eval"
         prefix = "eval_" if train_eval == "eval" else ""
         self._stored_metrics[train_eval][f"{prefix}accuracy"].append(accuracy.detach())
+        self._stored_metrics[train_eval][f"{prefix}cls_loss"].append(loss.detach())
+
+        # Store component losses when using multi-task learning
+        if self.finetuning_args.add_predict_ratings:
+            if outputs.get("loss_bce") is not None:
+                self._stored_metrics[train_eval][f"{prefix}loss_bce"].append(outputs["loss_bce"].detach())
+            if outputs.get("loss_rating") is not None:
+                self._stored_metrics[train_eval][f"{prefix}loss_rating"].append(outputs["loss_rating"].detach())
 
         if return_outputs:
             return loss, (loss, logits, labels)
@@ -139,6 +164,34 @@ class BinaryClassificationTrainer(Trainer):
         # Call parent to actually write logs
         super().log(logs, start_time)
 
+    @override
+    def prediction_step(
+        self,
+        model: "PreTrainedModel",
+        inputs: dict[str, "torch.Tensor"],
+        prediction_loss_only: bool,
+        ignore_keys: Optional[list[str]] = None,
+    ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
+        r"""Override to capture both decision logits and rating logits."""
+        labels = inputs.pop("labels")
+        inputs.pop("ratings", None)  # Don't need ratings for prediction
+        inputs.pop("_metadata", None)
+
+        with torch.no_grad():
+            outputs = model(**inputs)
+            logits = outputs["logits"]
+            rating_logits = outputs.get("rating_logits")
+
+            # Stack decision and rating logits if rating head exists
+            if rating_logits is not None:
+                # Shape: [batch, 2] where [:, 0] = decision, [:, 1] = rating
+                logits = torch.stack([logits, rating_logits], dim=-1)
+
+        if prediction_loss_only:
+            return (None, None, None)
+
+        return (None, logits, labels)
+
     def save_predictions(self, predict_results: "PredictionOutput") -> None:
         r"""Save model predictions to `predictions_dir` (or `output_dir` if not set)."""
         if not self.is_world_process_zero():
@@ -149,7 +202,18 @@ class BinaryClassificationTrainer(Trainer):
         os.makedirs(predictions_dir, exist_ok=True)
         output_prediction_file = os.path.join(predictions_dir, "generated_predictions.jsonl")
         logger.info_rank0(f"Saving prediction results to {output_prediction_file}")
-        logits, labels = predict_results.predictions
+
+        predictions = predict_results.predictions
+        labels = predict_results.label_ids
+
+        # Check if predictions include rating logits (shape: [N, 2])
+        has_rating = predictions.ndim == 2 and predictions.shape[1] == 2
+        if has_rating:
+            decision_logits = predictions[:, 0]
+            rating_logits = predictions[:, 1]
+        else:
+            decision_logits = predictions
+            rating_logits = None
 
         # Get metadata from eval_dataset if available (predictions are in order)
         metadata_list = None
@@ -157,10 +221,13 @@ class BinaryClassificationTrainer(Trainer):
             if "_metadata" in self.eval_dataset.column_names:
                 metadata_list = self.eval_dataset["_metadata"]
 
+        def sigmoid(x):
+            return 1 / (1 + np.exp(-x))
+
         with open(output_prediction_file, "w", encoding="utf-8") as writer:
             res: list[str] = []
-            for i, (logit, label) in enumerate(zip(logits, labels)):
-                prob = 1 / (1 + float(torch.exp(torch.tensor(-logit))))  # sigmoid
+            for i, (logit, label) in enumerate(zip(decision_logits, labels)):
+                prob = sigmoid(float(logit))
                 pred = 1 if prob > 0.5 else 0
                 result = {
                     "logit": round(float(logit), 4),
@@ -168,6 +235,11 @@ class BinaryClassificationTrainer(Trainer):
                     "pred": pred,
                     "label": int(label)
                 }
+                # Add predicted rating if available (sigmoid applied)
+                if rating_logits is not None:
+                    rating_pred = sigmoid(float(rating_logits[i]))
+                    result["rating_logit"] = round(float(rating_logits[i]), 4)
+                    result["rating_pred"] = round(rating_pred, 4)
                 # Add metadata if available
                 if metadata_list is not None and i < len(metadata_list):
                     result["_metadata"] = metadata_list[i]

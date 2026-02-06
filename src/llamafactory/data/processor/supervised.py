@@ -49,12 +49,15 @@ class SupervisedDatasetProcessor(DatasetProcessor):
         if self.data_args.mask_history:
             encoded_pairs = encoded_pairs[::-1]  # high priority for last turns
 
+        # Calculate extra space needed for think tokens
+        think_extra = getattr(self.data_args, 'think_num_tokens', 0)
+
         for turn_idx, (source_ids, target_ids) in enumerate(encoded_pairs):
             if total_length >= self.data_args.cutoff_len:
                 break
 
             source_len, target_len = infer_seqlen(
-                len(source_ids), len(target_ids), self.data_args.cutoff_len - total_length
+                len(source_ids), len(target_ids), self.data_args.cutoff_len - total_length - think_extra
             )
             source_ids = source_ids[:source_len]
             target_ids = target_ids[:target_len]
@@ -71,6 +74,25 @@ class SupervisedDatasetProcessor(DatasetProcessor):
                 target_label = [IGNORE_INDEX] * target_len
             else:
                 target_label = target_ids
+
+            # Inject think tokens if enabled
+            if think_extra > 0:
+                think_token_id = self.tokenizer.convert_tokens_to_ids(self.data_args.think_token)
+                if think_token_id != self.tokenizer.unk_token_id:
+                    think_ids = [think_token_id] * think_extra
+
+                    if self.data_args.think_token_placement == "input":
+                        # Add to end of source (input), masked for loss
+                        source_ids = source_ids + think_ids
+                        source_label = source_label + [IGNORE_INDEX] * think_extra
+                    else:  # "label" placement
+                        # Add to start of target (response), trained on
+                        target_ids = think_ids + target_ids
+                        target_label = think_ids + target_label
+
+                    total_length += think_extra
+                    # Only inject think tokens once (for the last turn in single-turn, or handle appropriately)
+                    think_extra = 0  # Reset to avoid injecting multiple times in multi-turn
 
             if self.data_args.mask_history:  # reversed sequences
                 input_ids = source_ids + target_ids + input_ids

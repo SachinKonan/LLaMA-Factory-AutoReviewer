@@ -36,14 +36,22 @@ class ModelForBinaryClassification(nn.Module):
     All parameters created in __init__ for FSDP2 compatibility.
     """
 
-    def __init__(self, backbone: nn.Module, hidden_size: int):
+    def __init__(self, backbone: nn.Module, hidden_size: int, add_rating_head: bool = False):
         super().__init__()
         self.backbone = backbone
-        self.classifier = nn.Sequential(
+        self.add_rating_head = add_rating_head
+
+        # Shared feature layer
+        self.shared_layer = nn.Sequential(
             nn.Linear(hidden_size, hidden_size),
             nn.GELU(),
-            nn.Linear(hidden_size, 1),
         )
+        # Decision head
+        self.decision_head = nn.Linear(hidden_size, 1)
+        # Optional rating head
+        if add_rating_head:
+            self.rating_head = nn.Linear(hidden_size, 1)
+
         # For compatibility with save/load patterns
         self._keys_to_ignore_on_save = None
 
@@ -52,6 +60,8 @@ class ModelForBinaryClassification(nn.Module):
         input_ids: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
+        ratings: Optional[torch.Tensor] = None,
+        rating_loss_weight: float = 0.1,
         **kwargs
     ):
         # Forward through backbone - pass all kwargs for multimodal support
@@ -79,15 +89,43 @@ class ModelForBinaryClassification(nn.Module):
         else:
             pooled = hidden_states[:, -1, :]
 
-        logits = self.classifier(pooled).squeeze(-1)  # [B]
+        # Shared features
+        features = self.shared_layer(pooled)
 
-        loss = None
+        # Decision logits
+        decision_logits = self.decision_head(features).squeeze(-1)  # [B]
+
+        # Rating logits (optional)
+        rating_logits = None
+        if self.add_rating_head:
+            rating_logits = self.rating_head(features).squeeze(-1)
+
+        # Compute losses
+        loss = loss_bce = loss_rating = None
         if labels is not None:
-            loss = nn.functional.binary_cross_entropy_with_logits(
-                logits.float(), labels.float()
+            loss_bce = nn.functional.binary_cross_entropy_with_logits(
+                decision_logits.float(), labels.float()
             )
+            loss = loss_bce
 
-        return {"loss": loss, "logits": logits}
+            if self.add_rating_head and ratings is not None:
+                # Mask invalid ratings (sentinel -1.0)
+                valid_mask = ratings >= 0
+                if valid_mask.any():
+                    # Use raw logits during training (no sigmoid) - more efficient
+                    # SmoothL1 with beta=0.1: quadratic for errors <10%, linear for larger
+                    loss_rating = nn.functional.smooth_l1_loss(
+                        rating_logits[valid_mask], ratings[valid_mask], beta=0.1
+                    )
+                    loss = loss_bce + rating_loss_weight * loss_rating
+
+        return {
+            "loss": loss,
+            "logits": decision_logits,
+            "rating_logits": rating_logits,
+            "loss_bce": loss_bce,
+            "loss_rating": loss_rating,
+        }
 
     # Forward properties/methods to backbone for compatibility
     @property
@@ -134,26 +172,40 @@ class ModelForBinaryClassification(nn.Module):
 def load_cls_head_params(path_or_repo_id: str, model_args: "ModelArguments") -> Optional[dict[str, torch.Tensor]]:
     """Load classifier head parameters from checkpoint.
 
-    Returns: dict with keys `classifier.0.weight`, `classifier.0.bias`, `classifier.2.weight`, `classifier.2.bias`.
+    Returns: dict with keys for shared_layer and decision_head (or old classifier.* keys).
+    Handles backward compatibility by mapping old key names to new structure.
     """
     kwargs = {"path_or_repo_id": path_or_repo_id, "cache_dir": model_args.cache_dir, "token": model_args.hf_hub_token}
     err_text = ""
+    params = None
 
     try:
         from safetensors import safe_open
 
         cls_file = cached_file(filename=CLS_HEAD_SAFE_WEIGHTS_NAME, **kwargs)
         with safe_open(cls_file, framework="pt", device="cpu") as f:
-            return {key: f.get_tensor(key) for key in f.keys()}
+            params = {key: f.get_tensor(key) for key in f.keys()}
     except Exception as err:
         err_text = str(err)
 
-    try:
-        cls_file = cached_file(filename=CLS_HEAD_WEIGHTS_NAME, **kwargs)
-        return torch.load(cls_file, map_location="cpu", weights_only=True)
-    except Exception as err:
-        err_text = str(err)
+    if params is None:
+        try:
+            cls_file = cached_file(filename=CLS_HEAD_WEIGHTS_NAME, **kwargs)
+            params = torch.load(cls_file, map_location="cpu", weights_only=True)
+        except Exception as err:
+            err_text = str(err)
 
-    logger.info_rank0(f"Provided path ({path_or_repo_id}) does not contain classifier head weights: {err_text}.")
-    logger.info_rank0("Ignore the above message if you are training from scratch.")
-    return None
+    if params is None:
+        logger.info_rank0(f"Provided path ({path_or_repo_id}) does not contain classifier head weights: {err_text}.")
+        logger.info_rank0("Ignore the above message if you are training from scratch.")
+        return None
+
+    # Handle old checkpoint format (classifier.0.*, classifier.2.*)
+    # Map to new format (shared_layer.0.*, decision_head.*)
+    if "classifier.0.weight" in params:
+        params["shared_layer.0.weight"] = params.pop("classifier.0.weight")
+        params["shared_layer.0.bias"] = params.pop("classifier.0.bias")
+        params["decision_head.weight"] = params.pop("classifier.2.weight")
+        params["decision_head.bias"] = params.pop("classifier.2.bias")
+
+    return params

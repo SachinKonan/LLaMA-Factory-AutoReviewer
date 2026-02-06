@@ -31,6 +31,7 @@ from ...extras.packages import is_transformers_version_greater_than
 from ..callbacks import SaveProcessorCallback
 from ..fp8_utils import configure_fp8_environment, patch_accelerator_for_fp8, verify_fp8_status
 from ..trainer_utils import create_custom_optimizer, create_custom_scheduler
+from .train_accuracy import TrainAccuracyTracker, create_output_format_handler
 
 
 if TYPE_CHECKING:
@@ -91,6 +92,21 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
         if training_args.fp8 and hasattr(self, "accelerator"): # verify FP8 status after trainer initialization
             verify_fp8_status(self.accelerator, training_args)
 
+        # Initialize train accuracy tracker if enabled
+        self._train_accuracy_tracker = None
+        if finetuning_args.sft_train_accuracy:
+            handler = create_output_format_handler(
+                format_type=finetuning_args.sft_train_accuracy_format,
+                tokenizer=self.processing_class,
+                positive_token=finetuning_args.sft_positive_token,
+                negative_token=finetuning_args.sft_negative_token,
+            )
+            self._train_accuracy_tracker = TrainAccuracyTracker(handler)
+            logger.info_rank0(
+                f"SFT train accuracy tracking enabled with format '{finetuning_args.sft_train_accuracy_format}', "
+                f"positive='{finetuning_args.sft_positive_token}', negative='{finetuning_args.sft_negative_token}'"
+            )
+
     @override
     def create_optimizer(self) -> "torch.optim.Optimizer":
         if self.optimizer is None:
@@ -112,8 +128,86 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
         return super()._get_train_sampler(*args, **kwargs)
 
     @override
-    def compute_loss(self, model, inputs, *args, **kwargs):
-        return super().compute_loss(model, inputs, *args, **kwargs)
+    def compute_loss(
+        self,
+        model: "torch.nn.Module",
+        inputs: dict[str, Union["torch.Tensor", Any]],
+        return_outputs: bool = False,
+        **kwargs,
+    ) -> Union["torch.Tensor", tuple["torch.Tensor", Any]]:
+        # Store input_ids and labels BEFORE parent modifies inputs
+        input_ids_for_tracking = None
+        labels_for_tracking = None
+        if self._train_accuracy_tracker is not None:
+            input_ids_for_tracking = inputs.get("input_ids")
+            labels_for_tracking = inputs.get("labels")
+
+        # Compute loss using parent class
+        outputs = super().compute_loss(model, inputs, return_outputs=True, **kwargs)
+
+        if isinstance(outputs, tuple):
+            loss, model_outputs = outputs
+        else:
+            loss = outputs
+            model_outputs = None
+
+        # Track accuracy if enabled - use memory-efficient sliced logits approach
+        if self._train_accuracy_tracker is not None and model_outputs is not None:
+            with torch.no_grad():
+                logits = model_outputs.logits if hasattr(model_outputs, "logits") else model_outputs.get("logits") if isinstance(model_outputs, dict) else None
+                if logits is not None and input_ids_for_tracking is not None and labels_for_tracking is not None:
+                    # 1. Find decision positions FIRST (no logits needed, just labels)
+                    decision_positions = self._train_accuracy_tracker.handler.find_decision_positions(
+                        input_ids_for_tracking, labels_for_tracking
+                    )
+
+                    # 2. IMMEDIATELY slice logits at decision positions to save memory
+                    # logits: [B, S, V] → sliced_logits: [B, V]
+                    batch_indices = torch.arange(logits.size(0), device=logits.device)
+                    safe_positions = decision_positions.clamp(min=0)
+                    sliced_logits = logits[batch_indices, safe_positions, :]  # [B, V]
+
+                    # 3. Detach and move to CPU immediately to free GPU memory
+                    sliced_logits = sliced_logits.detach().cpu()
+                    decision_positions = decision_positions.detach().cpu()
+                    labels_cpu = labels_for_tracking.detach().cpu()
+
+                    # 4. Delete reference to full logits to allow GC before backward pass
+                    del logits
+                    if hasattr(model_outputs, "logits"):
+                        model_outputs.logits = None
+
+                    # 5. Track accuracy with sliced logits (on CPU)
+                    self._train_accuracy_tracker.update_from_sliced_logits(
+                        sliced_logits=sliced_logits,
+                        decision_positions=decision_positions,
+                        labels=labels_cpu,
+                        is_training=model.training,
+                    )
+
+        if return_outputs:
+            return loss, model_outputs
+        return loss
+
+    @override
+    def log(self, logs: dict[str, float], start_time: Optional[float] = None) -> None:
+        r"""Log metrics including aggregated SFT train accuracy metrics.
+
+        Aggregates stored batch metrics and adds them to logs before calling parent.
+        """
+        # Aggregate train accuracy metrics if tracker is enabled
+        if self._train_accuracy_tracker is not None:
+            # Determine phase based on what's in logs
+            train_eval = "train" if "loss" in logs else "eval"
+
+            if self._train_accuracy_tracker.has_metrics(train_eval):
+                accuracy_metrics = self._train_accuracy_tracker.aggregate_and_reset(
+                    train_eval, self.accelerator
+                )
+                logs.update(accuracy_metrics)
+
+        # Call parent to actually write logs
+        super().log(logs, start_time)
 
     @override
     def prediction_step(
@@ -124,11 +218,49 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
         ignore_keys: Optional[list[str]] = None,
         **gen_kwargs,
     ) -> tuple[Optional[float], Optional["torch.Tensor"], Optional["torch.Tensor"]]:
-        r"""Remove the prompt part in the generated tokens.
+        r"""Prediction step with optional SFT accuracy tracking.
 
-        Subclass and override to inject custom behavior.
+        When accuracy tracker is enabled and not generating:
+        - Just do forward pass to get logits (no loss computation)
+        - Track accuracy metrics from logits
         """
-        if self.args.predict_with_generate:  # do not pass labels to model when generate
+        # Fast path for accuracy tracking: just forward pass, no loss
+        if self._train_accuracy_tracker is not None and not self.args.predict_with_generate:
+            input_ids = inputs.get("input_ids")
+            labels = inputs.get("labels")
+
+            with torch.no_grad():
+                # 1. Find decision positions FIRST (no logits needed, just labels)
+                decision_positions = self._train_accuracy_tracker.handler.find_decision_positions(input_ids, labels)
+
+                # 2. Forward pass WITHOUT labels → no loss computation
+                inputs_no_labels = {k: v for k, v in inputs.items() if k != "labels"}
+                outputs = model(**inputs_no_labels)
+
+                # 3. IMMEDIATELY slice logits at decision positions to save memory
+                # logits: [B, S, V] → sliced_logits: [B, V]
+                logits = outputs.logits
+                batch_indices = torch.arange(logits.size(0), device=logits.device)
+                # Clamp positions to valid range (handle -1 for invalid samples)
+                safe_positions = decision_positions.clamp(min=0)
+                sliced_logits = logits[batch_indices, safe_positions, :]  # [B, V]
+
+                # 4. Delete full logits to free memory
+                del logits, outputs
+                torch.cuda.empty_cache()
+
+                # 5. Track accuracy with sliced logits
+                self._train_accuracy_tracker.update_from_sliced_logits(
+                    sliced_logits=sliced_logits,
+                    decision_positions=decision_positions,
+                    labels=labels,
+                    is_training=False,
+                )
+
+            return None, None, None
+
+        # Standard path: generation or no accuracy tracking
+        if self.args.predict_with_generate:
             labels = inputs.pop("labels", None)
         else:
             labels = inputs.get("labels")
@@ -136,6 +268,7 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
         loss, generated_tokens, _ = super().prediction_step(
             model, inputs, prediction_loss_only=prediction_loss_only, ignore_keys=ignore_keys, **gen_kwargs
         )
+
         if generated_tokens is not None and self.args.predict_with_generate:
             generated_tokens[:, : inputs["input_ids"].size(-1)] = self.processing_class.pad_token_id
             generated_tokens = generated_tokens.contiguous()

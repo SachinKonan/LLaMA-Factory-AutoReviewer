@@ -1,45 +1,40 @@
 #!/bin/bash
-#SBATCH --job-name=v7_text
+#SBATCH --job-name=v7_vision_train_yes_no
 #SBATCH --time=36:00:00
 #SBATCH --cpus-per-task=10
-#SBATCH --mem=200G
+#SBATCH --mem=350G
 #SBATCH --gres=gpu:2
 #SBATCH --partition=ailab
-#SBATCH --array=0-4
-#SBATCH --output=logs/final_sweep_v7/%A_%a.out
-#SBATCH --error=logs/final_sweep_v7/%A_%a.err
+#SBATCH --output=logs/final_sweep_v7/%A.out
+#SBATCH --error=logs/final_sweep_v7/%A.err
 
 set -e
 cd /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer
 source .venv/bin/activate
 export TRANSFORMERS_OFFLINE=1
 
-# 5 text-only v7 datasets
-CONFIGS=(
-    "iclr_2020_2025_85_5_10_split7_balanced_clean_binary_noreviews_v7 balanced_clean"
-    "iclr_2020_2025_85_5_10_split7_balanced_clean_title_abstract_binary_noreviews_v7 balanced_title_abstract"
-    "iclr_2020_2025_85_5_10_split7_balanced_trainagreeing_clean_binary_noreviews_v7 balanced_trainagreeing"
-    "iclr_2024_2025_85_5_10_split7_balanced_clean_binary_noreviews_v7 balanced_2024_2025"
-    "iclr_2017_2025_85_5_10_split7_balanced_clean_binary_noreviews_v7 balanced_2017_2025"
-)
+DATASET="iclr_2020_2023_2025_85_5_10_split7_balanced_trainagreeing_vision_binary_yesno_noreviews_v7"
+SHORT_NAME="balanced_trainagreeing_no2024_vision_yesno_trainacc"
 
-read DATASET SHORT_NAME <<< "${CONFIGS[$SLURM_ARRAY_TASK_ID]}"
+CONFIG_FILE="configs/final_sweep_v7_vision.yaml"
 
-CONFIG_FILE="configs/final_sweep_v7_clean.yaml"
-TEMPLATE="qwen"
+TEMPLATE="qwen2_vl"
 CUTOFF_LEN=24480
+IMAGE_MIN_PIXELS=784
+IMAGE_MAX_PIXELS=1003520
 
 # 2 H200 GPUs, per_device=2, grad_accum=4 → batch = 2*2*4 = 16
-PER_DEVICE_BATCH=2
-GRAD_ACCUM=4
+# Reduced batch size due to sft_train_accuracy memory overhead
+PER_DEVICE_BATCH=4
+GRAD_ACCUM=2
 NUM_GPUS=2
 
 MODEL_DIR="saves/final_sweep_v7/${SHORT_NAME}"
 RESULTS_DIR="results/final_sweep_v7/${SHORT_NAME}"
-MASTER_PORT=$((29700 + SLURM_ARRAY_TASK_ID))
+MASTER_PORT=29750
 
 echo "=============================================="
-echo "Job: $SLURM_JOB_ID, Task: $SLURM_ARRAY_TASK_ID"
+echo "Job: $SLURM_JOB_ID"
 echo "Dataset: ${DATASET}"
 echo "Short Name: ${SHORT_NAME}"
 echo "GPUs: ${NUM_GPUS} (H200), per_device: ${PER_DEVICE_BATCH}, grad_accum: ${GRAD_ACCUM}"
@@ -47,9 +42,28 @@ echo "Effective batch: $((PER_DEVICE_BATCH * NUM_GPUS * GRAD_ACCUM))"
 echo "Cutoff len: ${CUTOFF_LEN}"
 echo "Config: ${CONFIG_FILE}"
 echo "Model Dir: ${MODEL_DIR}"
+echo "Train Accuracy: ENABLED"
+echo "Epochs: 4"
 echo "=============================================="
 
 mkdir -p logs/final_sweep_v7 "${MODEL_DIR}" "${RESULTS_DIR}"
+
+# ======================
+# Start auto-inference watcher in background
+# ======================
+python scripts/auto_infer_watcher.py \
+    --save_dir "${MODEL_DIR}" \
+    --results_dir "${RESULTS_DIR}" \
+    --dataset "${DATASET}" \
+    --template "${TEMPLATE}" \
+    --cutoff_len "${CUTOFF_LEN}" \
+    --max_new_tokens 1280 \
+    --image_min_pixels "${IMAGE_MIN_PIXELS}" \
+    --image_max_pixels "${IMAGE_MAX_PIXELS}" \
+    --compute_train_accuracy \
+    --poll_interval 60 &
+AUTO_INFER_PID=$!
+echo "Started auto-inference watcher (PID: ${AUTO_INFER_PID})"
 
 # ======================
 # PHASE 1: TRAINING
@@ -67,7 +81,8 @@ accelerate launch \
     output_dir="${MODEL_DIR}" \
     per_device_train_batch_size="${PER_DEVICE_BATCH}" \
     gradient_accumulation_steps="${GRAD_ACCUM}" \
-    cutoff_len="${CUTOFF_LEN}"
+    cutoff_len="${CUTOFF_LEN}" \
+    num_train_epochs=4
 
 echo ""
 echo "=== Training complete! ==="
@@ -95,7 +110,12 @@ python scripts/vllm_infer.py \
     --template "${TEMPLATE}" \
     --cutoff_len "${CUTOFF_LEN}" \
     --max_new_tokens 1280 \
+    --image_min_pixels "${IMAGE_MIN_PIXELS}" \
+    --image_max_pixels "${IMAGE_MAX_PIXELS}" \
     --save_name "${RESULTS_DIR}/finetuned.jsonl"
+
+# Kill auto-inference watcher if still running
+kill $AUTO_INFER_PID 2>/dev/null || true
 
 echo ""
 echo "=============================================="

@@ -343,6 +343,14 @@ class ClassificationDataCollator(MultiModalDataCollatorForSeq2Seq):
         labels = [f.pop("labels") for f in features]
         metadata = [f.pop("_metadata", None) for f in features]
 
+        # Extract pct_rating from metadata (-1.0 as sentinel for missing)
+        ratings = []
+        for m in metadata:
+            if m is not None and "pct_rating" in m:
+                ratings.append(float(m["pct_rating"]))
+            else:
+                ratings.append(-1.0)
+
         # For classification, we don't have sequence labels, so create dummy labels for parent collator
         for feature in features:
             feature["labels"] = feature["input_ids"].copy()  # dummy labels, won't be used
@@ -353,6 +361,7 @@ class ClassificationDataCollator(MultiModalDataCollatorForSeq2Seq):
         # Remove the dummy labels and add binary classification labels as float tensor
         # Labels are created on CPU; trainer's _prepare_inputs handles device placement
         batch["labels"] = torch.tensor(labels, dtype=torch.float)
+        batch["ratings"] = torch.tensor(ratings, dtype=torch.float)
         # Keep metadata as list (not tensor) for predictions
         batch["_metadata"] = metadata
         return batch

@@ -137,6 +137,18 @@ class DataArguments:
         default=False,
         metadata={"help": "Whether or not to use a shared file system for the datasets."},
     )
+    think_num_tokens: int = field(
+        default=0,
+        metadata={"help": "Number of <|think|> tokens to inject (0 to disable). Common values: 1, 10, 100."},
+    )
+    think_token_placement: Literal["input", "label"] = field(
+        default="input",
+        metadata={"help": "Where to place think tokens: 'input' (end of prompt, masked) or 'label' (start of response, trained)."},
+    )
+    think_token: str = field(
+        default="<|think|>",
+        metadata={"help": "The think token string to use."},
+    )
 
     def __post_init__(self):
         def split_arg(arg):
@@ -181,6 +193,9 @@ class DataArguments:
 
         if self.packing:
             self.cutoff_len -= 1  # avoid pad_to_multiple_of, needs improve
+
+        if self.think_num_tokens < 0:
+            raise ValueError("`think_num_tokens` must be non-negative.")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

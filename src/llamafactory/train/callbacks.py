@@ -351,6 +351,15 @@ class LogCallback(TrainerCallback):
             percentage=round(self.cur_steps / self.max_steps * 100, 2) if self.max_steps != 0 else 100,
             elapsed_time=self.elapsed_time,
             remaining_time=self.remaining_time,
+            # CLS metrics
+            cls_accuracy=state.log_history[-1].get("accuracy"),
+            eval_cls_accuracy=state.log_history[-1].get("eval_accuracy"),
+            cls_loss=state.log_history[-1].get("cls_loss"),
+            eval_cls_loss=state.log_history[-1].get("eval_cls_loss"),
+            loss_bce=state.log_history[-1].get("loss_bce"),
+            eval_loss_bce=state.log_history[-1].get("eval_loss_bce"),
+            loss_rating=state.log_history[-1].get("loss_rating"),
+            eval_loss_rating=state.log_history[-1].get("eval_loss_rating"),
         )
         if state.num_input_tokens_seen:
             logs["throughput"] = round(state.num_input_tokens_seen / (time.time() - self.start_time), 2)
