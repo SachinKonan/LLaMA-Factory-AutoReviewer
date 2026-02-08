@@ -82,39 +82,69 @@ def load_test_dataset(dataset_name: str) -> list[dict]:
 
 
 def extract_prediction(text: str) -> str:
-    """Extract Accept/Reject from model prediction."""
-    text_lower = text.lower()
+    """Extract Accept/Reject from model prediction.
 
-    # Look for boxed answers first
+    Handles accept/reject, yes/no, and Y/N formats.
+    """
+    text_lower = text.lower().strip()
+
+    # Single letter format (Y/N)
+    if text_lower == "y":
+        return "accept"
+    if text_lower == "n":
+        return "reject"
+
+    # Look for boxed answers (accept/reject and yes/no)
     if "\\boxed{accept}" in text_lower or "boxed{accept}" in text_lower:
         return "accept"
     if "\\boxed{reject}" in text_lower or "boxed{reject}" in text_lower:
         return "reject"
-
-    # Fallback: look for accept/reject keywords
-    if "accept" in text_lower and "reject" not in text_lower:
+    if "\\boxed{yes}" in text_lower or "boxed{yes}" in text_lower or "\\boxed{y}" in text_lower:
         return "accept"
-    if "reject" in text_lower and "accept" not in text_lower:
+    if "\\boxed{no}" in text_lower or "boxed{no}" in text_lower or "\\boxed{n}" in text_lower:
         return "reject"
 
-    # If both or neither, check which comes last (final answer)
+    # Fallback: look for accept/reject/yes/no keywords
+    yes_pos = text_lower.rfind("yes")
+    no_pos = text_lower.rfind("no")
     accept_pos = text_lower.rfind("accept")
     reject_pos = text_lower.rfind("reject")
 
-    if accept_pos > reject_pos:
-        return "accept"
-    elif reject_pos > accept_pos:
-        return "reject"
+    # Find the last occurring keyword
+    positions = [
+        (yes_pos, "accept"),
+        (no_pos, "reject"),
+        (accept_pos, "accept"),
+        (reject_pos, "reject"),
+    ]
+    # Filter out -1 (not found)
+    positions = [(pos, label) for pos, label in positions if pos != -1]
+
+    if positions:
+        # Return the label of the last occurring keyword
+        positions.sort(key=lambda x: x[0])
+        return positions[-1][1]
 
     return "unknown"
 
 
 def extract_label(text: str) -> str:
-    """Extract Accept/Reject from ground truth label."""
+    """Extract Accept/Reject from ground truth label.
+
+    Handles accept/reject, yes/no, and Y/N formats.
+    """
     text_lower = text.lower().strip()
-    if "accept" in text_lower:
+
+    # Single letter format (Y/N)
+    if text_lower == "y":
         return "accept"
-    if "reject" in text_lower:
+    if text_lower == "n":
+        return "reject"
+
+    # Full word formats
+    if "accept" in text_lower or "yes" == text_lower:
+        return "accept"
+    if "reject" in text_lower or "no" == text_lower:
         return "reject"
     return "unknown"
 
@@ -329,7 +359,7 @@ def print_combined_overall_table(all_year_stats: list[dict], ckpt_names: list[st
     print("\n--- Overall Metrics ---")
     print(f"Checkpoints: {' / '.join(ckpt_names)}")
 
-    # Compute metrics for each checkpoint
+    # Compute metrics for each checkpoint (all years)
     all_metrics = []
     for year_stats in all_year_stats:
         all_years = sorted(year_stats.keys())
@@ -346,6 +376,29 @@ def print_combined_overall_table(all_year_stats: list[dict], ckpt_names: list[st
     print(f"{'Reject Recall (%):':<20}{format_combined_value(values)}")
 
     print(f"{'N:':<20}{all_metrics[0]['n']}")
+
+    # Compute metrics excluding 2024
+    all_metrics_no2024 = []
+    for year_stats in all_year_stats:
+        years_no2024 = [y for y in sorted(year_stats.keys()) if y != 2024]
+        if years_no2024:
+            stats_no2024 = aggregate_stats(year_stats, years_no2024)
+            all_metrics_no2024.append(calc_metrics(stats_no2024))
+        else:
+            all_metrics_no2024.append(calc_metrics({}))
+
+    if all_metrics_no2024 and all_metrics_no2024[0]['n'] > 0:
+        print("\n--- Overall Metrics (excluding 2024) ---")
+        values = [m["accuracy"] for m in all_metrics_no2024]
+        print(f"{'Accuracy (%):':<20}{format_combined_value(values)}")
+
+        values = [m["accept_recall"] for m in all_metrics_no2024]
+        print(f"{'Accept Recall (%):':<20}{format_combined_value(values)}")
+
+        values = [m["reject_recall"] for m in all_metrics_no2024]
+        print(f"{'Reject Recall (%):':<20}{format_combined_value(values)}")
+
+        print(f"{'N:':<20}{all_metrics_no2024[0]['n']}")
 
 
 def load_trainer_state(save_dir: Path) -> Optional[dict]:

@@ -418,9 +418,13 @@ def _create_cls_optimizer(
     Uses cls_backbone_learning_rate for backbone, learning_rate for head.
     """
     # Verify this is a binary classification model
-    if not hasattr(model, "backbone") or not hasattr(model, "classifier"):
+    # Support both old architecture (classifier) and new architecture (decision_head + optional rating_head)
+    has_old_arch = hasattr(model, "backbone") and hasattr(model, "classifier")
+    has_new_arch = hasattr(model, "backbone") and hasattr(model, "decision_head")
+
+    if not (has_old_arch or has_new_arch):
         raise ValueError(
-            "Model does not have 'backbone' and 'classifier' attributes. "
+            "Model does not have 'backbone' and 'classifier'/'decision_head' attributes. "
             "cls_backbone_learning_rate is only valid for binary classification models."
         )
 
@@ -440,7 +444,13 @@ def _create_cls_optimizer(
             continue
 
         # Check if parameter is in classifier (head) or backbone
-        is_classifier = name.startswith("classifier.")
+        # Support old architecture (classifier.*) and new architecture (shared_layer.*, decision_head.*, rating_head.*)
+        is_classifier = (
+            name.startswith("classifier.")
+            or name.startswith("shared_layer.")
+            or name.startswith("decision_head.")
+            or name.startswith("rating_head.")
+        )
         has_decay = name in decay_param_names
 
         if is_classifier:

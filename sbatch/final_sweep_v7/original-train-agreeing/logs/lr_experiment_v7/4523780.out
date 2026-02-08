@@ -1,0 +1,9 @@
+==============================================
+Job: 4523780 | Dataset: iclr_2020_2023_2025_85_5_10_split7_balanced_trainagreeing_original_text_binary_noreviews_v7
+Model: Qwen/Qwen2.5-7B-Instruct | Stage: CLS + Rating
+==============================================
+INFO 02-06 09:31:15 [__init__.py:241] Automatically detected platform cuda.
+INFO 02-06 09:31:15 [__init__.py:241] Automatically detected platform cuda.
+[INFO|2026-02-06 09:31:19] llamafactory.hparams.parser:479 >> Process rank: 0, world size: 2, device: cuda:0, distributed training: True, compute dtype: torch.bfloat16
+[INFO|2026-02-06 09:31:19] llamafactory.hparams.parser:479 >> Process rank: 1, world size: 2, device: cuda:1, distributed training: True, compute dtype: torch.bfloat16
+[INFO|2026-02-06 09:31:19] llamafactory.data.loader:143 >> Loading dataset iclr_2020_2023_2025_85_5_10_split7_balanced_trainagreeing_original_text_binary_noreviews_v7_train/data.json...

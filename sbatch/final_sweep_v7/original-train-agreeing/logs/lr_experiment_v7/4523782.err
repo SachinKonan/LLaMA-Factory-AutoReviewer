@@ -1,0 +1,419 @@
+Using the `WANDB_DISABLED` environment variable is deprecated and will be removed in v5. Use the --report_to flag to control the integrations used for logging result (for instance --report_to none).
+Using the `WANDB_DISABLED` environment variable is deprecated and will be removed in v5. Use the --report_to flag to control the integrations used for logging result (for instance --report_to none).
+Using the `WANDB_DISABLED` environment variable is deprecated and will be removed in v5. Use the --report_to flag to control the integrations used for logging result (for instance --report_to none).
+Using the `WANDB_DISABLED` environment variable is deprecated and will be removed in v5. Use the --report_to flag to control the integrations used for logging result (for instance --report_to none).
+Using the `WANDB_DISABLED` environment variable is deprecated and will be removed in v5. Use the --report_to flag to control the integrations used for logging result (for instance --report_to none).
+Using the `WANDB_DISABLED` environment variable is deprecated and will be removed in v5. Use the --report_to flag to control the integrations used for logging result (for instance --report_to none).
+[INFO|hub.py:421] 2026-02-06 09:31:19,007 >> Offline mode: forcing local_files_only=True
+[INFO|tokenization_utils_base.py:1949] 2026-02-06 09:31:19,034 >> Offline mode: forcing local_files_only=True
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,038 >> loading file vocab.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/vocab.json
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,038 >> loading file merges.txt from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/merges.txt
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,038 >> loading file tokenizer.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/tokenizer.json
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,038 >> loading file added_tokens.json from cache at None
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,038 >> loading file special_tokens_map.json from cache at None
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,038 >> loading file tokenizer_config.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/tokenizer_config.json
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,038 >> loading file chat_template.jinja from cache at None
+[INFO|tokenization_utils_base.py:2364] 2026-02-06 09:31:19,233 >> Special tokens have been added in the vocabulary, make sure the associated word embeddings are fine-tuned or trained.
+[INFO|hub.py:421] 2026-02-06 09:31:19,233 >> Offline mode: forcing local_files_only=True
+[INFO|hub.py:421] 2026-02-06 09:31:19,234 >> Offline mode: forcing local_files_only=True
+[INFO|hub.py:421] 2026-02-06 09:31:19,234 >> Offline mode: forcing local_files_only=True
+[INFO|hub.py:421] 2026-02-06 09:31:19,234 >> Offline mode: forcing local_files_only=True
+[INFO|hub.py:421] 2026-02-06 09:31:19,234 >> Offline mode: forcing local_files_only=True
+[INFO|hub.py:421] 2026-02-06 09:31:19,235 >> Offline mode: forcing local_files_only=True
+[INFO|configuration_utils.py:765] 2026-02-06 09:31:19,236 >> loading configuration file config.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/config.json
+[INFO|configuration_utils.py:839] 2026-02-06 09:31:19,238 >> Model config Qwen2Config {
+  "architectures": [
+    "Qwen2ForCausalLM"
+  ],
+  "attention_dropout": 0.0,
+  "bos_token_id": 151643,
+  "dtype": "bfloat16",
+  "eos_token_id": 151645,
+  "hidden_act": "silu",
+  "hidden_size": 3584,
+  "initializer_range": 0.02,
+  "intermediate_size": 18944,
+  "layer_types": [
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention"
+  ],
+  "max_position_embeddings": 32768,
+  "max_window_layers": 28,
+  "model_type": "qwen2",
+  "num_attention_heads": 28,
+  "num_hidden_layers": 28,
+  "num_key_value_heads": 4,
+  "rms_norm_eps": 1e-06,
+  "rope_scaling": null,
+  "rope_theta": 1000000.0,
+  "sliding_window": null,
+  "tie_word_embeddings": false,
+  "transformers_version": "4.57.1",
+  "use_cache": true,
+  "use_sliding_window": false,
+  "vocab_size": 152064
+}
+
+[INFO|hub.py:421] 2026-02-06 09:31:19,238 >> Offline mode: forcing local_files_only=True
+[INFO|tokenization_utils_base.py:1949] 2026-02-06 09:31:19,239 >> Offline mode: forcing local_files_only=True
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,240 >> loading file vocab.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/vocab.json
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,240 >> loading file merges.txt from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/merges.txt
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,240 >> loading file tokenizer.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/tokenizer.json
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,240 >> loading file added_tokens.json from cache at None
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,240 >> loading file special_tokens_map.json from cache at None
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,240 >> loading file tokenizer_config.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/tokenizer_config.json
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,240 >> loading file chat_template.jinja from cache at None
+[INFO|tokenization_utils_base.py:2364] 2026-02-06 09:31:19,435 >> Special tokens have been added in the vocabulary, make sure the associated word embeddings are fine-tuned or trained.
+Setting num_proc from 16 back to 1 for the train split to disable multiprocessing as it only contains one shard.
+Generating train split: 0 examples [00:00, ? examples/s]Generating train split: 11368 examples [00:02, 4749.19 examples/s]Generating train split: 11368 examples [00:02, 4712.65 examples/s]
+Converting format of dataset (num_proc=16):   0%|          | 0/11368 [00:00<?, ? examples/s]Converting format of dataset (num_proc=16):   2%|▏         | 224/11368 [00:00<00:24, 462.83 examples/s]Converting format of dataset (num_proc=16):  70%|███████   | 7972/11368 [00:00<00:00, 17990.39 examples/s]Converting format of dataset (num_proc=16): 100%|██████████| 11368/11368 [00:00<00:00, 13133.10 examples/s]
+Setting num_proc from 16 back to 1 for the train split to disable multiprocessing as it only contains one shard.
+Generating train split: 0 examples [00:00, ? examples/s]Generating train split: 778 examples [00:00, 4547.18 examples/s]Generating train split: 778 examples [00:00, 4514.68 examples/s]
+Converting format of dataset (num_proc=16):   0%|          | 0/778 [00:00<?, ? examples/s]Converting format of dataset (num_proc=16):   6%|▋         | 49/778 [00:00<00:06, 111.05 examples/s]Converting format of dataset (num_proc=16): 100%|██████████| 778/778 [00:00<00:00, 1264.91 examples/s]
+Running tokenizer on dataset (num_proc=16):   0%|          | 0/11368 [00:00<?, ? examples/s]Running tokenizer on dataset (num_proc=16):   6%|▋         | 711/11368 [00:20<05:02, 35.26 examples/s]Running tokenizer on dataset (num_proc=16):  13%|█▎        | 1422/11368 [00:21<02:03, 80.78 examples/s]Running tokenizer on dataset (num_proc=16):  19%|█▉        | 2133/11368 [00:21<01:03, 145.94 examples/s]Running tokenizer on dataset (num_proc=16):  25%|██▌       | 2844/11368 [00:22<00:43, 196.10 examples/s]Running tokenizer on dataset (num_proc=16):  31%|███▏      | 3555/11368 [00:23<00:26, 292.07 examples/s]Running tokenizer on dataset (num_proc=16):  38%|███▊      | 4266/11368 [00:23<00:16, 418.50 examples/s]Running tokenizer on dataset (num_proc=16):  50%|█████     | 5688/11368 [00:23<00:07, 772.44 examples/s]Running tokenizer on dataset (num_proc=16):  56%|█████▋    | 6398/11368 [00:24<00:05, 918.92 examples/s]Running tokenizer on dataset (num_proc=16):  63%|██████▎   | 7108/11368 [00:25<00:05, 805.25 examples/s]Running tokenizer on dataset (num_proc=16):  75%|███████▌  | 8528/11368 [00:25<00:02, 1316.01 examples/s]Running tokenizer on dataset (num_proc=16):  81%|████████▏ | 9238/11368 [00:25<00:01, 1613.32 examples/s]Running tokenizer on dataset (num_proc=16):  94%|█████████▍| 10658/11368 [00:25<00:00, 2407.62 examples/s]Running tokenizer on dataset (num_proc=16): 100%|██████████| 11368/11368 [00:25<00:00, 2653.79 examples/s]Running tokenizer on dataset (num_proc=16): 100%|██████████| 11368/11368 [00:26<00:00, 433.92 examples/s] 
+Running tokenizer on dataset (num_proc=16):   0%|          | 0/778 [00:00<?, ? examples/s]Running tokenizer on dataset (num_proc=16):   6%|▋         | 49/778 [00:02<00:31, 23.27 examples/s]Running tokenizer on dataset (num_proc=16):  13%|█▎        | 98/778 [00:02<00:12, 52.68 examples/s]Running tokenizer on dataset (num_proc=16):  19%|█▉        | 147/778 [00:02<00:07, 85.96 examples/s]Running tokenizer on dataset (num_proc=16):  25%|██▌       | 196/778 [00:02<00:05, 116.17 examples/s]Running tokenizer on dataset (num_proc=16):  31%|███▏      | 245/778 [00:02<00:03, 149.04 examples/s]Running tokenizer on dataset (num_proc=16):  50%|█████     | 392/778 [00:03<00:01, 259.56 examples/s]Running tokenizer on dataset (num_proc=16):  63%|██████▎   | 490/778 [00:03<00:00, 308.09 examples/s]Running tokenizer on dataset (num_proc=16):  75%|███████▌  | 586/778 [00:03<00:00, 398.01 examples/s]Running tokenizer on dataset (num_proc=16):  88%|████████▊ | 682/778 [00:03<00:00, 475.66 examples/s]Running tokenizer on dataset (num_proc=16): 100%|██████████| 778/778 [00:03<00:00, 212.76 examples/s]
+[INFO|hub.py:421] 2026-02-06 09:31:53,910 >> Offline mode: forcing local_files_only=True
+[INFO|configuration_utils.py:765] 2026-02-06 09:31:53,911 >> loading configuration file config.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/config.json
+[INFO|configuration_utils.py:839] 2026-02-06 09:31:53,913 >> Model config Qwen2Config {
+  "architectures": [
+    "Qwen2ForCausalLM"
+  ],
+  "attention_dropout": 0.0,
+  "bos_token_id": 151643,
+  "dtype": "bfloat16",
+  "eos_token_id": 151645,
+  "hidden_act": "silu",
+  "hidden_size": 3584,
+  "initializer_range": 0.02,
+  "intermediate_size": 18944,
+  "layer_types": [
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention"
+  ],
+  "max_position_embeddings": 32768,
+  "max_window_layers": 28,
+  "model_type": "qwen2",
+  "num_attention_heads": 28,
+  "num_hidden_layers": 28,
+  "num_key_value_heads": 4,
+  "rms_norm_eps": 1e-06,
+  "rope_scaling": null,
+  "rope_theta": 1000000.0,
+  "sliding_window": null,
+  "tie_word_embeddings": false,
+  "transformers_version": "4.57.1",
+  "use_cache": true,
+  "use_sliding_window": false,
+  "vocab_size": 152064
+}
+
+[INFO|hub.py:421] 2026-02-06 09:31:54,443 >> Offline mode: forcing local_files_only=True
+`torch_dtype` is deprecated! Use `dtype` instead!
+[WARNING|logging.py:328] 2026-02-06 09:31:54,448 >> `torch_dtype` is deprecated! Use `dtype` instead!
+[INFO|hub.py:421] 2026-02-06 09:31:54,448 >> Offline mode: forcing local_files_only=True
+[INFO|modeling_utils.py:4837] 2026-02-06 09:31:54,449 >> Offline mode: forcing local_files_only=True
+[INFO|modeling_utils.py:1172] 2026-02-06 09:31:54,450 >> loading weights file model.safetensors from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/model.safetensors.index.json
+[INFO|modeling_utils.py:1243] 2026-02-06 09:31:54,452 >> Will use dtype=torch.bfloat16 as defined in model's config object
+[INFO|modeling_utils.py:2341] 2026-02-06 09:31:54,452 >> Instantiating Qwen2ForCausalLM model under default dtype torch.bfloat16.
+[INFO|configuration_utils.py:986] 2026-02-06 09:31:54,453 >> Generate config GenerationConfig {
+  "bos_token_id": 151643,
+  "eos_token_id": 151645,
+  "use_cache": false
+}
+
+Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards: 100%|██████████| 4/4 [00:00<00:00, 319.76it/s]
+Loading checkpoint shards:  50%|█████     | 2/4 [00:00<00:00, 15.33it/s]Loading checkpoint shards: 100%|██████████| 4/4 [00:00<00:00, 17.45it/s]Loading checkpoint shards: 100%|██████████| 4/4 [00:00<00:00, 17.08it/s]
+[INFO|configuration_utils.py:941] 2026-02-06 09:31:54,756 >> loading configuration file generation_config.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/generation_config.json
+[INFO|configuration_utils.py:986] 2026-02-06 09:31:54,756 >> Generate config GenerationConfig {
+  "bos_token_id": 151643,
+  "do_sample": true,
+  "eos_token_id": [
+    151645,
+    151643
+  ],
+  "pad_token_id": 151643,
+  "repetition_penalty": 1.05,
+  "temperature": 0.7,
+  "top_k": 20,
+  "top_p": 0.8
+}
+
+[INFO|dynamic_module_utils.py:423] 2026-02-06 09:31:54,757 >> Could not locate the custom_generate/generate.py inside Qwen/Qwen2.5-7B-Instruct.
+The tokenizer has new PAD/BOS/EOS tokens that differ from the model config and generation config. The model config and generation config were aligned accordingly, being updated with the tokenizer's values. Updated tokens: {'bos_token_id': None, 'pad_token_id': 151643}.
+[INFO|trainer.py:749] 2026-02-06 09:32:19,532 >> Using auto half precision backend
+[WARNING|trainer.py:982] 2026-02-06 09:32:19,534 >> The tokenizer has new PAD/BOS/EOS tokens that differ from the model config and generation config. The model config and generation config were aligned accordingly, being updated with the tokenizer's values. Updated tokens: {'bos_token_id': None, 'pad_token_id': 151643}.
+[INFO|trainer.py:2519] 2026-02-06 09:32:24,187 >> ***** Running training *****
+[INFO|trainer.py:2520] 2026-02-06 09:32:24,187 >>   Num examples = 11,368
+[INFO|trainer.py:2521] 2026-02-06 09:32:24,187 >>   Num Epochs = 6
+[INFO|trainer.py:2522] 2026-02-06 09:32:24,187 >>   Instantaneous batch size per device = 4
+[INFO|trainer.py:2525] 2026-02-06 09:32:24,187 >>   Total train batch size (w. parallel, distributed & accumulation) = 16
+[INFO|trainer.py:2526] 2026-02-06 09:32:24,187 >>   Gradient Accumulation steps = 2
+[INFO|trainer.py:2527] 2026-02-06 09:32:24,187 >>   Total optimization steps = 4,266
+[INFO|trainer.py:2528] 2026-02-06 09:32:24,189 >>   Number of trainable parameters = 7,615,616,512
+  0%|          | 0/4266 [00:00<?, ?it/s][INFO|trainer.py:4643] 2026-02-06 09:32:24,192 >> 
+***** Running Evaluation *****
+[INFO|trainer.py:4645] 2026-02-06 09:32:24,192 >>   Num examples = 778
+[INFO|trainer.py:4648] 2026-02-06 09:32:24,192 >>   Batch size = 4
+
+  0%|          | 0/98 [00:00<?, ?it/s][A
+  2%|▏         | 2/98 [00:03<02:28,  1.55s/it][A
+  3%|▎         | 3/98 [00:07<04:31,  2.85s/it][A
+  4%|▍         | 4/98 [00:12<05:20,  3.41s/it][A
+  5%|▌         | 5/98 [00:16<05:51,  3.78s/it][A
+  6%|▌         | 6/98 [00:21<06:35,  4.30s/it][A
+  7%|▋         | 7/98 [00:26<06:25,  4.23s/it][A
+  8%|▊         | 8/98 [00:29<06:11,  4.13s/it][A
+  9%|▉         | 9/98 [00:34<06:16,  4.23s/it][A
+ 10%|█         | 10/98 [00:39<06:45,  4.61s/it][A
+ 11%|█         | 11/98 [00:43<06:10,  4.26s/it][A
+ 12%|█▏        | 12/98 [00:46<05:40,  3.96s/it][A
+ 13%|█▎        | 13/98 [00:50<05:39,  4.00s/it][A
+ 14%|█▍        | 14/98 [00:54<05:36,  4.00s/it][A
+ 15%|█▌        | 15/98 [00:58<05:28,  3.96s/it][A
+ 16%|█▋        | 16/98 [01:02<05:15,  3.85s/it][A
+ 17%|█▋        | 17/98 [01:06<05:35,  4.14s/it][A
+ 18%|█▊        | 18/98 [01:09<05:02,  3.78s/it][A
+ 19%|█▉        | 19/98 [01:14<05:09,  3.92s/it][A
+ 20%|██        | 20/98 [01:18<05:23,  4.14s/it][A
+ 21%|██▏       | 21/98 [01:23<05:23,  4.21s/it][A
+ 22%|██▏       | 22/98 [01:27<05:21,  4.23s/it][A
+ 23%|██▎       | 23/98 [01:31<05:14,  4.19s/it][A
+ 24%|██▍       | 24/98 [01:36<05:20,  4.33s/it][A
+ 26%|██▌       | 25/98 [01:41<05:27,  4.48s/it][A
+ 27%|██▋       | 26/98 [01:45<05:24,  4.51s/it][A
+ 28%|██▊       | 27/98 [01:49<05:15,  4.44s/it][A
+ 29%|██▊       | 28/98 [01:54<05:23,  4.62s/it][A
+ 30%|██▉       | 29/98 [02:00<05:45,  5.01s/it][A
+ 31%|███       | 30/98 [02:04<05:20,  4.71s/it][A
+ 32%|███▏      | 31/98 [02:08<04:58,  4.45s/it][A
+ 33%|███▎      | 32/98 [02:14<05:11,  4.72s/it][A
+ 34%|███▎      | 33/98 [02:18<05:02,  4.65s/it][A
+ 35%|███▍      | 34/98 [02:23<04:58,  4.67s/it][A
+ 36%|███▌      | 35/98 [02:28<04:55,  4.69s/it][A
+ 37%|███▋      | 36/98 [02:32<04:47,  4.63s/it][A
+ 38%|███▊      | 37/98 [02:38<05:08,  5.06s/it][A
+ 39%|███▉      | 38/98 [02:42<04:45,  4.76s/it][A
+ 40%|███▉      | 39/98 [02:47<04:39,  4.74s/it][A
+ 41%|████      | 40/98 [02:51<04:27,  4.62s/it][A
+ 42%|████▏     | 41/98 [02:55<04:16,  4.51s/it][A
+ 43%|████▎     | 42/98 [02:59<04:00,  4.29s/it][A
+ 44%|████▍     | 43/98 [03:04<04:09,  4.53s/it][A
+ 45%|████▍     | 44/98 [03:11<04:37,  5.14s/it][A
+ 46%|████▌     | 45/98 [03:15<04:19,  4.89s/it][A
+ 47%|████▋     | 46/98 [03:21<04:33,  5.26s/it][A
+ 48%|████▊     | 47/98 [03:25<04:04,  4.80s/it][A
+ 49%|████▉     | 48/98 [03:29<03:53,  4.68s/it][A
+ 50%|█████     | 49/98 [03:33<03:32,  4.33s/it][A
+ 51%|█████     | 50/98 [03:37<03:31,  4.40s/it][A
+ 52%|█████▏    | 51/98 [03:42<03:26,  4.39s/it][A
+ 53%|█████▎    | 52/98 [03:46<03:17,  4.29s/it][A
+ 54%|█████▍    | 53/98 [03:50<03:14,  4.31s/it][A[rank0]: Traceback (most recent call last):
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/train.py", line 28, in <module>
+[rank0]:     main()
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/train.py", line 19, in main
+[rank0]:     run_exp()
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/llamafactory/train/tuner.py", line 132, in run_exp
+[rank0]:     _training_function(config={"args": args, "callbacks": callbacks})
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/llamafactory/train/tuner.py", line 89, in _training_function
+[rank0]:     run_sft(model_args, data_args, training_args, finetuning_args, generating_args, callbacks)
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/llamafactory/train/sft/workflow.py", line 134, in run_sft
+[rank0]:     train_result = trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
+[rank0]:                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/trainer.py", line 2325, in train
+[rank0]:     return inner_training_loop(
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/trainer.py", line 2576, in _inner_training_loop
+[rank0]:     self._evaluate(trial, ignore_keys_for_eval, skip_scheduler=True)
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/trainer.py", line 3170, in _evaluate
+[rank0]:     metrics = self.evaluate(ignore_keys=ignore_keys_for_eval)
+[rank0]:               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/trainer_seq2seq.py", line 191, in evaluate
+[rank0]:     return super().evaluate(eval_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/trainer.py", line 4489, in evaluate
+[rank0]:     output = eval_loop(
+[rank0]:              ^^^^^^^^^^
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/trainer.py", line 4685, in evaluation_loop
+[rank0]:     losses, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
+[rank0]:                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/llamafactory/train/sft/trainer.py", line 268, in prediction_step
+[rank0]:     loss, generated_tokens, _ = super().prediction_step(
+[rank0]:                                 ^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/trainer_seq2seq.py", line 289, in prediction_step
+[rank0]:     return super().prediction_step(
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/trainer.py", line 4902, in prediction_step
+[rank0]:     loss, outputs = self.compute_loss(
+[rank0]:                     ^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/llamafactory/train/sft/trainer.py", line 146, in compute_loss
+[rank0]:     outputs = super().compute_loss(model, inputs, return_outputs=True, **kwargs)
+[rank0]:               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/trainer.py", line 4110, in compute_loss
+[rank0]:     outputs = model(**inputs)
+[rank0]:               ^^^^^^^^^^^^^^^
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1751, in _wrapped_call_impl
+[rank0]:     return self._call_impl(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1857, in _call_impl
+[rank0]:     return inner()
+[rank0]:            ^^^^^^^
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1805, in inner
+[rank0]:     result = forward_call(*args, **kwargs)
+[rank0]:              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/utils/generic.py", line 918, in wrapper
+[rank0]:     output = func(self, *args, **kwargs)
+[rank0]:              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/models/qwen2/modeling_qwen2.py", line 467, in forward
+[rank0]:     loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/loss/loss_utils.py", line 67, in ForCausalLMLoss
+[rank0]:     loss = fixed_cross_entropy(logits, shift_labels, num_items_in_batch, ignore_index, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/loss/loss_utils.py", line 36, in fixed_cross_entropy
+[rank0]:     loss = nn.functional.cross_entropy(source, target, ignore_index=ignore_index, reduction=reduction)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/torch/nn/functional.py", line 3494, in cross_entropy
+[rank0]:     return torch._C._nn.cross_entropy_loss(
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]: torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 48.40 GiB. GPU 0 has a total capacity of 139.80 GiB of which 42.76 GiB is free. Including non-PyTorch memory, this process has 97.03 GiB memory in use. Of the allocated memory 89.96 GiB is allocated by PyTorch, and 5.43 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+  0%|          | 0/4266 [04:04<?, ?it/s]
+
+                                               [A[rank0]:[W206 09:36:29.366529828 ProcessGroupNCCL.cpp:1479] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+[rank1]: Traceback (most recent call last):
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/train.py", line 28, in <module>
+[rank1]:     main()
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/train.py", line 19, in main
+[rank1]:     run_exp()
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/llamafactory/train/tuner.py", line 132, in run_exp
+[rank1]:     _training_function(config={"args": args, "callbacks": callbacks})
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/llamafactory/train/tuner.py", line 89, in _training_function
+[rank1]:     run_sft(model_args, data_args, training_args, finetuning_args, generating_args, callbacks)
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/llamafactory/train/sft/workflow.py", line 134, in run_sft
+[rank1]:     train_result = trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
+[rank1]:                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/trainer.py", line 2325, in train
+[rank1]:     return inner_training_loop(
+[rank1]:            ^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/trainer.py", line 2576, in _inner_training_loop
+[rank1]:     self._evaluate(trial, ignore_keys_for_eval, skip_scheduler=True)
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/trainer.py", line 3170, in _evaluate
+[rank1]:     metrics = self.evaluate(ignore_keys=ignore_keys_for_eval)
+[rank1]:               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/trainer_seq2seq.py", line 191, in evaluate
+[rank1]:     return super().evaluate(eval_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
+[rank1]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/trainer.py", line 4489, in evaluate
+[rank1]:     output = eval_loop(
+[rank1]:              ^^^^^^^^^^
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/trainer.py", line 4696, in evaluation_loop
+[rank1]:     losses = self.gather_function(losses.repeat(batch_size))
+[rank1]:              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/accelerate/accelerator.py", line 2956, in gather
+[rank1]:     return gather(tensor)
+[rank1]:            ^^^^^^^^^^^^^^
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/accelerate/utils/operations.py", line 384, in wrapper
+[rank1]:     output = gather_object([shapes])
+[rank1]:              ^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/accelerate/utils/operations.py", line 459, in gather_object
+[rank1]:     return _gpu_gather_object(object)
+[rank1]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/accelerate/utils/operations.py", line 440, in _gpu_gather_object
+[rank1]:     torch.distributed.all_gather_object(output_objects, object)
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/torch/distributed/c10d_logger.py", line 81, in wrapper
+[rank1]:     return func(*args, **kwargs)
+[rank1]:            ^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/torch/distributed/distributed_c10d.py", line 3039, in all_gather_object
+[rank1]:     all_gather(object_size_list, local_size, group=group)
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/torch/distributed/c10d_logger.py", line 81, in wrapper
+[rank1]:     return func(*args, **kwargs)
+[rank1]:            ^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/torch/distributed/distributed_c10d.py", line 3733, in all_gather
+[rank1]:     work.wait()
+[rank1]: RuntimeError: [/pytorch/third_party/gloo/gloo/transport/tcp/pair.cc:534] Connection closed by peer [172.17.9.254]:27361
+W0206 09:36:31.298000 275341 torch/distributed/elastic/multiprocessing/api.py:900] Sending process 275457 closing signal SIGTERM
+E0206 09:36:31.465000 275341 torch/distributed/elastic/multiprocessing/api.py:874] failed (exitcode: 1) local_rank: 0 (pid: 275456) of binary: /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/bin/python3
+Traceback (most recent call last):
+  File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/bin/accelerate", line 10, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/accelerate/commands/accelerate_cli.py", line 50, in main
+    args.func(args)
+  File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/accelerate/commands/launch.py", line 1222, in launch_command
+    multi_gpu_launcher(args)
+  File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/accelerate/commands/launch.py", line 853, in multi_gpu_launcher
+    distrib_run.run(args)
+  File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/torch/distributed/run.py", line 883, in run
+    elastic_launch(
+  File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 139, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 270, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+src/train.py FAILED
+------------------------------------------------------------
+Failures:
+  <NO_OTHER_FAILURES>
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-02-06_09:36:31
+  host      : della-i23g2
+  rank      : 0 (local_rank: 0)
+  exitcode  : 1 (pid: 275456)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================

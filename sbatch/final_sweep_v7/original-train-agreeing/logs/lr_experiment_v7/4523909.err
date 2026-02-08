@@ -1,0 +1,467 @@
+Using the `WANDB_DISABLED` environment variable is deprecated and will be removed in v5. Use the --report_to flag to control the integrations used for logging result (for instance --report_to none).
+Using the `WANDB_DISABLED` environment variable is deprecated and will be removed in v5. Use the --report_to flag to control the integrations used for logging result (for instance --report_to none).
+Using the `WANDB_DISABLED` environment variable is deprecated and will be removed in v5. Use the --report_to flag to control the integrations used for logging result (for instance --report_to none).
+Using the `WANDB_DISABLED` environment variable is deprecated and will be removed in v5. Use the --report_to flag to control the integrations used for logging result (for instance --report_to none).
+Using the `WANDB_DISABLED` environment variable is deprecated and will be removed in v5. Use the --report_to flag to control the integrations used for logging result (for instance --report_to none).
+Using the `WANDB_DISABLED` environment variable is deprecated and will be removed in v5. Use the --report_to flag to control the integrations used for logging result (for instance --report_to none).
+[INFO|hub.py:421] 2026-02-06 09:47:29,072 >> Offline mode: forcing local_files_only=True
+[INFO|tokenization_utils_base.py:1949] 2026-02-06 09:47:29,087 >> Offline mode: forcing local_files_only=True
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:47:29,092 >> loading file vocab.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/vocab.json
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:47:29,092 >> loading file merges.txt from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/merges.txt
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:47:29,092 >> loading file tokenizer.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/tokenizer.json
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:47:29,092 >> loading file added_tokens.json from cache at None
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:47:29,092 >> loading file special_tokens_map.json from cache at None
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:47:29,092 >> loading file tokenizer_config.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/tokenizer_config.json
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:47:29,092 >> loading file chat_template.jinja from cache at None
+[INFO|tokenization_utils_base.py:2364] 2026-02-06 09:47:29,287 >> Special tokens have been added in the vocabulary, make sure the associated word embeddings are fine-tuned or trained.
+[INFO|hub.py:421] 2026-02-06 09:47:29,287 >> Offline mode: forcing local_files_only=True
+[INFO|hub.py:421] 2026-02-06 09:47:29,288 >> Offline mode: forcing local_files_only=True
+[INFO|hub.py:421] 2026-02-06 09:47:29,288 >> Offline mode: forcing local_files_only=True
+[INFO|hub.py:421] 2026-02-06 09:47:29,288 >> Offline mode: forcing local_files_only=True
+[INFO|hub.py:421] 2026-02-06 09:47:29,288 >> Offline mode: forcing local_files_only=True
+[INFO|hub.py:421] 2026-02-06 09:47:29,289 >> Offline mode: forcing local_files_only=True
+[INFO|configuration_utils.py:765] 2026-02-06 09:47:29,289 >> loading configuration file config.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/config.json
+[INFO|configuration_utils.py:839] 2026-02-06 09:47:29,291 >> Model config Qwen2Config {
+  "architectures": [
+    "Qwen2ForCausalLM"
+  ],
+  "attention_dropout": 0.0,
+  "bos_token_id": 151643,
+  "dtype": "bfloat16",
+  "eos_token_id": 151645,
+  "hidden_act": "silu",
+  "hidden_size": 3584,
+  "initializer_range": 0.02,
+  "intermediate_size": 18944,
+  "layer_types": [
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention"
+  ],
+  "max_position_embeddings": 32768,
+  "max_window_layers": 28,
+  "model_type": "qwen2",
+  "num_attention_heads": 28,
+  "num_hidden_layers": 28,
+  "num_key_value_heads": 4,
+  "rms_norm_eps": 1e-06,
+  "rope_scaling": null,
+  "rope_theta": 1000000.0,
+  "sliding_window": null,
+  "tie_word_embeddings": false,
+  "transformers_version": "4.57.1",
+  "use_cache": true,
+  "use_sliding_window": false,
+  "vocab_size": 152064
+}
+
+[INFO|hub.py:421] 2026-02-06 09:47:29,292 >> Offline mode: forcing local_files_only=True
+[INFO|tokenization_utils_base.py:1949] 2026-02-06 09:47:29,293 >> Offline mode: forcing local_files_only=True
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:47:29,293 >> loading file vocab.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/vocab.json
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:47:29,293 >> loading file merges.txt from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/merges.txt
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:47:29,293 >> loading file tokenizer.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/tokenizer.json
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:47:29,293 >> loading file added_tokens.json from cache at None
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:47:29,293 >> loading file special_tokens_map.json from cache at None
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:47:29,293 >> loading file tokenizer_config.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/tokenizer_config.json
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:47:29,293 >> loading file chat_template.jinja from cache at None
+[INFO|tokenization_utils_base.py:2364] 2026-02-06 09:47:29,488 >> Special tokens have been added in the vocabulary, make sure the associated word embeddings are fine-tuned or trained.
+Converting format of dataset (num_proc=16): 100%|██████████| 11368/11368 [00:00<?, ? examples/s]Converting format of dataset (num_proc=16): 11602 examples [00:00, 880.30 examples/s]           Converting format of dataset (num_proc=16): 18903 examples [00:00, 25493.45 examples/s]Converting format of dataset (num_proc=16): 22736 examples [00:00, 18658.89 examples/s]
+Converting format of dataset (num_proc=16): 100%|██████████| 778/778 [00:00<?, ? examples/s]Converting format of dataset (num_proc=16): 827 examples [00:00, 218.62 examples/s]         Converting format of dataset (num_proc=16): 1556 examples [00:00, 2193.18 examples/s]
+Running tokenizer on dataset (num_proc=16): 100%|██████████| 11368/11368 [00:00<?, ? examples/s]Running tokenizer on dataset (num_proc=16): 12079 examples [00:19, 36.90 examples/s]            Running tokenizer on dataset (num_proc=16): 12790 examples [00:19, 85.78 examples/s]Running tokenizer on dataset (num_proc=16): 14212 examples [00:21, 197.68 examples/s]Running tokenizer on dataset (num_proc=16): 14923 examples [00:22, 267.53 examples/s]Running tokenizer on dataset (num_proc=16): 15634 examples [00:22, 366.64 examples/s]Running tokenizer on dataset (num_proc=16): 16345 examples [00:22, 495.29 examples/s]Running tokenizer on dataset (num_proc=16): 17766 examples [00:23, 828.18 examples/s]Running tokenizer on dataset (num_proc=16): 18476 examples [00:24, 790.04 examples/s]Running tokenizer on dataset (num_proc=16): 19186 examples [00:24, 972.59 examples/s]Running tokenizer on dataset (num_proc=16): 21316 examples [00:24, 1917.37 examples/s]Running tokenizer on dataset (num_proc=16): 22026 examples [00:24, 2177.54 examples/s]Running tokenizer on dataset (num_proc=16): 22736 examples [00:24, 2379.67 examples/s]Running tokenizer on dataset (num_proc=16): 22736 examples [00:25, 454.42 examples/s] 
+Running tokenizer on dataset (num_proc=16): 100%|██████████| 778/778 [00:00<?, ? examples/s]Running tokenizer on dataset (num_proc=16): 827 examples [00:01, 26.42 examples/s]          Running tokenizer on dataset (num_proc=16): 925 examples [00:02, 87.64 examples/s]Running tokenizer on dataset (num_proc=16): 974 examples [00:02, 115.37 examples/s]Running tokenizer on dataset (num_proc=16): 1023 examples [00:02, 147.57 examples/s]Running tokenizer on dataset (num_proc=16): 1170 examples [00:02, 261.22 examples/s]Running tokenizer on dataset (num_proc=16): 1268 examples [00:02, 313.86 examples/s]Running tokenizer on dataset (num_proc=16): 1364 examples [00:02, 398.24 examples/s]Running tokenizer on dataset (num_proc=16): 1460 examples [00:03, 484.94 examples/s]Running tokenizer on dataset (num_proc=16): 1556 examples [00:03, 242.11 examples/s]
+[INFO|hub.py:421] 2026-02-06 09:47:59,162 >> Offline mode: forcing local_files_only=True
+[INFO|configuration_utils.py:765] 2026-02-06 09:47:59,163 >> loading configuration file config.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/config.json
+[INFO|configuration_utils.py:839] 2026-02-06 09:47:59,163 >> Model config Qwen2Config {
+  "architectures": [
+    "Qwen2ForCausalLM"
+  ],
+  "attention_dropout": 0.0,
+  "bos_token_id": 151643,
+  "dtype": "bfloat16",
+  "eos_token_id": 151645,
+  "hidden_act": "silu",
+  "hidden_size": 3584,
+  "initializer_range": 0.02,
+  "intermediate_size": 18944,
+  "layer_types": [
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention"
+  ],
+  "max_position_embeddings": 32768,
+  "max_window_layers": 28,
+  "model_type": "qwen2",
+  "num_attention_heads": 28,
+  "num_hidden_layers": 28,
+  "num_key_value_heads": 4,
+  "rms_norm_eps": 1e-06,
+  "rope_scaling": null,
+  "rope_theta": 1000000.0,
+  "sliding_window": null,
+  "tie_word_embeddings": false,
+  "transformers_version": "4.57.1",
+  "use_cache": true,
+  "use_sliding_window": false,
+  "vocab_size": 152064
+}
+
+[INFO|hub.py:421] 2026-02-06 09:47:59,642 >> Offline mode: forcing local_files_only=True
+`torch_dtype` is deprecated! Use `dtype` instead!
+[WARNING|logging.py:328] 2026-02-06 09:47:59,647 >> `torch_dtype` is deprecated! Use `dtype` instead!
+[INFO|hub.py:421] 2026-02-06 09:47:59,647 >> Offline mode: forcing local_files_only=True
+[INFO|modeling_utils.py:4837] 2026-02-06 09:47:59,653 >> Offline mode: forcing local_files_only=True
+[INFO|modeling_utils.py:1172] 2026-02-06 09:47:59,654 >> loading weights file model.safetensors from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/model.safetensors.index.json
+[INFO|modeling_utils.py:1243] 2026-02-06 09:47:59,656 >> Will use dtype=torch.bfloat16 as defined in model's config object
+[INFO|modeling_utils.py:2341] 2026-02-06 09:47:59,656 >> Instantiating Qwen2ForCausalLM model under default dtype torch.bfloat16.
+[INFO|configuration_utils.py:986] 2026-02-06 09:47:59,658 >> Generate config GenerationConfig {
+  "bos_token_id": 151643,
+  "eos_token_id": 151645,
+  "use_cache": false
+}
+
+Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards: 100%|██████████| 4/4 [00:00<00:00, 249.86it/s]
+Loading checkpoint shards:  25%|██▌       | 1/4 [00:00<00:00,  8.83it/s]Loading checkpoint shards:  75%|███████▌  | 3/4 [00:00<00:00,  9.59it/s]Loading checkpoint shards: 100%|██████████| 4/4 [00:00<00:00, 10.99it/s]
+[INFO|configuration_utils.py:941] 2026-02-06 09:48:00,078 >> loading configuration file generation_config.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/generation_config.json
+[INFO|configuration_utils.py:986] 2026-02-06 09:48:00,078 >> Generate config GenerationConfig {
+  "bos_token_id": 151643,
+  "do_sample": true,
+  "eos_token_id": [
+    151645,
+    151643
+  ],
+  "pad_token_id": 151643,
+  "repetition_penalty": 1.05,
+  "temperature": 0.7,
+  "top_k": 20,
+  "top_p": 0.8
+}
+
+[INFO|dynamic_module_utils.py:423] 2026-02-06 09:48:00,079 >> Could not locate the custom_generate/generate.py inside Qwen/Qwen2.5-7B-Instruct.
+The tokenizer has new PAD/BOS/EOS tokens that differ from the model config and generation config. The model config and generation config were aligned accordingly, being updated with the tokenizer's values. Updated tokens: {'bos_token_id': None, 'pad_token_id': 151643}.
+[INFO|trainer.py:749] 2026-02-06 09:48:25,099 >> Using auto half precision backend
+[WARNING|trainer.py:982] 2026-02-06 09:48:25,100 >> The tokenizer has new PAD/BOS/EOS tokens that differ from the model config and generation config. The model config and generation config were aligned accordingly, being updated with the tokenizer's values. Updated tokens: {'bos_token_id': None, 'pad_token_id': 151643}.
+[INFO|trainer.py:2519] 2026-02-06 09:48:29,460 >> ***** Running training *****
+[INFO|trainer.py:2520] 2026-02-06 09:48:29,460 >>   Num examples = 11,368
+[INFO|trainer.py:2521] 2026-02-06 09:48:29,460 >>   Num Epochs = 6
+[INFO|trainer.py:2522] 2026-02-06 09:48:29,461 >>   Instantaneous batch size per device = 2
+[INFO|trainer.py:2525] 2026-02-06 09:48:29,461 >>   Total train batch size (w. parallel, distributed & accumulation) = 16
+[INFO|trainer.py:2526] 2026-02-06 09:48:29,461 >>   Gradient Accumulation steps = 4
+[INFO|trainer.py:2527] 2026-02-06 09:48:29,461 >>   Total optimization steps = 4,266
+[INFO|trainer.py:2528] 2026-02-06 09:48:29,462 >>   Number of trainable parameters = 7,615,616,512
+  0%|          | 0/4266 [00:00<?, ?it/s][INFO|trainer.py:4643] 2026-02-06 09:48:29,465 >> 
+***** Running Evaluation *****
+[INFO|trainer.py:4645] 2026-02-06 09:48:29,465 >>   Num examples = 778
+[INFO|trainer.py:4648] 2026-02-06 09:48:29,465 >>   Batch size = 2
+
+  0%|          | 0/195 [00:00<?, ?it/s][A
+  1%|          | 2/195 [00:02<03:19,  1.04s/it][A
+  2%|▏         | 3/195 [00:03<03:59,  1.25s/it][A
+  2%|▏         | 4/195 [00:05<04:20,  1.36s/it][A
+  3%|▎         | 5/195 [00:07<05:22,  1.70s/it][A
+  3%|▎         | 6/195 [00:08<05:04,  1.61s/it][A
+  4%|▎         | 7/195 [00:10<04:54,  1.56s/it][A
+  4%|▍         | 8/195 [00:12<05:26,  1.75s/it][A
+  5%|▍         | 9/195 [00:14<05:51,  1.89s/it][A
+  5%|▌         | 10/195 [00:16<05:37,  1.83s/it][A
+  6%|▌         | 11/195 [00:19<06:17,  2.05s/it][A
+  6%|▌         | 12/195 [00:21<06:42,  2.20s/it][A
+  7%|▋         | 13/195 [00:23<06:22,  2.10s/it][A
+  7%|▋         | 14/195 [00:25<06:17,  2.09s/it][A
+  8%|▊         | 15/195 [00:27<06:06,  2.04s/it][A
+  8%|▊         | 16/195 [00:28<05:23,  1.81s/it][A
+  9%|▊         | 17/195 [00:30<05:15,  1.77s/it][A
+  9%|▉         | 18/195 [00:32<05:39,  1.92s/it][A
+ 10%|▉         | 19/195 [00:35<06:28,  2.21s/it][A
+ 10%|█         | 20/195 [00:37<06:25,  2.20s/it][A
+ 11%|█         | 21/195 [00:39<05:59,  2.07s/it][A
+ 11%|█▏        | 22/195 [00:41<05:41,  1.97s/it][A
+ 12%|█▏        | 23/195 [00:42<05:18,  1.85s/it][A
+ 12%|█▏        | 24/195 [00:44<05:05,  1.79s/it][A
+ 13%|█▎        | 25/195 [00:45<04:54,  1.73s/it][A
+ 13%|█▎        | 26/195 [00:48<05:08,  1.83s/it][A
+ 14%|█▍        | 27/195 [00:50<05:17,  1.89s/it][A
+ 14%|█▍        | 28/195 [00:51<05:01,  1.81s/it][A
+ 15%|█▍        | 29/195 [00:53<04:57,  1.79s/it][A
+ 15%|█▌        | 30/195 [00:55<05:03,  1.84s/it][A
+ 16%|█▌        | 31/195 [00:57<04:58,  1.82s/it][A
+ 16%|█▋        | 32/195 [00:58<04:53,  1.80s/it][A
+ 17%|█▋        | 33/195 [01:01<05:20,  1.98s/it][A
+ 17%|█▋        | 34/195 [01:02<04:57,  1.85s/it][A
+ 18%|█▊        | 35/195 [01:04<04:36,  1.73s/it][A
+ 18%|█▊        | 36/195 [01:05<04:22,  1.65s/it][A
+ 19%|█▉        | 37/195 [01:07<04:36,  1.75s/it][A
+ 19%|█▉        | 38/195 [01:09<04:52,  1.86s/it][A
+ 20%|██        | 39/195 [01:11<05:01,  1.93s/it][A
+ 21%|██        | 40/195 [01:14<05:18,  2.05s/it][A
+ 21%|██        | 41/195 [01:16<05:21,  2.09s/it][A
+ 22%|██▏       | 42/195 [01:18<05:16,  2.07s/it][A
+ 22%|██▏       | 43/195 [01:20<05:19,  2.10s/it][A
+ 23%|██▎       | 44/195 [01:22<05:02,  2.01s/it][A
+ 23%|██▎       | 45/195 [01:24<05:02,  2.01s/it][A
+ 24%|██▎       | 46/195 [01:26<05:00,  2.02s/it][A
+ 24%|██▍       | 47/195 [01:28<05:04,  2.06s/it][A
+ 25%|██▍       | 48/195 [01:31<05:14,  2.14s/it][A
+ 25%|██▌       | 49/195 [01:32<04:47,  1.97s/it][A
+ 26%|██▌       | 50/195 [01:35<05:04,  2.10s/it][A
+ 26%|██▌       | 51/195 [01:37<05:02,  2.10s/it][A
+ 27%|██▋       | 52/195 [01:39<05:10,  2.17s/it][A
+ 27%|██▋       | 53/195 [01:41<05:01,  2.12s/it][A
+ 28%|██▊       | 54/195 [01:43<04:58,  2.12s/it][A
+ 28%|██▊       | 55/195 [01:46<05:19,  2.28s/it][A
+ 29%|██▊       | 56/195 [01:48<05:08,  2.22s/it][A
+ 29%|██▉       | 57/195 [01:50<05:10,  2.25s/it][A
+ 30%|██▉       | 58/195 [01:53<05:33,  2.43s/it][A
+ 30%|███       | 59/195 [01:55<05:13,  2.30s/it][A
+ 31%|███       | 60/195 [01:57<04:58,  2.21s/it][A
+ 31%|███▏      | 61/195 [01:59<04:37,  2.07s/it][A
+ 32%|███▏      | 62/195 [02:01<04:27,  2.01s/it][A
+ 32%|███▏      | 63/195 [02:03<04:25,  2.01s/it][A
+ 33%|███▎      | 64/195 [02:05<04:49,  2.21s/it][A
+ 33%|███▎      | 65/195 [02:08<04:49,  2.23s/it][A
+ 34%|███▍      | 66/195 [02:09<04:35,  2.14s/it][A
+ 34%|███▍      | 67/195 [02:11<04:14,  1.99s/it][A
+ 35%|███▍      | 68/195 [02:13<04:27,  2.10s/it][A
+ 35%|███▌      | 69/195 [02:15<04:20,  2.07s/it][A
+ 36%|███▌      | 70/195 [02:18<04:31,  2.17s/it][A
+ 36%|███▋      | 71/195 [02:19<04:03,  1.97s/it][A
+ 37%|███▋      | 72/195 [02:22<04:11,  2.05s/it][A
+ 37%|███▋      | 73/195 [02:25<04:43,  2.32s/it][A
+ 38%|███▊      | 74/195 [02:27<04:51,  2.41s/it][A
+ 38%|███▊      | 75/195 [02:29<04:35,  2.30s/it][A
+ 39%|███▉      | 76/195 [02:31<04:14,  2.14s/it][A
+ 39%|███▉      | 77/195 [02:33<04:19,  2.20s/it][A
+ 40%|████      | 78/195 [02:35<04:02,  2.07s/it][A
+ 41%|████      | 79/195 [02:37<04:03,  2.10s/it][A
+ 41%|████      | 80/195 [02:39<04:02,  2.11s/it][A
+ 42%|████▏     | 81/195 [02:41<04:00,  2.11s/it][A
+ 42%|████▏     | 82/195 [02:44<03:57,  2.11s/it][A
+ 43%|████▎     | 83/195 [02:45<03:43,  1.99s/it][A
+ 43%|████▎     | 84/195 [02:47<03:38,  1.97s/it][A
+ 44%|████▎     | 85/195 [02:50<03:55,  2.14s/it][A
+ 44%|████▍     | 86/195 [02:52<03:46,  2.08s/it][A
+ 45%|████▍     | 87/195 [02:54<03:50,  2.13s/it][A
+ 45%|████▌     | 88/195 [02:57<04:27,  2.50s/it][A
+ 46%|████▌     | 89/195 [02:59<04:00,  2.27s/it][A
+ 46%|████▌     | 90/195 [03:01<03:55,  2.25s/it][A
+ 47%|████▋     | 91/195 [03:04<04:00,  2.32s/it][A
+ 47%|████▋     | 92/195 [03:07<04:23,  2.55s/it][A
+ 48%|████▊     | 93/195 [03:09<04:00,  2.36s/it][A
+ 48%|████▊     | 94/195 [03:11<03:42,  2.21s/it][A
+ 49%|████▊     | 95/195 [03:13<03:33,  2.13s/it][A
+ 49%|████▉     | 96/195 [03:15<03:34,  2.16s/it][A
+ 50%|████▉     | 97/195 [03:17<03:19,  2.04s/it][A
+ 50%|█████     | 98/195 [03:18<03:09,  1.96s/it][A
+ 51%|█████     | 99/195 [03:20<03:12,  2.00s/it][A
+ 51%|█████▏    | 100/195 [03:23<03:17,  2.08s/it][A
+ 52%|█████▏    | 101/195 [03:24<03:02,  1.95s/it][A
+ 52%|█████▏    | 102/195 [03:27<03:08,  2.03s/it][A
+ 53%|█████▎    | 103/195 [03:29<03:06,  2.03s/it][A
+ 53%|█████▎    | 104/195 [03:31<03:05,  2.04s/it][A
+ 54%|█████▍    | 105/195 [03:32<02:55,  1.95s/it][A
+ 54%|█████▍    | 106/195 [03:35<03:00,  2.02s/it][A
+ 55%|█████▍    | 107/195 [03:39<03:51,  2.64s/it][A
+ 55%|█████▌    | 108/195 [03:40<03:28,  2.40s/it][A
+ 56%|█████▌    | 109/195 [03:42<03:15,  2.27s/it][A
+ 56%|█████▋    | 110/195 [03:44<03:07,  2.20s/it][A
+ 57%|█████▋    | 111/195 [03:48<03:28,  2.48s/it][A
+ 57%|█████▋    | 112/195 [03:49<03:07,  2.26s/it][A
+ 58%|█████▊    | 113/195 [03:52<03:03,  2.24s/it][A
+ 58%|█████▊    | 114/195 [03:54<02:59,  2.22s/it][A
+ 59%|█████▉    | 115/195 [03:57<03:31,  2.65s/it][A
+ 59%|█████▉    | 116/195 [04:00<03:26,  2.62s/it][A
+ 60%|██████    | 117/195 [04:02<03:21,  2.58s/it][A
+ 61%|██████    | 118/195 [04:05<03:10,  2.48s/it][A
+ 61%|██████    | 119/195 [04:07<02:59,  2.37s/it][A
+ 62%|██████▏   | 120/195 [04:09<03:01,  2.42s/it][A
+ 62%|██████▏   | 121/195 [04:12<03:12,  2.60s/it][A
+ 63%|██████▎   | 122/195 [04:14<02:55,  2.41s/it][A
+ 63%|██████▎   | 123/195 [04:16<02:46,  2.31s/it][A
+ 64%|██████▎   | 124/195 [04:19<02:44,  2.31s/it][A
+ 64%|██████▍   | 125/195 [04:21<02:37,  2.25s/it][A
+ 65%|██████▍   | 126/195 [04:23<02:31,  2.19s/it][A
+ 65%|██████▌   | 127/195 [04:25<02:37,  2.31s/it][A
+ 66%|██████▌   | 128/195 [04:28<02:41,  2.41s/it][A
+ 66%|██████▌   | 129/195 [04:30<02:30,  2.28s/it][A
+ 67%|██████▋   | 130/195 [04:34<02:57,  2.73s/it][A
+ 67%|██████▋   | 131/195 [04:36<02:46,  2.61s/it][A
+ 68%|██████▊   | 132/195 [04:39<02:44,  2.61s/it][A
+ 68%|██████▊   | 133/195 [04:41<02:33,  2.47s/it][A
+ 69%|██████▊   | 134/195 [04:43<02:24,  2.37s/it][A
+ 69%|██████▉   | 135/195 [04:45<02:09,  2.16s/it][A
+ 70%|██████▉   | 136/195 [04:49<02:46,  2.82s/it][A
+ 70%|███████   | 137/195 [04:51<02:35,  2.68s/it][A
+ 71%|███████   | 138/195 [04:54<02:31,  2.65s/it][A
+ 71%|███████▏  | 139/195 [04:56<02:23,  2.56s/it][A
+ 72%|███████▏  | 140/195 [04:59<02:25,  2.64s/it][A
+ 72%|███████▏  | 141/195 [05:02<02:20,  2.60s/it][A
+ 73%|███████▎  | 142/195 [05:04<02:10,  2.47s/it][A
+ 73%|███████▎  | 143/195 [05:06<02:04,  2.39s/it][A
+ 74%|███████▍  | 144/195 [05:08<02:01,  2.37s/it][A
+ 74%|███████▍  | 145/195 [05:11<02:02,  2.45s/it][A
+ 75%|███████▍  | 146/195 [05:14<02:01,  2.48s/it][A
+ 75%|███████▌  | 147/195 [05:17<02:17,  2.87s/it][A
+ 76%|███████▌  | 148/195 [05:20<02:14,  2.87s/it][A
+ 76%|███████▋  | 149/195 [05:23<02:10,  2.85s/it][A
+ 77%|███████▋  | 150/195 [05:26<02:06,  2.80s/it][A
+ 77%|███████▋  | 151/195 [05:28<01:56,  2.66s/it][A
+ 78%|███████▊  | 152/195 [05:31<01:55,  2.69s/it][A
+ 78%|███████▊  | 153/195 [05:33<01:43,  2.45s/it][A
+ 79%|███████▉  | 154/195 [05:35<01:39,  2.42s/it][A
+ 79%|███████▉  | 155/195 [05:37<01:28,  2.22s/it][A
+ 80%|████████  | 156/195 [05:38<01:19,  2.04s/it][A
+ 81%|████████  | 157/195 [05:40<01:17,  2.03s/it][A
+ 81%|████████  | 158/195 [05:43<01:19,  2.16s/it][A
+ 82%|████████▏ | 159/195 [05:45<01:20,  2.22s/it][A
+ 82%|████████▏ | 160/195 [05:48<01:19,  2.27s/it][A
+ 83%|████████▎ | 161/195 [05:50<01:21,  2.40s/it][A
+ 83%|████████▎ | 162/195 [05:53<01:23,  2.54s/it][A
+ 84%|████████▎ | 163/195 [05:55<01:14,  2.33s/it][A
+ 84%|████████▍ | 164/195 [05:57<01:07,  2.18s/it][A
+ 85%|████████▍ | 165/195 [05:59<01:08,  2.28s/it][A
+ 85%|████████▌ | 166/195 [06:02<01:06,  2.31s/it][A
+ 86%|████████▌ | 167/195 [06:04<01:04,  2.29s/it][A
+ 86%|████████▌ | 168/195 [06:08<01:15,  2.80s/it][A
+ 87%|████████▋ | 169/195 [06:11<01:15,  2.90s/it][A
+ 87%|████████▋ | 170/195 [06:13<01:07,  2.69s/it][A
+ 88%|████████▊ | 171/195 [06:16<01:01,  2.57s/it][A
+ 88%|████████▊ | 172/195 [06:18<00:55,  2.40s/it][A
+ 89%|████████▊ | 173/195 [06:20<00:49,  2.26s/it][A
+ 89%|████████▉ | 174/195 [06:23<00:55,  2.62s/it][A
+ 90%|████████▉ | 175/195 [06:25<00:49,  2.49s/it][A
+ 90%|█████████ | 176/195 [06:27<00:44,  2.34s/it][A
+ 91%|█████████ | 177/195 [06:30<00:42,  2.35s/it][A
+ 91%|█████████▏| 178/195 [06:31<00:37,  2.20s/it][A
+ 92%|█████████▏| 179/195 [06:34<00:35,  2.24s/it][A
+ 92%|█████████▏| 180/195 [06:36<00:32,  2.19s/it][A
+ 93%|█████████▎| 181/195 [06:39<00:34,  2.45s/it][A
+ 93%|█████████▎| 182/195 [06:41<00:29,  2.28s/it][A
+ 94%|█████████▍| 183/195 [06:43<00:25,  2.15s/it][A
+ 94%|█████████▍| 184/195 [06:44<00:21,  2.00s/it][A
+ 95%|█████████▍| 185/195 [06:48<00:24,  2.41s/it][A
+ 95%|█████████▌| 186/195 [06:50<00:22,  2.49s/it][A
+ 96%|█████████▌| 187/195 [06:52<00:19,  2.39s/it][A
+ 96%|█████████▋| 188/195 [06:55<00:16,  2.30s/it][A
+ 97%|█████████▋| 189/195 [06:57<00:13,  2.29s/it][A
+ 97%|█████████▋| 190/195 [06:59<00:10,  2.17s/it][A
+ 98%|█████████▊| 191/195 [07:00<00:08,  2.04s/it][A
+ 98%|█████████▊| 192/195 [07:02<00:05,  1.98s/it][A
+ 99%|█████████▉| 193/195 [07:04<00:03,  1.93s/it][A
+ 99%|█████████▉| 194/195 [07:06<00:01,  1.99s/it][A
+100%|██████████| 195/195 [07:08<00:00,  1.93s/it][A                                        
+                                                 [A  0%|          | 0/4266 [07:11<?, ?it/s]
+100%|██████████| 195/195 [07:08<00:00,  1.93s/it][A
+                                                 [A  0%|          | 1/4266 [07:53<560:55:38, 473.47s/it]  0%|          | 2/4266 [08:29<255:57:02, 216.09s/it]  0%|          | 3/4266 [09:07<159:47:33, 134.94s/it]  0%|          | 4/4266 [09:45<114:16:28, 96.52s/it]   0%|          | 5/4266 [10:21<88:36:56, 74.87s/it]   0%|          | 6/4266 [10:57<72:44:10, 61.47s/it]  0%|          | 7/4266 [11:33<62:56:57, 53.21s/it][rank1]: Traceback (most recent call last):
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/train.py", line 28, in <module>
+[rank1]:     main()
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/train.py", line 19, in main
+[rank1]:     run_exp()
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/llamafactory/train/tuner.py", line 132, in run_exp
+[rank1]:     _training_function(config={"args": args, "callbacks": callbacks})
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/llamafactory/train/tuner.py", line 89, in _training_function
+[rank1]:     run_sft(model_args, data_args, training_args, finetuning_args, generating_args, callbacks)
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/llamafactory/train/sft/workflow.py", line 134, in run_sft
+[rank1]:     train_result = trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
+[rank1]:                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/trainer.py", line 2325, in train
+[rank1]:     return inner_training_loop(
+[rank1]:            ^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/trainer.py", line 2674, in _inner_training_loop
+[rank1]:     tr_loss_step = self.training_step(model, inputs, num_items_in_batch)
+[rank1]:                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/trainer.py", line 4071, in training_step
+[rank1]:     self.accelerator.backward(loss, **kwargs)
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/accelerate/accelerator.py", line 2740, in backward
+[rank1]:     loss.backward(**kwargs)
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/torch/_tensor.py", line 648, in backward
+[rank1]:     torch.autograd.backward(
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/torch/autograd/__init__.py", line 353, in backward
+[rank1]:     _engine_run_backward(
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/torch/autograd/graph.py", line 824, in _engine_run_backward
+[rank1]:     return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+[rank1]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]: torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 20.19 GiB. GPU 1 has a total capacity of 139.80 GiB of which 19.39 GiB is free. Including non-PyTorch memory, this process has 120.40 GiB memory in use. Of the allocated memory 107.90 GiB is allocated by PyTorch, and 10.54 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+W0206 10:00:38.967000 2653972 torch/distributed/elastic/multiprocessing/api.py:900] Sending process 2654049 closing signal SIGTERM
+E0206 10:00:38.974000 2653972 torch/distributed/elastic/multiprocessing/api.py:874] failed (exitcode: 1) local_rank: 1 (pid: 2654050) of binary: /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/bin/python3
+Traceback (most recent call last):
+  File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/bin/accelerate", line 10, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/accelerate/commands/accelerate_cli.py", line 50, in main
+    args.func(args)
+  File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/accelerate/commands/launch.py", line 1222, in launch_command
+    multi_gpu_launcher(args)
+  File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/accelerate/commands/launch.py", line 853, in multi_gpu_launcher
+    distrib_run.run(args)
+  File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/torch/distributed/run.py", line 883, in run
+    elastic_launch(
+  File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 139, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 270, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+src/train.py FAILED
+------------------------------------------------------------
+Failures:
+  <NO_OTHER_FAILURES>
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-02-06_10:00:38
+  host      : della-i24g3
+  rank      : 1 (local_rank: 1)
+  exitcode  : 1 (pid: 2654050)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================

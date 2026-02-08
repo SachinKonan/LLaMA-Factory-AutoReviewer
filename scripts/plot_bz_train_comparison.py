@@ -70,26 +70,48 @@ def load_trainer_log(save_dir: Path) -> list[dict] | None:
 
 
 def extract_prediction(text: str) -> str:
-    """Extract Accept/Reject from model prediction."""
-    text_lower = text.lower()
+    """Extract Accept/Reject from model prediction.
 
+    Handles accept/reject, yes/no, and Y/N formats.
+    """
+    text_lower = text.lower().strip()
+
+    # Single letter format (Y/N)
+    if text_lower == "y":
+        return "accept"
+    if text_lower == "n":
+        return "reject"
+
+    # Look for boxed answers (accept/reject and yes/no)
     if "\\boxed{accept}" in text_lower or "boxed{accept}" in text_lower:
         return "accept"
     if "\\boxed{reject}" in text_lower or "boxed{reject}" in text_lower:
         return "reject"
-
-    if "accept" in text_lower and "reject" not in text_lower:
+    if "\\boxed{yes}" in text_lower or "boxed{yes}" in text_lower or "\\boxed{y}" in text_lower:
         return "accept"
-    if "reject" in text_lower and "accept" not in text_lower:
+    if "\\boxed{no}" in text_lower or "boxed{no}" in text_lower or "\\boxed{n}" in text_lower:
         return "reject"
 
+    # Fallback: look for accept/reject/yes/no keywords
+    yes_pos = text_lower.rfind("yes")
+    no_pos = text_lower.rfind("no")
     accept_pos = text_lower.rfind("accept")
     reject_pos = text_lower.rfind("reject")
 
-    if accept_pos > reject_pos:
-        return "accept"
-    elif reject_pos > accept_pos:
-        return "reject"
+    # Find the last occurring keyword
+    positions = [
+        (yes_pos, "accept"),
+        (no_pos, "reject"),
+        (accept_pos, "accept"),
+        (reject_pos, "reject"),
+    ]
+    # Filter out -1 (not found)
+    positions = [(pos, label) for pos, label in positions if pos != -1]
+
+    if positions:
+        # Return the label of the last occurring keyword
+        positions.sort(key=lambda x: x[0])
+        return positions[-1][1]
 
     return "unknown"
 

@@ -34,6 +34,10 @@ def parse_training_log_from_output(log_file: Path) -> dict:
         # SFT-specific metrics (if available)
         'sft_accuracy': [],
         'sft_p_correct_mean': [],
+        # Rating-specific decomposed losses (if available)
+        'cls_loss': [],
+        'loss_bce': [],
+        'loss_rating': [],
         # Eval metrics (at epoch boundaries)
         'eval_epoch': [],
         'eval_loss': [],
@@ -69,10 +73,18 @@ def parse_training_log_from_output(log_file: Path) -> dict:
                 if 'sft_p_correct_mean' in data:
                     metrics['sft_p_correct_mean'].append(data['sft_p_correct_mean'])
 
-            # Eval metrics (has 'eval_loss')
-            elif 'eval_loss' in data:
+                # Rating-specific decomposed losses if available
+                if 'cls_loss' in data:
+                    metrics['cls_loss'].append(data['cls_loss'])
+                if 'loss_bce' in data:
+                    metrics['loss_bce'].append(data['loss_bce'])
+                if 'loss_rating' in data:
+                    metrics['loss_rating'].append(data['loss_rating'])
+
+            # Eval metrics (has 'eval_loss' or 'eval_accuracy' with 'eval_runtime')
+            elif 'eval_accuracy' in data and 'eval_runtime' in data:
                 metrics['eval_epoch'].append(data.get('epoch', 0))
-                metrics['eval_loss'].append(data['eval_loss'])
+                metrics['eval_loss'].append(data.get('eval_loss', 0))
                 metrics['eval_accuracy'].append(data.get('eval_accuracy', 0))
                 metrics['eval_f1'].append(data.get('eval_f1', 0))
 
@@ -191,6 +203,7 @@ def create_plots(
         'lr_2e6': '#3498db',            # Blue
         'lr_2e5_backbone_2e6': '#e74c3c',  # Red
         'lr_2.5e6_bs32': '#9b59b6',     # Purple
+        'lr_rating': '#f39c12',         # Orange
     }
 
     labels = {
@@ -198,6 +211,7 @@ def create_plots(
         'lr_2e6': 'LR=2e-6 (uniform)',
         'lr_2e5_backbone_2e6': 'LR=2e-5 head, 2e-6 backbone',
         'lr_2.5e6_bs32': 'LR=2.5e-6, batch=32',
+        'lr_rating': 'CLS+Rating',
     }
 
     # Helper function to plot one row
@@ -205,10 +219,28 @@ def create_plots(
         # Column 0: Training Loss
         for lr_config, metrics in metrics_dict.items():
             if len(metrics['loss']) > 0 and len(metrics['epoch']) > 0:
-                ax_loss.plot(metrics['epoch'], metrics['loss'],
-                       color=colors.get(lr_config, 'gray'),
-                       label=labels.get(lr_config, lr_config),
-                       linewidth=1, alpha=0.8)
+                color = colors.get(lr_config, 'gray')
+                label = labels.get(lr_config, lr_config)
+
+                # For rating jobs with decomposed losses, plot 3 lines
+                if lr_config == 'lr_rating' and len(metrics['cls_loss']) > 0 and len(metrics['loss_rating']) > 0:
+                    # Combined loss (solid line)
+                    ax_loss.plot(metrics['epoch'], metrics['loss'],
+                           color=color, label=label,
+                           linewidth=1.5, alpha=0.9)
+                    # CLS loss component (dashed line)
+                    ax_loss.plot(metrics['epoch'], metrics['cls_loss'],
+                           color=color, label=f'{label} (CLS)',
+                           linewidth=1, linestyle='--', alpha=0.7)
+                    # Rating loss component (dotted line)
+                    ax_loss.plot(metrics['epoch'], metrics['loss_rating'],
+                           color=color, label=f'{label} (Rating)',
+                           linewidth=1, linestyle=':', alpha=0.7)
+                else:
+                    # Regular single-line plot
+                    ax_loss.plot(metrics['epoch'], metrics['loss'],
+                           color=color, label=label,
+                           linewidth=1, alpha=0.8)
 
         ax_loss.set_xlabel('Epoch')
         ax_loss.set_ylabel('Loss')
@@ -262,7 +294,7 @@ def create_plots(
         ax_eval_acc.set_title(f'{row_title} - Eval Accuracy')
         ax_eval_acc.legend(fontsize=8)
         ax_eval_acc.grid(True, alpha=0.3)
-        ax_eval_acc.set_ylim(0.4, 1.0)
+        ax_eval_acc.set_ylim(0.0, 1.0)
 
     # Row 0: Text experiments
     plot_row(axes[0, 0], axes[0, 1], axes[0, 2], axes[0, 3], text_metrics, 'Text Model')
@@ -367,6 +399,10 @@ def main():
                        help='Text batch=32 experiment job ID')
     parser.add_argument('--vision_bs32_job', type=str, default=None,
                        help='Vision batch=32 experiment job ID')
+    parser.add_argument('--text_rating_job', type=str, default='4523117',
+                       help='Text CLS+Rating experiment job ID')
+    parser.add_argument('--vision_rating_job', type=str, default='4523571',
+                       help='Vision CLS+Rating experiment job ID')
     parser.add_argument('--batch_comparison', action='store_true',
                        help='Create separate batch size comparison plot')
     parser.add_argument('--batch_comparison_output', type=str,
@@ -442,6 +478,28 @@ def main():
         print(f"Found vision batch=32 log files: {vision_bs32_files}")
         for task_id, log_file in vision_bs32_files.items():
             lr_config = 'lr_2.5e6_bs32'
+            print(f"  Parsing {log_file.name} -> {lr_config}")
+            vision_metrics[lr_config] = parse_training_log_from_output(log_file)
+            m = vision_metrics[lr_config]
+            print(f"    Found {len(m['loss'])} training points, {len(m['eval_loss'])} eval points")
+
+    # Parse text rating experiment
+    if args.text_rating_job:
+        text_rating_files = find_log_files(log_dir, args.text_rating_job)
+        print(f"Found text rating log files: {text_rating_files}")
+        for task_id, log_file in text_rating_files.items():
+            lr_config = 'lr_rating'
+            print(f"  Parsing {log_file.name} -> {lr_config}")
+            text_metrics[lr_config] = parse_training_log_from_output(log_file)
+            m = text_metrics[lr_config]
+            print(f"    Found {len(m['loss'])} training points, {len(m['eval_loss'])} eval points")
+
+    # Parse vision rating experiment
+    if args.vision_rating_job:
+        vision_rating_files = find_log_files(log_dir, args.vision_rating_job)
+        print(f"Found vision rating log files: {vision_rating_files}")
+        for task_id, log_file in vision_rating_files.items():
+            lr_config = 'lr_rating'
             print(f"  Parsing {log_file.name} -> {lr_config}")
             vision_metrics[lr_config] = parse_training_log_from_output(log_file)
             m = vision_metrics[lr_config]

@@ -1,0 +1,187 @@
+Using the `WANDB_DISABLED` environment variable is deprecated and will be removed in v5. Use the --report_to flag to control the integrations used for logging result (for instance --report_to none).
+Using the `WANDB_DISABLED` environment variable is deprecated and will be removed in v5. Use the --report_to flag to control the integrations used for logging result (for instance --report_to none).
+Using the `WANDB_DISABLED` environment variable is deprecated and will be removed in v5. Use the --report_to flag to control the integrations used for logging result (for instance --report_to none).
+Using the `WANDB_DISABLED` environment variable is deprecated and will be removed in v5. Use the --report_to flag to control the integrations used for logging result (for instance --report_to none).
+Using the `WANDB_DISABLED` environment variable is deprecated and will be removed in v5. Use the --report_to flag to control the integrations used for logging result (for instance --report_to none).
+Using the `WANDB_DISABLED` environment variable is deprecated and will be removed in v5. Use the --report_to flag to control the integrations used for logging result (for instance --report_to none).
+[INFO|hub.py:421] 2026-02-06 09:31:19,060 >> Offline mode: forcing local_files_only=True
+[INFO|tokenization_utils_base.py:1949] 2026-02-06 09:31:19,091 >> Offline mode: forcing local_files_only=True
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,097 >> loading file vocab.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/vocab.json
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,097 >> loading file merges.txt from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/merges.txt
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,097 >> loading file tokenizer.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/tokenizer.json
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,097 >> loading file added_tokens.json from cache at None
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,097 >> loading file special_tokens_map.json from cache at None
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,097 >> loading file tokenizer_config.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/tokenizer_config.json
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,097 >> loading file chat_template.jinja from cache at None
+[INFO|tokenization_utils_base.py:2364] 2026-02-06 09:31:19,286 >> Special tokens have been added in the vocabulary, make sure the associated word embeddings are fine-tuned or trained.
+[INFO|hub.py:421] 2026-02-06 09:31:19,286 >> Offline mode: forcing local_files_only=True
+[INFO|hub.py:421] 2026-02-06 09:31:19,287 >> Offline mode: forcing local_files_only=True
+[INFO|hub.py:421] 2026-02-06 09:31:19,287 >> Offline mode: forcing local_files_only=True
+[INFO|hub.py:421] 2026-02-06 09:31:19,287 >> Offline mode: forcing local_files_only=True
+[INFO|hub.py:421] 2026-02-06 09:31:19,287 >> Offline mode: forcing local_files_only=True
+[INFO|hub.py:421] 2026-02-06 09:31:19,288 >> Offline mode: forcing local_files_only=True
+[INFO|configuration_utils.py:765] 2026-02-06 09:31:19,288 >> loading configuration file config.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/config.json
+[INFO|configuration_utils.py:839] 2026-02-06 09:31:19,289 >> Model config Qwen2Config {
+  "architectures": [
+    "Qwen2ForCausalLM"
+  ],
+  "attention_dropout": 0.0,
+  "bos_token_id": 151643,
+  "dtype": "bfloat16",
+  "eos_token_id": 151645,
+  "hidden_act": "silu",
+  "hidden_size": 3584,
+  "initializer_range": 0.02,
+  "intermediate_size": 18944,
+  "layer_types": [
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention",
+    "full_attention"
+  ],
+  "max_position_embeddings": 32768,
+  "max_window_layers": 28,
+  "model_type": "qwen2",
+  "num_attention_heads": 28,
+  "num_hidden_layers": 28,
+  "num_key_value_heads": 4,
+  "rms_norm_eps": 1e-06,
+  "rope_scaling": null,
+  "rope_theta": 1000000.0,
+  "sliding_window": null,
+  "tie_word_embeddings": false,
+  "transformers_version": "4.57.1",
+  "use_cache": true,
+  "use_sliding_window": false,
+  "vocab_size": 152064
+}
+
+[INFO|hub.py:421] 2026-02-06 09:31:19,290 >> Offline mode: forcing local_files_only=True
+[INFO|tokenization_utils_base.py:1949] 2026-02-06 09:31:19,290 >> Offline mode: forcing local_files_only=True
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,291 >> loading file vocab.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/vocab.json
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,291 >> loading file merges.txt from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/merges.txt
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,291 >> loading file tokenizer.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/tokenizer.json
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,291 >> loading file added_tokens.json from cache at None
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,291 >> loading file special_tokens_map.json from cache at None
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,291 >> loading file tokenizer_config.json from cache at /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28/tokenizer_config.json
+[INFO|tokenization_utils_base.py:2095] 2026-02-06 09:31:19,291 >> loading file chat_template.jinja from cache at None
+[INFO|tokenization_utils_base.py:2364] 2026-02-06 09:31:19,491 >> Special tokens have been added in the vocabulary, make sure the associated word embeddings are fine-tuned or trained.
+Setting num_proc from 16 back to 1 for the train split to disable multiprocessing as it only contains one shard.
+Generating train split: 0 examples [00:00, ? examples/s]Generating train split: 11368 examples [00:02, 4105.73 examples/s]Generating train split: 11368 examples [00:02, 4078.06 examples/s]
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/train.py", line 28, in <module>
+[rank0]:     main()
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/train.py", line 19, in main
+[rank0]:     run_exp()
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/llamafactory/train/tuner.py", line 132, in run_exp
+[rank0]:     _training_function(config={"args": args, "callbacks": callbacks})
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/llamafactory/train/tuner.py", line 102, in _training_function
+[rank0]:     run_cls(model_args, data_args, training_args, finetuning_args, callbacks)
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/llamafactory/train/cls/workflow.py", line 44, in run_cls
+[rank0]:     dataset_module = get_dataset(template, model_args, data_args, training_args, stage="cls", **tokenizer_module)
+[rank0]:                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/llamafactory/data/loader.py", line 306, in get_dataset
+[rank0]:     dataset = _get_merged_dataset(data_args.dataset, model_args, data_args, training_args, stage)
+[rank0]:               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/llamafactory/data/loader.py", line 182, in _get_merged_dataset
+[rank0]:     datasets[dataset_name] = _load_single_dataset(dataset_attr, model_args, data_args, training_args)
+[rank0]:                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/llamafactory/data/loader.py", line 132, in _load_single_dataset
+[rank0]:     dataset = load_dataset(
+[rank0]:               ^^^^^^^^^^^^^
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/datasets/load.py", line 1412, in load_dataset
+[rank0]:     builder_instance.download_and_prepare(
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/datasets/builder.py", line 894, in download_and_prepare
+[rank0]:     self._download_and_prepare(
+[rank0]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/datasets/builder.py", line 972, in _download_and_prepare
+[rank0]:     raise OSError(
+[rank0]: OSError: Cannot find data file. 
+[rank0]: Original error:
+[rank0]: [Errno 2] No such file or directory: '/scratch/gpfs/ZHUANGL/sk7524/hf/datasets/json/default-4045b1b7a8d96370/0.0.0/f4e89e8750d5d5ffbef2c078bf0ddfedef29dc2faff52a6255cf513c05eb1092.incomplete/json-train-00000-00000-of-NNNNN.arrow'
+Converting format of dataset (num_proc=16):   0%|          | 0/11368 [00:00<?, ? examples/s]Converting format of dataset (num_proc=16):   3%|▎         | 350/11368 [00:00<00:12, 858.94 examples/s]Converting format of dataset (num_proc=16):  84%|████████▎ | 9493/11368 [00:00<00:00, 23039.93 examples/s][rank0]:[W206 09:31:23.299788318 ProcessGroupNCCL.cpp:1479] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+Converting format of dataset (num_proc=16): 100%|██████████| 11368/11368 [00:00<00:00, 15576.85 examples/s]
+Converting format of dataset (num_proc=16):   0%|          | 0/1572 [00:00<?, ? examples/s]Converting format of dataset (num_proc=16):   6%|▋         | 99/1572 [00:00<00:05, 266.47 examples/s]Converting format of dataset (num_proc=16): 100%|██████████| 1572/1572 [00:00<00:00, 3064.28 examples/s]
+[rank1]: Traceback (most recent call last):
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/train.py", line 28, in <module>
+[rank1]:     main()
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/train.py", line 19, in main
+[rank1]:     run_exp()
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/llamafactory/train/tuner.py", line 132, in run_exp
+[rank1]:     _training_function(config={"args": args, "callbacks": callbacks})
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/llamafactory/train/tuner.py", line 102, in _training_function
+[rank1]:     run_cls(model_args, data_args, training_args, finetuning_args, callbacks)
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/llamafactory/train/cls/workflow.py", line 44, in run_cls
+[rank1]:     dataset_module = get_dataset(template, model_args, data_args, training_args, stage="cls", **tokenizer_module)
+[rank1]:                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/src/llamafactory/data/loader.py", line 316, in get_dataset
+[rank1]:     with training_args.main_process_first(desc="pre-process dataset", local=(not data_args.data_shared_file_system)):
+[rank1]:   File "/home/sk7524/.local/share/uv/python/cpython-3.11.13-linux-x86_64-gnu/lib/python3.11/contextlib.py", line 137, in __enter__
+[rank1]:     return next(self.gen)
+[rank1]:            ^^^^^^^^^^^^^^
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/transformers/training_args.py", line 2538, in main_process_first
+[rank1]:     dist.barrier()
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/torch/distributed/c10d_logger.py", line 81, in wrapper
+[rank1]:     return func(*args, **kwargs)
+[rank1]:            ^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/torch/distributed/distributed_c10d.py", line 4640, in barrier
+[rank1]:     work.wait()
+[rank1]: RuntimeError: [/pytorch/third_party/gloo/gloo/transport/tcp/pair.cc:534] Connection closed by peer [172.17.9.253]:41176
+W0206 09:31:24.182000 3859622 torch/distributed/elastic/multiprocessing/api.py:900] Sending process 3859782 closing signal SIGTERM
+E0206 09:31:24.396000 3859622 torch/distributed/elastic/multiprocessing/api.py:874] failed (exitcode: 1) local_rank: 0 (pid: 3859781) of binary: /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/bin/python3
+Traceback (most recent call last):
+  File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/bin/accelerate", line 10, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/accelerate/commands/accelerate_cli.py", line 50, in main
+    args.func(args)
+  File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/accelerate/commands/launch.py", line 1222, in launch_command
+    multi_gpu_launcher(args)
+  File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/accelerate/commands/launch.py", line 853, in multi_gpu_launcher
+    distrib_run.run(args)
+  File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/torch/distributed/run.py", line 883, in run
+    elastic_launch(
+  File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 139, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/.venv/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 270, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+src/train.py FAILED
+------------------------------------------------------------
+Failures:
+  <NO_OTHER_FAILURES>
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-02-06_09:31:24
+  host      : della-i23g1
+  rank      : 0 (local_rank: 0)
+  exitcode  : 1 (pid: 3859781)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================

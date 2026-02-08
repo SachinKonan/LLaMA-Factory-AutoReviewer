@@ -41,6 +41,9 @@ DATASET_MAPPINGS = {
     "balanced_trainagreeing_images": "iclr_2020_2025_85_5_10_split7_balanced_trainagreeing_clean_images_binary_noreviews_v7",
     "balanced_2024_2025_images": "iclr_2024_2025_85_5_10_split7_balanced_clean_images_binary_noreviews_v7",
     "balanced_2017_2025_images": "iclr_2017_2025_85_5_10_split7_balanced_clean_images_binary_noreviews_v7",
+    # Yes/No format and no2024 variants
+    "balanced_trainagreeing_no2024_vision": "iclr_2020_2023_2025_85_5_10_split7_balanced_trainagreeing_vision_binary_noreviews_v7",
+    "balanced_trainagreeing_no2024_vision_yesno": "iclr_2020_2023_2025_85_5_10_split7_balanced_trainagreeing_vision_binary_yesno_noreviews_v7",
 }
 
 # Dataset groups for comparison (base_dataset -> modality -> short_name)
@@ -101,39 +104,69 @@ OOD_YEARS = [2025]
 
 
 def extract_prediction(text: str) -> str:
-    """Extract Accept/Reject from model prediction."""
-    text_lower = text.lower()
+    """Extract Accept/Reject from model prediction.
 
-    # Look for boxed answers first
+    Handles accept/reject, yes/no, and Y/N formats.
+    """
+    text_lower = text.lower().strip()
+
+    # Single letter format (Y/N)
+    if text_lower == "y":
+        return "accept"
+    if text_lower == "n":
+        return "reject"
+
+    # Look for boxed answers (accept/reject and yes/no)
     if "\\boxed{accept}" in text_lower or "boxed{accept}" in text_lower:
         return "accept"
     if "\\boxed{reject}" in text_lower or "boxed{reject}" in text_lower:
         return "reject"
-
-    # Fallback: look for accept/reject keywords
-    if "accept" in text_lower and "reject" not in text_lower:
+    if "\\boxed{yes}" in text_lower or "boxed{yes}" in text_lower or "\\boxed{y}" in text_lower:
         return "accept"
-    if "reject" in text_lower and "accept" not in text_lower:
+    if "\\boxed{no}" in text_lower or "boxed{no}" in text_lower or "\\boxed{n}" in text_lower:
         return "reject"
 
-    # If both or neither, check which comes last (final answer)
+    # Fallback: look for accept/reject/yes/no keywords
+    yes_pos = text_lower.rfind("yes")
+    no_pos = text_lower.rfind("no")
     accept_pos = text_lower.rfind("accept")
     reject_pos = text_lower.rfind("reject")
 
-    if accept_pos > reject_pos:
-        return "accept"
-    elif reject_pos > accept_pos:
-        return "reject"
+    # Find the last occurring keyword
+    positions = [
+        (yes_pos, "accept"),
+        (no_pos, "reject"),
+        (accept_pos, "accept"),
+        (reject_pos, "reject"),
+    ]
+    # Filter out -1 (not found)
+    positions = [(pos, label) for pos, label in positions if pos != -1]
+
+    if positions:
+        # Return the label of the last occurring keyword
+        positions.sort(key=lambda x: x[0])
+        return positions[-1][1]
 
     return "unknown"
 
 
 def extract_label(text: str) -> str:
-    """Extract Accept/Reject from ground truth label."""
+    """Extract Accept/Reject from ground truth label.
+
+    Handles accept/reject, yes/no, and Y/N formats.
+    """
     text_lower = text.lower().strip()
-    if "accept" in text_lower:
+
+    # Single letter format (Y/N)
+    if text_lower == "y":
         return "accept"
-    if "reject" in text_lower:
+    if text_lower == "n":
+        return "reject"
+
+    # Full word formats
+    if "accept" in text_lower or "yes" == text_lower:
+        return "accept"
+    if "reject" in text_lower or "no" == text_lower:
         return "reject"
     return "unknown"
 
@@ -913,6 +946,249 @@ def plot_accuracy_by_rating(all_best_results: dict, output_dir: Path):
     print(f"Saved: {output_dir / 'accuracy_by_rating.png'}")
 
 
+def plot_yesno_accuracy_by_year(output_dir: Path):
+    """Plot 1x4 grid comparing Accept/Reject vs Y/N format (both no2024 trainagreeing vision)."""
+    print("Generating yesno comparison accuracy by year...")
+
+    fig, axes = plt.subplots(1, 4, figsize=(24, 5))
+
+    # Load results for both variants
+    variants = {
+        "Accept/Reject": "balanced_trainagreeing_no2024_vision",
+        "Y/N": "balanced_trainagreeing_no2024_vision_yesno",
+    }
+
+    colors = {
+        "Accept/Reject": "#3498db",  # Blue
+        "Y/N": "#e74c3c",            # Red
+    }
+
+    results = {}
+    for label, short_name in variants.items():
+        result = find_best_checkpoint(short_name)
+        if result:
+            results[label] = result
+
+    if not results:
+        plt.close()
+        return
+
+    # Collect all years
+    all_years = set()
+    for result in results.values():
+        all_years.update(y for y in result["year_stats"].keys() if y != "unknown")
+    all_years = sorted(all_years)
+
+    # Prepare data for all metrics
+    data_by_variant = {}
+    for variant_label in variants.keys():
+        if variant_label not in results:
+            continue
+
+        result = results[variant_label]
+        data_by_variant[variant_label] = {
+            "years": [],
+            "accuracy": [],
+            "accept_recall": [],
+            "reject_recall": [],
+            "pred_accept_rate": [],
+        }
+
+        for year in all_years:
+            if year not in result["year_stats"]:
+                continue
+            metrics = calc_metrics(result["year_stats"][year])
+            data_by_variant[variant_label]["years"].append(year)
+            data_by_variant[variant_label]["accuracy"].append(metrics["accuracy"])
+            data_by_variant[variant_label]["accept_recall"].append(metrics["accept_recall"])
+            data_by_variant[variant_label]["reject_recall"].append(metrics["reject_recall"])
+            data_by_variant[variant_label]["pred_accept_rate"].append(metrics["pred_accept_rate"])
+
+    # Compute overall and 2025 metrics for text box
+    overall_2025_metrics = {}
+    for variant_label in variants.keys():
+        if variant_label not in results:
+            continue
+
+        result = results[variant_label]
+        overall = result["metrics"]
+        year_2025_metrics = calc_metrics(result["year_stats"][2025]) if 2025 in result["year_stats"] else {}
+
+        overall_2025_metrics[variant_label] = {
+            "overall": overall,
+            "2025": year_2025_metrics,
+        }
+
+    # Plot each metric
+    metric_configs = [
+        ("accuracy", "Accuracy by Year", 0),
+        ("accept_recall", "Accept Recall by Year", 1),
+        ("reject_recall", "Reject Recall by Year", 2),
+        ("pred_accept_rate", "Predicted Accept Rate by Year", 3),
+    ]
+
+    for metric_key, metric_title, idx in metric_configs:
+        ax = axes[idx]
+
+        for variant_label in variants.keys():
+            if variant_label not in data_by_variant:
+                continue
+
+            data = data_by_variant[variant_label]
+            if not data["years"]:
+                continue
+
+            color = colors[variant_label]
+            ax.plot(data["years"], data[metric_key], '-o', color=color,
+                   linewidth=2, markersize=8, label=variant_label)
+
+        ax.set_xlabel('Year', fontsize=11)
+        ax.set_ylabel(metric_title.split(' by')[0], fontsize=11)
+        ax.set_title(metric_title, fontsize=12, fontweight='bold')
+        ax.set_xticks(all_years)
+        ax.set_xticklabels([str(y) for y in all_years], rotation=45)
+        ax.set_ylim(0.0, 1.0)
+        ax.yaxis.set_major_formatter(PercentFormatter(1))
+        ax.legend(loc='best', fontsize=9)
+        ax.grid(alpha=0.3)
+
+        # Add text box with overall/2025 metrics
+        text_lines = ["Overall / 2025:"]
+        for variant_label in variants.keys():
+            if variant_label not in overall_2025_metrics:
+                continue
+
+            metrics = overall_2025_metrics[variant_label]
+            overall_val = metrics["overall"].get(metric_key, 0)
+            year_2025_val = metrics["2025"].get(metric_key, 0)
+
+            text_lines.append(f"{variant_label}: {overall_val:.0%} / {year_2025_val:.0%}")
+
+        text_str = "\n".join(text_lines)
+        ax.text(0.02, 0.02, text_str, transform=ax.transAxes,
+               fontsize=8, verticalalignment='bottom',
+               bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+    plt.suptitle('Metrics by Year: Trainagreeing No2024 Vision (Accept/Reject vs Y/N)',
+                 fontsize=15, fontweight='bold', y=1.05)
+    plt.tight_layout()
+
+    png_path = output_dir / 'accuracy_by_year_balanced_trainagreeing_yesnocomparison.png'
+    plt.savefig(png_path, dpi=150, bbox_inches='tight', facecolor='white')
+    plt.close()
+    print(f"Saved: {png_path}")
+
+
+def plot_yesno_checkpoint_accuracy(output_dir: Path):
+    """Plot test accuracy over checkpoints (yesno comparison)."""
+    print("Generating yesno comparison checkpoint accuracy...")
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    variants = {
+        "Accept/Reject": "balanced_trainagreeing_no2024_vision",
+        "Y/N": "balanced_trainagreeing_no2024_vision_yesno",
+    }
+
+    colors = {
+        "Accept/Reject": "#3498db",
+        "Y/N": "#e74c3c",
+    }
+
+    has_data = False
+    for variant_label, short_name in variants.items():
+        results = load_all_checkpoints(short_name)
+
+        if not results:
+            continue
+
+        # Sort by step and assign sequential epochs
+        results.sort(key=lambda x: x["step"])
+        epochs = list(range(1, len(results) + 1))
+        accuracies = [r["metrics"]["accuracy"] for r in results]
+
+        has_data = True
+        color = colors[variant_label]
+        ax.plot(epochs, accuracies, '-o', color=color, linewidth=2,
+               markersize=6, label=variant_label)
+
+    if not has_data:
+        plt.close()
+        return
+
+    ax.set_xlabel('Epoch', fontsize=12)
+    ax.set_ylabel('Test Accuracy', fontsize=12)
+    ax.set_title('Test Accuracy Over Checkpoints: Trainagreeing No2024 Vision (Accept/Reject vs Y/N)',
+                fontsize=13, fontweight='bold')
+    ax.yaxis.set_major_formatter(PercentFormatter(1))
+    ax.legend(loc='best', fontsize=11)
+    ax.grid(alpha=0.3)
+    ax.set_ylim(0.60, 0.80)
+
+    plt.tight_layout()
+
+    png_path = output_dir / 'checkpoint_accuracy_balanced_trainagreeing_yesnocomparison.png'
+    plt.savefig(png_path, dpi=150, bbox_inches='tight', facecolor='white')
+    plt.close()
+    print(f"Saved: {png_path}")
+
+
+def plot_yesno_loss_curves(output_dir: Path):
+    """Plot training loss curves comparing Accept/Reject vs Y/N format."""
+    print("Generating yesno comparison loss curves...")
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    variants = {
+        "Accept/Reject": "balanced_trainagreeing_no2024_vision",
+        "Y/N": "balanced_trainagreeing_no2024_vision_yesno",
+    }
+
+    colors = {
+        "Accept/Reject": "#3498db",
+        "Y/N": "#e74c3c",
+    }
+
+    has_data = False
+    for variant_label, short_name in variants.items():
+        logs = load_trainer_log(short_name)
+
+        if not logs:
+            continue
+
+        percentages = [entry["percentage"] for entry in logs
+                      if "percentage" in entry and "loss" in entry]
+        losses = [entry["loss"] for entry in logs
+                 if "percentage" in entry and "loss" in entry]
+
+        if not percentages:
+            continue
+
+        has_data = True
+        color = colors[variant_label]
+        ax.plot(percentages, losses, '-', color=color, linewidth=2,
+               alpha=0.8, label=variant_label)
+
+    if not has_data:
+        plt.close()
+        return
+
+    ax.set_xlabel('Training Progress (%)', fontsize=12)
+    ax.set_ylabel('Loss', fontsize=12)
+    ax.set_title('Training Loss Curves: Trainagreeing No2024 Vision (Accept/Reject vs Y/N)',
+                fontsize=14, fontweight='bold')
+    ax.legend(loc='best', fontsize=11)
+    ax.grid(alpha=0.3)
+    ax.set_ylim(0, 0.8)
+    ax.set_xlim(0, 100)
+
+    plt.tight_layout()
+    png_path = output_dir / 'loss_curves_balanced_trainagreeing_yesnocomparison.png'
+    plt.savefig(png_path, dpi=150, bbox_inches='tight', facecolor='white')
+    plt.close()
+    print(f"Saved: {png_path}")
+
+
 def main():
     """Orchestrate all plots."""
     # Create output directory
@@ -969,6 +1245,14 @@ def main():
 
     # 6. Loss curves
     plot_loss_curves(OUTPUT_DIR)
+
+    # 7. Yes/No comparison plots (trainagreeing no2024 vision)
+    print("\n" + "=" * 60)
+    print("Generating Yes/No comparison plots...")
+    print("=" * 60)
+    plot_yesno_accuracy_by_year(OUTPUT_DIR)
+    plot_yesno_checkpoint_accuracy(OUTPUT_DIR)
+    plot_yesno_loss_curves(OUTPUT_DIR)
 
     print("\n" + "=" * 60)
     print("All visualizations generated successfully!")

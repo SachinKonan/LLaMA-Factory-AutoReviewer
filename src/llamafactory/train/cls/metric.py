@@ -65,7 +65,22 @@ class ComputeBinaryMetrics:
         self._dump()
 
     def __call__(self, eval_preds: "EvalPrediction", compute_result: bool = True) -> dict[str, float] | None:
-        logits, labels = numpify(eval_preds.predictions[0]), numpify(eval_preds.predictions[1])
+        # Get predictions and labels from eval_preds
+        # predictions can be either:
+        #   - 1D array [N] for CLS-only (decision logits)
+        #   - 2D array [N, 2] for CLS+Rating (decision logits, rating logits)
+        preds_array = numpify(eval_preds.predictions)
+        labels_array = numpify(eval_preds.label_ids)
+
+        # Extract decision logits based on shape
+        if preds_array.ndim == 2:
+            # CLS+Rating: extract decision logits from first column
+            logits = preds_array[:, 0]
+        else:
+            # CLS-only: use predictions directly
+            logits = preds_array
+
+        labels = labels_array
 
         # Apply sigmoid and threshold
         probs = 1 / (1 + np.exp(-logits))

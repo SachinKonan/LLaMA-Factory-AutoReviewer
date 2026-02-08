@@ -43,6 +43,13 @@ EXPERIMENT_LOG_FILES = {
     "vision_balanced_no2024_head2e5_bb2e6_bs16_3epoch": "logs/lr_experiment_v7/4486374_1.out",
     "text_trainagreeing_no2024_lr_1.75e6_bs16_3epoch": "logs/lr_experiment_v7/4486375_0.out",
     "text_balanced_no2024_lr_1.75e6_bs16_3epoch": "logs/lr_experiment_v7/4486375_1.out",
+    # Original trainagreeing experiments (jobs 4524591-4524596)
+    "trainagreeing_original_no2024_text_cls": "logs/lr_experiment_v7/4524591.out",
+    "trainagreeing_original_no2024_text_cls_rating": "logs/lr_experiment_v7/4524592.out",
+    "trainagreeing_original_no2024_text_sft": "logs/lr_experiment_v7/4524593.out",
+    "trainagreeing_original_no2024_vision_cls": "logs/lr_experiment_v7/4524594.out",
+    "trainagreeing_original_no2024_vision_cls_rating": "logs/lr_experiment_v7/4524595.out",
+    "trainagreeing_original_no2024_vision_sft": "logs/lr_experiment_v7/4524596.out",
 }
 
 # Experiment groupings for separate plots
@@ -127,15 +134,16 @@ def parse_raw_log_for_metrics(log_file: Path) -> dict:
                         continue
 
                 # Match eval lines: {'eval_loss': ..., 'eval_accuracy': ..., 'epoch': ...}
-                elif "'eval_loss':" in line and "'epoch':" in line:
+                # Also handle cases with only eval_accuracy (CLS training)
+                elif "'eval_accuracy':" in line and "'epoch':" in line and "'eval_runtime':" in line:
                     try:
                         match = re.search(r"\{[^}]+\}", line)
                         if match:
                             json_str = match.group().replace("'", '"')
                             data = json.loads(json_str)
-                            if 'eval_loss' in data and 'epoch' in data:
+                            if 'eval_accuracy' in data and 'epoch' in data:
                                 metrics['eval_epoch'].append(data['epoch'])
-                                metrics['eval_loss'].append(data['eval_loss'])
+                                metrics['eval_loss'].append(data.get('eval_loss', 0))
                                 metrics['eval_accuracy'].append(data.get('eval_accuracy', 0))
                     except (json.JSONDecodeError, AttributeError):
                         continue
@@ -153,6 +161,29 @@ def parse_experiment_name(exp_name: str) -> Dict[str, str]:
         'lr_config': 'unknown',
         'short_name': exp_name,
     }
+
+    # Handle trainagreeing_original experiments
+    if exp_name.startswith('trainagreeing_original_no2024_'):
+        parts = exp_name.split('_')
+        if 'text' in parts:
+            info['model_type'] = 'text'
+        elif 'vision' in parts:
+            info['model_type'] = 'vision'
+
+        info['dataset'] = 'trainagreeing_no2024'
+
+        # Extract method (cls, cls_rating, sft)
+        if 'sft' in parts:
+            info['lr_config'] = 'SFT'
+            info['short_name'] = 'SFT'
+        elif 'cls_rating' in exp_name:
+            info['lr_config'] = 'CLS+Rating'
+            info['short_name'] = 'CLS+Rating'
+        elif 'cls' in parts:
+            info['lr_config'] = 'CLS'
+            info['short_name'] = 'CLS'
+
+        return info
 
     if exp_name.startswith('text_'):
         info['model_type'] = 'text'
