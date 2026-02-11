@@ -1,0 +1,233 @@
+{
+  "clean": {
+    "critical": {
+      "total": 1975,
+      "accuracy": 0.540253164556962,
+      "acceptance_rate": 0.47443037974683544,
+      "accept_recall": 0.5014807502467917,
+      "reject_recall": 0.552917903066271,
+      "accept_precision": 0.5421558164354322,
+      "reject_precision": 0.5385356454720617,
+      "confusion_matrix": {
+        "TP": 508,
+        "TN": 559,
+        "FP": 429,
+        "FN": 479
+      }
+    },
+    "enthusiastic": {
+      "total": 1971,
+      "accuracy": 0.5002536783358701,
+      "acceptance_rate": 1.0,
+      "accept_recall": 0.9733464955577492,
+      "reject_recall": 0.0,
+      "accept_precision": 0.5002536783358701,
+      "reject_precision": 0.0,
+      "confusion_matrix": {
+        "TP": 986,
+        "TN": 0,
+        "FP": 985,
+        "FN": 0
+      }
+    },
+    "standard": {
+      "total": 1986,
+      "accuracy": 0.5040281973816717,
+      "acceptance_rate": 0.9944612286002014,
+      "accept_recall": 0.981243830207305,
+      "reject_recall": 0.006923837784371909,
+      "accept_precision": 0.5032911392405063,
+      "reject_precision": 0.6363636363636364,
+      "confusion_matrix": {
+        "TP": 994,
+        "TN": 7,
+        "FP": 981,
+        "FN": 4
+      }
+    },
+    "strategy_d": {
+      "total": 1998,
+      "accuracy": 0.52002002002002,
+      "acceptance_rate": 0.8608608608608609,
+      "accept_recall": 0.8696939782823297,
+      "reject_recall": 0.1562809099901088,
+      "accept_precision": 0.5122093023255814,
+      "reject_precision": 0.5683453237410072,
+      "confusion_matrix": {
+        "TP": 881,
+        "TN": 158,
+        "FP": 839,
+        "FN": 120
+      }
+    },
+    "strategy_d_critical": {
+      "total": 2010,
+      "accuracy": 0.5422885572139303,
+      "acceptance_rate": 0.48009950248756217,
+      "accept_recall": 0.5192497532082923,
+      "reject_recall": 0.5578635014836796,
+      "accept_precision": 0.5450777202072539,
+      "reject_precision": 0.539712918660287,
+      "confusion_matrix": {
+        "TP": 526,
+        "TN": 564,
+        "FP": 439,
+        "FN": 481
+      }
+    }
+  },
+  "clean_images": {
+    "critical": {
+      "total": 1871,
+      "accuracy": 0.5248530197755211,
+      "acceptance_rate": 0.8198824158204169,
+      "accept_recall": 0.8020304568527918,
+      "reject_recall": 0.19413549039433772,
+      "accept_precision": 0.5149934810951761,
+      "reject_precision": 0.56973293768546,
+      "confusion_matrix": {
+        "TP": 790,
+        "TN": 192,
+        "FP": 744,
+        "FN": 145
+      }
+    },
+    "enthusiastic": {
+      "total": 1860,
+      "accuracy": 0.4962365591397849,
+      "acceptance_rate": 1.0,
+      "accept_recall": 0.9370558375634518,
+      "reject_recall": 0.0,
+      "accept_precision": 0.4962365591397849,
+      "reject_precision": 0.0,
+      "confusion_matrix": {
+        "TP": 923,
+        "TN": 0,
+        "FP": 937,
+        "FN": 0
+      }
+    },
+    "standard": {
+      "total": 1887,
+      "accuracy": 0.4933757286698463,
+      "acceptance_rate": 0.9655537890832009,
+      "accept_recall": 0.9147208121827411,
+      "reject_recall": 0.030333670374115267,
+      "accept_precision": 0.49451152579582874,
+      "reject_precision": 0.46153846153846156,
+      "confusion_matrix": {
+        "TP": 901,
+        "TN": 30,
+        "FP": 921,
+        "FN": 35
+      }
+    },
+    "strategy_d": {
+      "total": 1964,
+      "accuracy": 0.5096741344195519,
+      "acceptance_rate": 0.9791242362525459,
+      "accept_recall": 0.9847715736040609,
+      "reject_recall": 0.03134479271991911,
+      "accept_precision": 0.5044201768070723,
+      "reject_precision": 0.7560975609756098,
+      "confusion_matrix": {
+        "TP": 970,
+        "TN": 31,
+        "FP": 953,
+        "FN": 10
+      }
+    },
+    "strategy_d_critical": {
+      "total": 1954,
+      "accuracy": 0.5209825997952917,
+      "acceptance_rate": 0.4498464687819857,
+      "accept_recall": 0.46598984771573604,
+      "reject_recall": 0.5652173913043478,
+      "accept_precision": 0.5221843003412969,
+      "reject_precision": 0.52,
+      "confusion_matrix": {
+        "TP": 459,
+        "TN": 559,
+        "FP": 420,
+        "FN": 516
+      }
+    }
+  },
+  "vision": {
+    "critical": {
+      "total": 2013,
+      "accuracy": 0.5320417287630402,
+      "acceptance_rate": 0.7093889716840537,
+      "accept_recall": 0.736426456071076,
+      "reject_recall": 0.32082922013820336,
+      "accept_precision": 0.5224089635854342,
+      "reject_precision": 0.5555555555555556,
+      "confusion_matrix": {
+        "TP": 746,
+        "TN": 325,
+        "FP": 682,
+        "FN": 260
+      }
+    },
+    "enthusiastic": {
+      "total": 2014,
+      "accuracy": 0.5,
+      "acceptance_rate": 1.0,
+      "accept_recall": 0.9940769990128332,
+      "reject_recall": 0.0,
+      "accept_precision": 0.5,
+      "reject_precision": 0.0,
+      "confusion_matrix": {
+        "TP": 1007,
+        "TN": 0,
+        "FP": 1007,
+        "FN": 0
+      }
+    },
+    "standard": {
+      "total": 2020,
+      "accuracy": 0.5004950495049505,
+      "acceptance_rate": 0.996039603960396,
+      "accept_recall": 0.9940769990128332,
+      "reject_recall": 0.003948667324777887,
+      "accept_precision": 0.5004970178926441,
+      "reject_precision": 0.5,
+      "confusion_matrix": {
+        "TP": 1007,
+        "TN": 4,
+        "FP": 1005,
+        "FN": 4
+      }
+    },
+    "strategy_d": {
+      "total": 2022,
+      "accuracy": 0.5,
+      "acceptance_rate": 0.9693372898120672,
+      "accept_recall": 0.9674234945705824,
+      "reject_recall": 0.03060217176702863,
+      "accept_precision": 0.5,
+      "reject_precision": 0.5,
+      "confusion_matrix": {
+        "TP": 980,
+        "TN": 31,
+        "FP": 980,
+        "FN": 31
+      }
+    },
+    "strategy_d_critical": {
+      "total": 2006,
+      "accuracy": 0.522432701894317,
+      "acceptance_rate": 0.3325024925224327,
+      "accept_recall": 0.351431391905232,
+      "reject_recall": 0.6831194471865746,
+      "accept_precision": 0.5337331334332833,
+      "reject_precision": 0.5168035847647499,
+      "confusion_matrix": {
+        "TP": 356,
+        "TN": 692,
+        "FP": 311,
+        "FN": 647
+      }
+    }
+  }
+}

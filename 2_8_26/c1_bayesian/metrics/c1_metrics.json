@@ -1,0 +1,51 @@
+{
+  "original": {
+    "total": 1986,
+    "accuracy": 0.5040281973816717,
+    "acceptance_rate": 0.9944612286002014,
+    "accept_recall": 0.981243830207305,
+    "reject_recall": 0.006923837784371909,
+    "accept_precision": 0.5032911392405063,
+    "reject_precision": 0.6363636363636364,
+    "confusion_matrix": {
+      "TP": 994,
+      "TN": 7,
+      "FP": 981,
+      "FN": 4
+    }
+  },
+  "corrected": {
+    "total": 1986,
+    "accuracy": 0.5040281973816717,
+    "acceptance_rate": 0.9944612286002014,
+    "accept_recall": 0.981243830207305,
+    "reject_recall": 0.006923837784371909,
+    "accept_precision": 0.5032911392405063,
+    "reject_precision": 0.6363636363636364,
+    "confusion_matrix": {
+      "TP": 994,
+      "TN": 7,
+      "FP": 981,
+      "FN": 4
+    }
+  },
+  "priors": {
+    "confusion_matrix": {
+      "TP": 994,
+      "TN": 7,
+      "FP": 981,
+      "FN": 4
+    },
+    "total_samples": 1986,
+    "actual_accept": 998,
+    "actual_reject": 988,
+    "base_rate_accept": 0.5025176233635448,
+    "base_rate_reject": 0.49748237663645517,
+    "P_pred_accept_given_true_accept": 0.9959919839679359,
+    "P_pred_reject_given_true_accept": 0.004008016032064128,
+    "P_pred_accept_given_true_reject": 0.992914979757085,
+    "P_pred_reject_given_true_reject": 0.00708502024291498
+  },
+  "optimal_threshold": 0.3699999999999999,
+  "base_rate": 0.5
+}

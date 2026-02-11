@@ -186,3 +186,10 @@ textgrad_experiments/logs
 inference_scaling/results
 ablations/logs
 ablations/results/*.jsonl
+
+# 2_8_26 experiment directory exclusions
+2_8_26/logs/
+2_8_26/results/
+2_8_26/*/logs/
+2_8_26/*/results/
+2_8_26/*/data/

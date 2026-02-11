@@ -1,0 +1,48 @@
+{
+  "overall": {
+    "accuracy": 0.49915824915824913,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "confusion_matrix": {
+      "TP": 0,
+      "TN": 593,
+      "FP": 0,
+      "FN": 595
+    }
+  },
+  "optimal_threshold": 0.1,
+  "question_correlations": {
+    "q094": {
+      "correlation": 0.0,
+      "p_value": 1.0,
+      "text": "Does the review suggest that the paper's conclusions are overly optimistic?",
+      "category": "impact",
+      "fraction_yes": 0.0
+    },
+    "q068": {
+      "correlation": 0.0,
+      "p_value": 1.0,
+      "text": "Does the review suggest that the paper's results are specific to a particular dataset or setting?",
+      "category": "scope",
+      "fraction_yes": 0.0
+    }
+  },
+  "checklist": {
+    "n_questions": 2,
+    "questions": [
+      {
+        "id": "q094",
+        "text": "Does the review suggest that the paper's conclusions are overly optimistic?",
+        "category": "impact",
+        "cluster_id": 12
+      },
+      {
+        "id": "q068",
+        "text": "Does the review suggest that the paper's results are specific to a particular dataset or setting?",
+        "category": "scope",
+        "cluster_id": 27
+      }
+    ]
+  }
+}

@@ -1,0 +1,98 @@
+{
+  "clean": {
+    "single": {
+      "total": 4,
+      "accuracy": 0.25,
+      "acceptance_rate": 0.25,
+      "accept_recall": 0.14285714285714285,
+      "reject_recall": 0.0,
+      "accept_precision": 1.0,
+      "reject_precision": 0.0,
+      "confusion_matrix": {
+        "TP": 1,
+        "TN": 0,
+        "FP": 0,
+        "FN": 3
+      }
+    },
+    "majority": {
+      "total": 6,
+      "accuracy": 0.6666666666666666,
+      "acceptance_rate": 0.6666666666666666,
+      "accept_recall": 0.5714285714285714,
+      "reject_recall": 0.0,
+      "accept_precision": 1.0,
+      "reject_precision": 0.0,
+      "confusion_matrix": {
+        "TP": 4,
+        "TN": 0,
+        "FP": 0,
+        "FN": 2
+      }
+    }
+  },
+  "clean_images": {
+    "single": {
+      "total": 1461,
+      "accuracy": 0.5126625598904859,
+      "acceptance_rate": 0.9822039698836413,
+      "accept_recall": 0.75,
+      "reject_recall": 0.020491803278688523,
+      "accept_precision": 0.50801393728223,
+      "reject_precision": 0.7692307692307693,
+      "confusion_matrix": {
+        "TP": 729,
+        "TN": 20,
+        "FP": 706,
+        "FN": 6
+      }
+    },
+    "majority": {
+      "total": 1892,
+      "accuracy": 0.5010570824524313,
+      "acceptance_rate": 0.9904862579281184,
+      "accept_recall": 0.9639917695473251,
+      "reject_recall": 0.011270491803278689,
+      "accept_precision": 0.5,
+      "reject_precision": 0.6111111111111112,
+      "confusion_matrix": {
+        "TP": 937,
+        "TN": 11,
+        "FP": 937,
+        "FN": 7
+      }
+    }
+  },
+  "vision": {
+    "single": {
+      "total": 1379,
+      "accuracy": 0.5025380710659898,
+      "acceptance_rate": 0.728788977519942,
+      "accept_recall": 0.4960552268244576,
+      "reject_recall": 0.1873767258382643,
+      "accept_precision": 0.5004975124378109,
+      "reject_precision": 0.5080213903743316,
+      "confusion_matrix": {
+        "TP": 503,
+        "TN": 190,
+        "FP": 502,
+        "FN": 184
+      }
+    },
+    "majority": {
+      "total": 1978,
+      "accuracy": 0.5106167846309403,
+      "acceptance_rate": 0.7598584428715874,
+      "accept_recall": 0.7495069033530573,
+      "reject_recall": 0.2465483234714004,
+      "accept_precision": 0.5056553559547572,
+      "reject_precision": 0.5263157894736842,
+      "confusion_matrix": {
+        "TP": 760,
+        "TN": 250,
+        "FP": 743,
+        "FN": 225
+      }
+    }
+  }
+}
