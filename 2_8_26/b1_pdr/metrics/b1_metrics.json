@@ -1,33 +1,33 @@
 {
   "clean": {
     "single": {
-      "total": 4,
-      "accuracy": 0.25,
-      "acceptance_rate": 0.25,
-      "accept_recall": 0.14285714285714285,
-      "reject_recall": 0.0,
-      "accept_precision": 1.0,
-      "reject_precision": 0.0,
+      "total": 1984,
+      "accuracy": 0.5020161290322581,
+      "acceptance_rate": 0.9914314516129032,
+      "accept_recall": 0.9743336623889437,
+      "reject_recall": 0.008902077151335312,
+      "accept_precision": 0.501779359430605,
+      "reject_precision": 0.5294117647058824,
       "confusion_matrix": {
-        "TP": 1,
-        "TN": 0,
-        "FP": 0,
-        "FN": 3
+        "TP": 987,
+        "TN": 9,
+        "FP": 980,
+        "FN": 8
       }
     },
     "majority": {
-      "total": 6,
-      "accuracy": 0.6666666666666666,
-      "acceptance_rate": 0.6666666666666666,
-      "accept_recall": 0.5714285714285714,
-      "reject_recall": 0.0,
-      "accept_precision": 1.0,
-      "reject_precision": 0.0,
+      "total": 2020,
+      "accuracy": 0.5,
+      "acceptance_rate": 0.9965346534653465,
+      "accept_recall": 0.9940769990128332,
+      "reject_recall": 0.002967359050445104,
+      "accept_precision": 0.5002483854942872,
+      "reject_precision": 0.42857142857142855,
       "confusion_matrix": {
-        "TP": 4,
-        "TN": 0,
-        "FP": 0,
-        "FN": 2
+        "TP": 1007,
+        "TN": 3,
+        "FP": 1006,
+        "FN": 4
       }
     }
   },
@@ -61,6 +61,21 @@
         "FP": 937,
         "FN": 7
       }
+    },
+    "metareview": {
+      "total": 1934,
+      "accuracy": 0.5,
+      "acceptance_rate": 0.9891416752843847,
+      "accept_recall": 0.9835390946502057,
+      "reject_recall": 0.011270491803278689,
+      "accept_precision": 0.4997386304234187,
+      "reject_precision": 0.5238095238095238,
+      "confusion_matrix": {
+        "TP": 956,
+        "TN": 11,
+        "FP": 957,
+        "FN": 10
+      }
     }
   },
   "vision": {
@@ -92,6 +107,21 @@
         "TN": 250,
         "FP": 743,
         "FN": 225
+      }
+    },
+    "metareview": {
+      "total": 2012,
+      "accuracy": 0.5014910536779325,
+      "acceptance_rate": 0.8618290258449304,
+      "accept_recall": 0.8560157790927022,
+      "reject_recall": 0.1390532544378698,
+      "accept_precision": 0.5005767012687428,
+      "reject_precision": 0.5071942446043165,
+      "confusion_matrix": {
+        "TP": 868,
+        "TN": 141,
+        "FP": 866,
+        "FN": 137
       }
     }
   }

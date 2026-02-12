@@ -8,7 +8,6 @@
 #SBATCH --mem=64G
 #SBATCH --time=12:00:00
 #SBATCH --gres=gpu:1
-#SBATCH --nodelist=neu316
 #SBATCH --array=0-4
 
 # Checklist Optimization Pipeline using Qwen/Qwen2.5-7B-Instruct
@@ -31,20 +30,22 @@ case $SLURM_ARRAY_TASK_ID in
     0)
         echo "Stage 1: Generating candidate questions from ICLR review criteria..."
         echo "  Model: Qwen/Qwen2.5-7B-Instruct (1x L40 GPU)"
+        echo "  Full mode: sampling from all 4682 reviews"
         python ${BASE_DIR}/stage1_generate_candidates.py \
             --output ${BASE_DIR}/data/candidate_questions.jsonl \
-            --n_questions 100 \
-            --sample_size 50 \
+            --n_questions 200 \
+            --sample_size 500 \
             --tensor_parallel_size 1
         ;;
     1)
         echo "Stage 2: Filtering questions by enforceability..."
+        echo "  Full mode: testing on 30 reviews with 5 repeats"
         python ${BASE_DIR}/stage2_filter_questions.py \
             --input_questions ${BASE_DIR}/data/candidate_questions.jsonl \
             --output ${BASE_DIR}/data/filtered_questions.jsonl \
             --consistency_threshold 0.80 \
-            --n_test_reviews 5 \
-            --n_repeats 3 \
+            --n_test_reviews 30 \
+            --n_repeats 5 \
             --tensor_parallel_size 1
         ;;
     2)

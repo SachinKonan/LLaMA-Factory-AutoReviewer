@@ -101,7 +101,7 @@ else
         --dataset ${BASE_DATASET} \
         --dataset_dir ${DATA_DIR} \
         --template ${TEMPLATE} \
-        --cutoff_len 50000 \
+        --cutoff_len 20000 \
         --max_new_tokens 10240 \
         --save_name ${PRED_FILE} \
         --n_generations 5"
@@ -132,22 +132,45 @@ python inference_scaling/scripts/extract_results.py \
 
 # Create meta-review dataset (PDR distillation step)
 echo "Creating meta-review dataset..."
-METAREVIEW_DATA="${OUTPUT_DIR}/metareview_dataset"
+METAREVIEW_DATASET_DIR="${OUTPUT_DIR}/metareview_dataset"
+METAREVIEW_DATA="${METAREVIEW_DATASET_DIR}/data.json"
+mkdir -p ${METAREVIEW_DATASET_DIR}
+
 python inference_scaling/scripts/run_metareview.py create \
     --input ${PRED_FILE} \
     --output ${METAREVIEW_DATA}
 
+# Create dataset_info.json for LLaMA Factory
+echo "Creating dataset_info.json..."
+cat > ${OUTPUT_DIR}/dataset_info.json <<EOF
+{
+  "metareview_dataset": {
+    "file_name": "metareview_dataset/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "gpt",
+      "system_tag": "system"
+    }
+  }
+}
+EOF
+
 # Run meta-review inference
 echo "Running meta-review inference (PDR distillation)..."
 METAREVIEW_PRED="${OUTPUT_DIR}/metareview_predictions.jsonl"
-METAREVIEW_DATASET_NAME=$(basename ${METAREVIEW_DATA})
 
 python inference_scaling/scripts/vllm_infer_ensemble.py \
     --model_name_or_path ${MODEL} \
-    --dataset ${METAREVIEW_DATASET_NAME} \
-    --dataset_dir $(dirname ${METAREVIEW_DATA}) \
+    --dataset metareview_dataset \
+    --dataset_dir ${OUTPUT_DIR} \
     --template ${TEMPLATE} \
-    --cutoff_len 50000 \
+    --cutoff_len 20000 \
     --max_new_tokens 4096 \
     --save_name ${METAREVIEW_PRED} \
     --n_generations 1

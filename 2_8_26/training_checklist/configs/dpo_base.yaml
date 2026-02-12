@@ -1,0 +1,50 @@
+### model (overridden by SLURM script - points to SFT checkpoint)
+model_name_or_path: PLACEHOLDER_SFT_CHECKPOINT
+template: qwen
+trust_remote_code: true
+flash_attn: fa2
+enable_liger_kernel: True
+
+### method
+stage: dpo
+do_train: true
+finetuning_type: full
+deepspeed: examples/deepspeed/ds_z3_config.json
+pref_beta: 0.1
+pref_loss: sigmoid  # Standard DPO loss
+
+### dataset (overridden by SLURM script)
+dataset: training_checklist_dpo_clean_train
+val_dataset: training_checklist_dpo_clean_val
+cutoff_len: 28000
+max_samples: 10000
+overwrite_cache: true
+preprocessing_num_workers: 16
+dataloader_num_workers: 4
+
+### output (overridden by SLURM script)
+output_dir: PLACEHOLDER_OUTPUT_DIR
+logging_steps: 10
+save_steps: 100
+plot_loss: true
+overwrite_output_dir: false
+save_only_model: false
+report_to: none
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 16
+learning_rate: 5.0e-6  # Lower than SFT
+num_train_epochs: 2.0  # Fewer epochs than SFT
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+ddp_timeout: 180000000
+gradient_checkpointing: true
+gradient_checkpointing_kwargs: {"use_reentrant": false}
+
+### eval
+val_size: 0.0  # Using separate val_dataset
+per_device_eval_batch_size: 1
+eval_strategy: steps
+eval_steps: 100
