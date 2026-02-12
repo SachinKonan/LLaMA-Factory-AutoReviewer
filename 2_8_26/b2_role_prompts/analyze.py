@@ -40,11 +40,12 @@ RESULTS_DIR = os.path.join(os.path.dirname(__file__), "results")
 METRICS_DIR = os.path.join(os.path.dirname(__file__), "metrics")
 
 MODALITIES = ["clean", "clean_images", "vision"]
-ROLES = ["critical", "enthusiastic", "standard"]
+ROLES = ["critical", "enthusiastic", "standard", "sachin_rl"]
 ROLE_COLORS = {
     "critical": "#e74c3c",
     "enthusiastic": "#2ecc71",
     "standard": "#3498db",
+    "sachin_rl": "#f39c12",
     "strategy_d": "#9b59b6",
     "strategy_d_critical": "#8e44ad"
 }
@@ -54,6 +55,7 @@ ROLE_PROMPTS = {
     "critical": CRITICAL_MODIFIER.split('.')[0].replace("IMPORTANT: ", "").strip(),
     "enthusiastic": ENTHUSIASTIC_MODIFIER.split('.')[0].replace("IMPORTANT: ", "").strip(),
     "standard": "No modifier (baseline)",
+    "sachin_rl": "3-reviewer panel: Advocate, Critic, Calibrator",
     "strategy_d": "Synthesize critical + enthusiastic perspectives",
     "strategy_d_critical": "Weigh weaknesses vs strengths, reject when unclear"
 }
@@ -79,7 +81,7 @@ def plot_acceptance_rate_by_role(all_results, save_path):
 
     x = np.arange(len(MODALITIES))
     all_labels = ROLES + ["strategy_d", "strategy_d_critical"]
-    width = 0.16
+    width = 0.135
 
     for i, role in enumerate(all_labels):
         rates = []
@@ -101,7 +103,7 @@ def plot_acceptance_rate_by_role(all_results, save_path):
                 ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
                         f"{val:.0%}", ha="center", va="bottom", fontsize=8, rotation=45)
 
-    ax.set_xticks(x + width * 2)
+    ax.set_xticks(x + width * 2.5)
     ax.set_xticklabels([m.replace("_", "\n") for m in MODALITIES])
     ax.set_ylabel("Acceptance Rate", fontsize=12)
     ax.set_title("B2: Acceptance Rate by Reviewer Role", fontsize=14, fontweight='bold')

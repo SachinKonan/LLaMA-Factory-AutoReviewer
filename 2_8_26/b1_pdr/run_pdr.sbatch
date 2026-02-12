@@ -62,7 +62,7 @@ if [ "$MODALITY" == "clean" ]; then
     MODEL="Qwen/Qwen2.5-7B-Instruct"
     TEMPLATE="qwen"
     MEDIA_DIR=""
-    ROPE_SCALING='{"rope_scaling":{"rope_type":"yarn","factor":4.0,"original_max_position_embeddings":32768}}'
+    ROPE_SCALING=""
 else
     MODEL="Qwen/Qwen2.5-VL-7B-Instruct"
     TEMPLATE="qwen2_vl"

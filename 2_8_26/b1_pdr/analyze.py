@@ -93,7 +93,8 @@ def plot_strategy_comparison(all_results, save_path):
 def plot_strategy_agreement(all_results, save_path):
     """Plot pairwise agreement heatmap between strategies."""
     setup_plot_style()
-    fig, axes = plt.subplots(1, len(MODALITIES), figsize=(5 * len(MODALITIES), 5))
+    # Increase width to accommodate colorbar
+    fig, axes = plt.subplots(1, len(MODALITIES), figsize=(6 * len(MODALITIES), 5))
     if len(MODALITIES) == 1:
         axes = [axes]
 
@@ -116,18 +117,26 @@ def plot_strategy_agreement(all_results, save_path):
         im = ax.imshow(agreement, cmap="YlGn", vmin=0.5, vmax=1.0)
         ax.set_xticks(range(n_strategies))
         ax.set_yticks(range(n_strategies))
-        ax.set_xticklabels([STRATEGY_LABELS[s].replace("\n", " ") for s in STRATEGIES], fontsize=9)
-        ax.set_yticklabels([STRATEGY_LABELS[s].replace("\n", " ") for s in STRATEGIES], fontsize=9)
+        ax.set_xticklabels([STRATEGY_LABELS[s].replace("\n", " ") for s in STRATEGIES],
+                          fontsize=9, rotation=0, ha='center')
+        ax.set_yticklabels([STRATEGY_LABELS[s].replace("\n", " ") for s in STRATEGIES],
+                          fontsize=9, rotation=90, ha='right')
         ax.set_title(modality.replace("_", " ").title())
 
         for i in range(n_strategies):
             for j in range(n_strategies):
                 ax.text(j, i, f"{agreement[i, j]:.1%}", ha="center", va="center", fontsize=10)
 
-    fig.suptitle("B1: Pairwise Strategy Agreement", fontsize=14)
-    fig.colorbar(im, ax=axes, label="Agreement Rate", shrink=0.8)
-    plt.tight_layout()
-    plt.savefig(save_path, bbox_inches="tight")
+    fig.suptitle("B1: Pairwise Strategy Agreement", fontsize=14, y=0.98)
+
+    # Adjust subplot positions to make room for colorbar on the right
+    plt.subplots_adjust(right=0.90)
+
+    # Add colorbar in the space created on the right
+    cbar = fig.colorbar(im, ax=axes.tolist(), label="Agreement Rate",
+                        shrink=0.8, aspect=20, pad=0.02)
+
+    plt.savefig(save_path, dpi=150)
     plt.close()
     print(f"Saved: {save_path}")
 

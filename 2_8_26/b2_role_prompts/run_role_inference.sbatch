@@ -4,7 +4,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --gres=gpu:1
-#SBATCH --array=0-8
+#SBATCH --array=0-11
 #SBATCH --output=2_8_26/logs/b2_role_prompts/role_%A_%a.out
 #SBATCH --error=2_8_26/logs/b2_role_prompts/role_%A_%a.err
 #SBATCH --comment="B2: Role-playing prompt inference"
@@ -19,6 +19,8 @@
 #   1: clean/enthusiastic   4: clean_images/enthusiastic   7: vision/enthusiastic
 #   2: clean/standard       5: clean_images/standard       8: vision/standard
 #
+#  9, 10, 11: SACHIN_RL prompt on clean, clean_images, vision.
+
 # Usage:
 #   # Generate datasets first
 #   python 2_8_26/b2_role_prompts/generate_role_datasets.py
@@ -43,11 +45,18 @@ MODALITIES=("clean" "clean_images" "vision")
 ROLES=("critical" "enthusiastic" "standard")
 
 # Calculate indices
-MODALITY_IDX=$((SLURM_ARRAY_TASK_ID / 3))
-ROLE_IDX=$((SLURM_ARRAY_TASK_ID % 3))
-
-MODALITY="${MODALITIES[$MODALITY_IDX]}"
-ROLE="${ROLES[$ROLE_IDX]}"
+if [ $SLURM_ARRAY_TASK_ID -ge 9 ]; then
+    # Jobs 9-11: SACHIN_RL on clean, clean_images, vision
+    MODALITY_IDX=$((SLURM_ARRAY_TASK_ID - 9))
+    MODALITY="${MODALITIES[$MODALITY_IDX]}"
+    ROLE="sachin_rl"
+else
+    # Jobs 0-8: 3 roles × 3 modalities
+    MODALITY_IDX=$((SLURM_ARRAY_TASK_ID / 3))
+    ROLE_IDX=$((SLURM_ARRAY_TASK_ID % 3))
+    MODALITY="${MODALITIES[$MODALITY_IDX]}"
+    ROLE="${ROLES[$ROLE_IDX]}"
+fi
 
 # Data
 DATA_DIR="${PROJECT_DIR}/2_8_26/b2_role_prompts/data"

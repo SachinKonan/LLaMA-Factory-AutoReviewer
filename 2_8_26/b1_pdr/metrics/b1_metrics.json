@@ -1,33 +1,48 @@
 {
   "clean": {
     "single": {
-      "total": 1984,
-      "accuracy": 0.5020161290322581,
-      "acceptance_rate": 0.9914314516129032,
-      "accept_recall": 0.9743336623889437,
-      "reject_recall": 0.008902077151335312,
-      "accept_precision": 0.501779359430605,
-      "reject_precision": 0.5294117647058824,
+      "total": 1992,
+      "accuracy": 0.5050200803212851,
+      "acceptance_rate": 0.9914658634538153,
+      "accept_recall": 0.9822309970384995,
+      "reject_recall": 0.010880316518298714,
+      "accept_precision": 0.5037974683544304,
+      "reject_precision": 0.6470588235294118,
       "confusion_matrix": {
-        "TP": 987,
-        "TN": 9,
+        "TP": 995,
+        "TN": 11,
         "FP": 980,
-        "FN": 8
+        "FN": 6
       }
     },
     "majority": {
-      "total": 2020,
-      "accuracy": 0.5,
-      "acceptance_rate": 0.9965346534653465,
-      "accept_recall": 0.9940769990128332,
-      "reject_recall": 0.002967359050445104,
-      "accept_precision": 0.5002483854942872,
-      "reject_precision": 0.42857142857142855,
+      "total": 2021,
+      "accuracy": 0.5027214250371104,
+      "acceptance_rate": 0.9970311726867888,
+      "accept_recall": 0.998025666337611,
+      "reject_recall": 0.004945598417408506,
+      "accept_precision": 0.5017369727047146,
+      "reject_precision": 0.8333333333333334,
       "confusion_matrix": {
-        "TP": 1007,
-        "TN": 3,
-        "FP": 1006,
-        "FN": 4
+        "TP": 1011,
+        "TN": 5,
+        "FP": 1004,
+        "FN": 1
+      }
+    },
+    "metareview": {
+      "total": 2002,
+      "accuracy": 0.504995004995005,
+      "acceptance_rate": 0.997002997002997,
+      "accept_recall": 0.9921026653504442,
+      "reject_recall": 0.005934718100890208,
+      "accept_precision": 0.5035070140280561,
+      "reject_precision": 1.0,
+      "confusion_matrix": {
+        "TP": 1005,
+        "TN": 6,
+        "FP": 991,
+        "FN": 0
       }
     }
   },

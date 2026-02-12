@@ -1,0 +1,54 @@
+### model
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+trust_remote_code: true
+flash_attn: fa2
+enable_liger_kernel: True
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+deepspeed: examples/deepspeed/ds_z3_config.json
+gradient_checkpointing: true
+gradient_checkpointing_kwargs: {"use_reentrant": false}
+
+### dataset
+dataset: iclr_weighted_loss_train_1_2
+dataset_dir: 2_11_26_training/weighted_loss_fn
+template: qwen
+cutoff_len: 16384
+overwrite_cache: true
+preprocessing_num_workers: 16
+dataloader_num_workers: 4
+
+### output
+output_dir: saves/weighted_loss/baseline_gamma1.0_prop1_2
+logging_steps: 10
+save_steps: 500
+plot_loss: true
+overwrite_output_dir: true
+save_only_model: false
+report_to: none
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+learning_rate: 1.0e-5
+num_train_epochs: 3.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+ddp_timeout: 180000000
+
+### evaluation
+do_eval: true
+eval_dataset: iclr_2020_2025_85_5_10_split7_balanced_clean_binary_noreviews_v7_test
+eval_strategy: steps
+eval_steps: 500
+per_device_eval_batch_size: 1
+
+### weighted loss
+# For baseline (index 0), use standard BCE (can set use_weighted_loss=false or gamma=1.0)
+use_weighted_loss: false
+weighted_loss_variant: baseline
+weighted_loss_gamma: 1.0

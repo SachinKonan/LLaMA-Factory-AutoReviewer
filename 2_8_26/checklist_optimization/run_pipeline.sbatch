@@ -44,7 +44,7 @@ case $SLURM_ARRAY_TASK_ID in
             --input_questions ${BASE_DIR}/data/candidate_questions.jsonl \
             --output ${BASE_DIR}/data/filtered_questions.jsonl \
             --consistency_threshold 0.80 \
-            --n_test_reviews 30 \
+            --n_test_reviews 100 \
             --n_repeats 5 \
             --tensor_parallel_size 1
         ;;

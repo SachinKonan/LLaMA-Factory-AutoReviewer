@@ -30,7 +30,7 @@ BASE_DATA_DIR = Path("/n/fs/vision-mix/sk7524/LLaMA-Factory/data")
 BASE_PREFIX = "iclr_2020_2025_85_5_10_split7_balanced"
 ORIGINAL_PREFIX_END_MARKER = " - Note: ICLR generally has a ~30% acceptance rate\n\n"
 
-ROLES = ["critical", "enthusiastic", "standard"]
+ROLES = ["critical", "enthusiastic", "standard", "sachin_rl"]
 MODALITIES = ["clean", "clean_images", "vision"]
 
 
@@ -71,7 +71,10 @@ def get_base_dataset_path(modality, split):
 
 def create_role_dataset(base_data, role, modality, output_format="json"):
     """Create a dataset with the given role modifier."""
-    system_prompt = build_system_prompt(modifier=role, output_format=output_format)
+    if role == "sachin_rl":
+        system_prompt = build_system_prompt(modifier=None, output_format="boxed", options="SACHIN_RL")
+    else:
+        system_prompt = build_system_prompt(modifier=role, output_format=output_format)
     new_data = []
 
     for entry in base_data:
