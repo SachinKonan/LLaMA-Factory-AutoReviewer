@@ -38,27 +38,19 @@ random.seed(42)
 # Prompt Templates
 # ============================================================================
 
-SYSTEM_PROMPT = "You are an expert academic reviewer tasked with evaluating research papers."
+# Base system prompt
+SYSTEM_PROMPT_BASE = "You are an expert academic reviewer tasked with evaluating research papers."
 
-# Original boxed format
-ORIGINAL_USER_PREFIX = """I am giving you a paper. I want to predict its acceptance outcome at ICLR.
- - Your answer must start with: \\boxed{Accept} or \\boxed{Reject}
- - Note: ICLR generally has a ~30% acceptance rate
+# Task instruction (goes in system prompt)
+TASK_INSTRUCTION = """
+I am giving you a paper. I want to predict its acceptance outcome at ICLR.
+Note: ICLR generally has a ~30% acceptance rate."""
 
-"""
+# Output format instructions (go in system prompt)
+BOXED_FORMAT_INSTRUCTION = """
+Your answer must start with: \\boxed{Accept} or \\boxed{Reject}"""
 
-# Critical modifier prefixes
-CRITICAL_MODIFIER = """IMPORTANT: Be critical of claims and reject papers that lack substance. Look for methodological flaws, unsupported claims, and insufficient experimental validation. When in doubt, reject.
-
-"""
-
-LESS_CRITICAL_MODIFIER = """IMPORTANT: Be less critical of claims and accept papers that are on the border. Focus on the potential contribution and novelty. Give papers the benefit of the doubt when the core idea is sound.
-
-"""
-
-# JSON output format suffix
-JSON_OUTPUT_SUFFIX = """
-
+JSON_FORMAT_INSTRUCTION = """
 Respond with a reasoning trace starting with a strictly formatted JSON block.
 
 Provide the review in a valid JSON object inside a markdown code block.
@@ -73,6 +65,57 @@ Use the following JSON schema:
   "decision": "Accept" OR "Reject"
 }
 ```"""
+
+# Critical modifier instructions (go in system prompt)
+CRITICAL_MODIFIER = """
+IMPORTANT: Be critical of claims and reject papers that lack substance. Look for methodological flaws, unsupported claims, and insufficient experimental validation. When in doubt, reject."""
+
+LESS_CRITICAL_MODIFIER = """
+IMPORTANT: Be less critical of claims and accept papers that are on the border. Focus on the potential contribution and novelty. Give papers the benefit of the doubt when the core idea is sound."""
+
+
+def build_system_prompt(
+    modifier: Optional[str] = None,
+    output_format: str = "boxed",
+) -> str:
+    """Build a complete system prompt with all instructions.
+
+    Args:
+        modifier: None, "critical", or "less_critical"
+        output_format: "boxed" or "json"
+
+    Returns:
+        Complete system prompt string
+    """
+    parts = [SYSTEM_PROMPT_BASE, TASK_INSTRUCTION]
+
+    # Add modifier if specified
+    if modifier == "critical":
+        parts.append(CRITICAL_MODIFIER)
+    elif modifier == "less_critical":
+        parts.append(LESS_CRITICAL_MODIFIER)
+
+    # Add output format instruction
+    if output_format == "boxed":
+        parts.append(BOXED_FORMAT_INSTRUCTION)
+    else:
+        parts.append(JSON_FORMAT_INSTRUCTION)
+
+    return "\n".join(parts)
+
+
+def set_system_prompt(conversations: List[Dict], system_prompt: str) -> List[Dict]:
+    """Set or update the system prompt in a conversations list.
+
+    Returns a new list with the system prompt set.
+    """
+    # Remove any existing system message
+    new_convs = [msg for msg in conversations if msg.get("from") != "system"]
+
+    # Add system prompt at the beginning
+    new_convs.insert(0, {"from": "system", "value": system_prompt})
+
+    return new_convs
 
 # Section patterns for extraction
 SECTIONS = {
@@ -193,10 +236,7 @@ def create_critical_datasets(sample_ids: List[str]):
     print("\n=== Creating Critical/Less Critical Datasets ===")
 
     modalities = ["clean", "clean_images", "vision"]
-    modifiers = [
-        ("critical", CRITICAL_MODIFIER),
-        ("less_critical", LESS_CRITICAL_MODIFIER),
-    ]
+    modifier_names = ["critical", "less_critical"]
     output_formats = ["boxed", "json"]
 
     sample_size = len(sample_ids)
@@ -214,14 +254,21 @@ def create_critical_datasets(sample_ids: List[str]):
         subset_data = [data[i] for i in range(len(data)) if data[i]["_metadata"]["submission_id"] in sample_ids]
         assert len(subset_data) == sample_size
 
-        for modifier_name, modifier_text in modifiers:
+        for modifier_name in modifier_names:
             for output_format in output_formats:
                 output_name = f"{OUTPUT_PREFIX}_{modifier_name}_{output_format}_{modality}_test"
+
+                # Build system prompt with modifier and output format
+                system_prompt = build_system_prompt(
+                    modifier=modifier_name,
+                    output_format=output_format
+                )
 
                 new_data = []
                 for entry in subset_data:
                     new_entry = json.loads(json.dumps(entry))  # Deep copy
 
+                    # Update user message to just contain paper content
                     for msg in new_entry["conversations"]:
                         if msg["from"] == "human":
                             paper_content = extract_paper_content(msg["value"])
@@ -229,17 +276,12 @@ def create_critical_datasets(sample_ids: List[str]):
                             if modality == "clean":
                                 paper_content = clean_image_tags(paper_content)
 
-                            if output_format == "boxed":
-                                # Boxed format with modifier
-                                new_prompt = ORIGINAL_USER_PREFIX + modifier_text + paper_content
-                            else:
-                                # JSON format with modifier
-                                new_prompt = (ORIGINAL_USER_PREFIX.replace(
-                                    "\\boxed{Accept} or \\boxed{Reject}",
-                                    "Accept or Reject in JSON format"
-                                ) + modifier_text + paper_content + JSON_OUTPUT_SUFFIX)
+                            msg["value"] = paper_content
 
-                            msg["value"] = new_prompt
+                    # Set system prompt
+                    new_entry["conversations"] = set_system_prompt(
+                        new_entry["conversations"], system_prompt
+                    )
 
                     new_data.append(new_entry)
 
@@ -385,6 +427,9 @@ def create_fewshot_full_paper_datasets(sample_ids: List[str]):
         (0, 2, "0acc_2rej"),
     ]
 
+    # Build system prompt (boxed format for fewshot)
+    system_prompt = build_system_prompt(modifier=None, output_format="boxed")
+
     sample_ids_set = set(sample_ids)
     created_datasets = []
 
@@ -417,7 +462,7 @@ def create_fewshot_full_paper_datasets(sample_ids: List[str]):
             )
             print(f"    Selected {len(accept_examples)} accept, {len(reject_examples)} reject")
 
-            # Create prefix
+            # Create fewshot prefix (examples go in user message)
             fewshot_prefix = create_fewshot_prefix(accept_examples, reject_examples, include_images)
 
             # Apply to test data
@@ -425,9 +470,18 @@ def create_fewshot_full_paper_datasets(sample_ids: List[str]):
             for entry in test_data:
                 new_entry = json.loads(json.dumps(entry))
 
+                # Update user message: fewshot prefix + paper content
                 for msg in new_entry["conversations"]:
                     if msg["from"] == "human":
-                        msg["value"] = fewshot_prefix + msg["value"]
+                        paper_content = extract_paper_content(msg["value"])
+                        if modality == "clean":
+                            paper_content = clean_image_tags(paper_content)
+                        msg["value"] = fewshot_prefix + paper_content
+
+                # Set system prompt
+                new_entry["conversations"] = set_system_prompt(
+                    new_entry["conversations"], system_prompt
+                )
 
                 # For clean_images and vision, prepend fewshot example images
                 if include_images and "images" in new_entry:
@@ -717,6 +771,9 @@ def create_fewshot_paper_parts_datasets(sample_ids: List[str]):
                 if len(reject_examples) != len(reject_ids):
                     print(f"    Warning: Only found {len(reject_examples)}/{len(reject_ids)} reject examples in {modality}")
 
+                # Build system prompt (boxed format for fewshot)
+                system_prompt = build_system_prompt(modifier=None, output_format="boxed")
+
                 # Process fewshot examples - extract their parts
                 processed_accept = []
                 processed_reject = []
@@ -732,7 +789,7 @@ def create_fewshot_paper_parts_datasets(sample_ids: List[str]):
                             part_content = clean_image_tags(part_content)
                         for msg in new_ex["conversations"]:
                             if msg["from"] == "human":
-                                msg["value"] = ORIGINAL_USER_PREFIX + part_content
+                                msg["value"] = part_content
                         if include_images and "images" in new_ex:
                             new_ex["images"] = [new_ex["images"][i] for i in kept_indices if i < len(new_ex["images"])]
                         processed_accept.append(new_ex)
@@ -748,7 +805,7 @@ def create_fewshot_paper_parts_datasets(sample_ids: List[str]):
                             part_content = clean_image_tags(part_content)
                         for msg in new_ex["conversations"]:
                             if msg["from"] == "human":
-                                msg["value"] = ORIGINAL_USER_PREFIX + part_content
+                                msg["value"] = part_content
                         if include_images and "images" in new_ex:
                             new_ex["images"] = [new_ex["images"][i] for i in kept_indices if i < len(new_ex["images"])]
                         processed_reject.append(new_ex)
@@ -773,7 +830,12 @@ def create_fewshot_paper_parts_datasets(sample_ids: List[str]):
                         paper_content = clean_image_tags(paper_content)
                     for msg in new_entry["conversations"]:
                         if msg["from"] == "human":
-                            msg["value"] = fewshot_prefix + ORIGINAL_USER_PREFIX + paper_content
+                            msg["value"] = fewshot_prefix + paper_content
+
+                    # Set system prompt
+                    new_entry["conversations"] = set_system_prompt(
+                        new_entry["conversations"], system_prompt
+                    )
 
                     # Handle images for clean_images
                     if include_images and "images" in new_entry:
@@ -798,6 +860,165 @@ def create_fewshot_paper_parts_datasets(sample_ids: List[str]):
 
 
 # ============================================================================
+# Base Dataset Generation (shared 500 samples)
+# ============================================================================
+
+def create_base_datasets(sample_ids: List[str]):
+    """Create base datasets with the shared 500 samples across all modalities.
+
+    Creates 3 datasets:
+    - base_clean_test: Text-only version
+    - base_clean_images_test: Text + images version
+    - base_vision_test: Images-only version
+
+    These serve as reference datasets with the exact 500 samples used in all ablations.
+    """
+    print("\n=== Creating Base Datasets (Shared 500 Samples) ===")
+
+    modalities = ["clean", "clean_images", "vision"]
+    sample_ids_set = set(sample_ids)
+    created_datasets = []
+
+    # Build simple system prompt (no modifier, boxed format)
+    system_prompt = build_system_prompt(modifier=None, output_format="boxed")
+
+    for modality in modalities:
+        base_path = get_base_dataset_path(modality, "test")
+        if not base_path.exists():
+            print(f"Warning: Skipping {modality}, base dataset not found at {base_path}")
+            continue
+
+        data = load_dataset(base_path)
+
+        # Filter to selected sample IDs (maintaining order)
+        subset_data = [d for d in data if d["_metadata"]["submission_id"] in sample_ids_set]
+
+        print(f"  {modality}: {len(subset_data)}/{len(data)} samples selected")
+
+        if len(subset_data) != len(sample_ids):
+            print(f"    Warning: Expected {len(sample_ids)} samples, got {len(subset_data)}")
+
+        # Process entries
+        new_data = []
+        for entry in subset_data:
+            new_entry = json.loads(json.dumps(entry))  # Deep copy
+
+            # Update user message to just contain paper content
+            for msg in new_entry["conversations"]:
+                if msg["from"] == "human":
+                    paper_content = extract_paper_content(msg["value"])
+
+                    if modality == "clean":
+                        paper_content = clean_image_tags(paper_content)
+
+                    msg["value"] = paper_content
+
+            # Set system prompt
+            new_entry["conversations"] = set_system_prompt(
+                new_entry["conversations"], system_prompt
+            )
+
+            new_data.append(new_entry)
+
+        output_name = f"{OUTPUT_PREFIX}_base_{modality}_test"
+        save_dataset(new_data, output_name)
+        created_datasets.append(output_name)
+
+    return created_datasets
+
+
+def verify_sample_ids(sample_ids: List[str], reference_dataset_name: str = None):
+    """Verify that the generated sample IDs match an existing ablation dataset.
+
+    Args:
+        sample_ids: List of submission IDs generated by get_sample_ids()
+        reference_dataset_name: Name of existing dataset to compare against
+                               (default: critical_boxed_clean_test)
+
+    Returns:
+        True if IDs match, False otherwise
+    """
+    if reference_dataset_name is None:
+        reference_dataset_name = f"{OUTPUT_PREFIX}_critical_boxed_clean_test"
+
+    reference_path = DATA_DIR / reference_dataset_name / "data.json"
+
+    if not reference_path.exists():
+        print(f"Warning: Reference dataset not found at {reference_path}")
+        return False
+
+    with open(reference_path) as f:
+        reference_data = json.load(f)
+
+    reference_ids = [d["_metadata"]["submission_id"] for d in reference_data]
+
+    # Compare
+    sample_set = set(sample_ids)
+    reference_set = set(reference_ids)
+
+    if sample_set == reference_set:
+        print(f"✓ Sample IDs match reference dataset ({len(sample_ids)} IDs)")
+        return True
+    else:
+        missing_in_sample = reference_set - sample_set
+        missing_in_ref = sample_set - reference_set
+
+        print(f"✗ Sample IDs do NOT match reference dataset!")
+        print(f"  Sample IDs: {len(sample_ids)}, Reference IDs: {len(reference_ids)}")
+        print(f"  In reference but not in sample: {len(missing_in_sample)}")
+        print(f"  In sample but not in reference: {len(missing_in_ref)}")
+
+        if missing_in_sample:
+            print(f"  Missing examples: {list(missing_in_sample)[:5]}...")
+        if missing_in_ref:
+            print(f"  Extra examples: {list(missing_in_ref)[:5]}...")
+
+        return False
+
+
+def export_sample_ids(sample_ids: List[str], output_path: Path = None):
+    """Export sample IDs to a JSON file for reference.
+
+    Args:
+        sample_ids: List of submission IDs
+        output_path: Path to output file (default: DATA_DIR/shared_sample_ids.json)
+    """
+    if output_path is None:
+        output_path = DATA_DIR / "shared_sample_ids.json"
+
+    with open(output_path, 'w') as f:
+        json.dump({
+            "description": "Shared sample IDs used across all ablation v1 datasets",
+            "count": len(sample_ids),
+            "seed": 42,
+            "submission_ids": sample_ids,
+        }, f, indent=2)
+
+    print(f"Exported {len(sample_ids)} sample IDs to {output_path}")
+
+
+def load_sample_ids(input_path: Path = None) -> List[str]:
+    """Load sample IDs from a JSON file.
+
+    Args:
+        input_path: Path to input file (default: DATA_DIR/shared_sample_ids.json)
+
+    Returns:
+        List of submission IDs
+    """
+    if input_path is None:
+        input_path = DATA_DIR / "shared_sample_ids.json"
+
+    if not input_path.exists():
+        raise FileNotFoundError(f"Sample IDs file not found at {input_path}")
+
+    with open(input_path) as f:
+        data = json.load(f)
+
+    return data["submission_ids"]
+
+
+# ============================================================================
 # Dataset Info Update
 # ============================================================================
 
@@ -816,10 +1037,14 @@ def update_dataset_info(created_datasets: List[str]):
             # Determine if vision model needed
             is_vision = "vision" in dataset_name or "clean_images" in dataset_name
 
+            columns = {"messages": "conversations"}
+            if is_vision:
+                columns["images"] = "images"
+
             info[dataset_name] = {
                 "file_name": f"{dataset_name}/data.json",
                 "formatting": "sharegpt",
-                "columns": {"messages": "conversations"},
+                "columns": columns,
                 "tags": {
                     "role_tag": "from",
                     "content_tag": "value",
@@ -839,26 +1064,68 @@ def update_dataset_info(created_datasets: List[str]):
 # ============================================================================
 
 def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Generate ablation datasets v1")
+    parser.add_argument("--base-only", action="store_true",
+                       help="Only generate base datasets with shared 500 samples")
+    parser.add_argument("--verify", action="store_true",
+                       help="Verify sample IDs match existing ablation datasets")
+    parser.add_argument("--export-ids", action="store_true",
+                       help="Export sample IDs to JSON file")
+    parser.add_argument("--use-existing-ids", action="store_true",
+                       help="Use existing sample IDs from shared_sample_ids.json")
+    args = parser.parse_args()
+
     print("=" * 70)
     print("Ablation Dataset Generation v1")
     print("=" * 70)
 
-    # Generate shared sample IDs for all datasets
-    sample_ids = get_sample_ids(sample_size=500)
+    # Generate or load shared sample IDs
+    if args.use_existing_ids:
+        try:
+            sample_ids = load_sample_ids()
+            print(f"Loaded {len(sample_ids)} sample IDs from existing file")
+        except FileNotFoundError:
+            print("No existing sample IDs file found, generating new ones")
+            sample_ids = get_sample_ids(sample_size=500)
+    else:
+        sample_ids = get_sample_ids(sample_size=500)
+
+    # Verify against existing datasets if requested
+    if args.verify:
+        print("\n=== Verifying Sample IDs ===")
+        verify_sample_ids(sample_ids)
+        return
+
+    # Export sample IDs if requested
+    if args.export_ids:
+        export_sample_ids(sample_ids)
 
     all_datasets = []
 
-    # 1. Critical/Less Critical Modifiers (12 datasets)
-    critical_datasets = create_critical_datasets(sample_ids)
-    all_datasets.extend(critical_datasets)
+    if args.base_only:
+        # Only generate base datasets
+        base_datasets = create_base_datasets(sample_ids)
+        all_datasets.extend(base_datasets)
+    else:
+        # Generate all datasets
 
-    # 2. Fewshot Full Paper (9 datasets)
-    fewshot_full_datasets = create_fewshot_full_paper_datasets(sample_ids)
-    all_datasets.extend(fewshot_full_datasets)
+        # 0. Base datasets (3 datasets)
+        base_datasets = create_base_datasets(sample_ids)
+        all_datasets.extend(base_datasets)
 
-    # 3. Fewshot Paper Parts (24 datasets)
-    fewshot_parts_datasets = create_fewshot_paper_parts_datasets(sample_ids)
-    all_datasets.extend(fewshot_parts_datasets)
+        # 1. Critical/Less Critical Modifiers (12 datasets)
+        critical_datasets = create_critical_datasets(sample_ids)
+        all_datasets.extend(critical_datasets)
+
+        # 2. Fewshot Full Paper (9 datasets)
+        fewshot_full_datasets = create_fewshot_full_paper_datasets(sample_ids)
+        all_datasets.extend(fewshot_full_datasets)
+
+        # 3. Fewshot Paper Parts (24 datasets)
+        fewshot_parts_datasets = create_fewshot_paper_parts_datasets(sample_ids)
+        all_datasets.extend(fewshot_parts_datasets)
 
     # Update dataset_info.json
     print("\n=== Updating dataset_info.json ===")
@@ -869,9 +1136,11 @@ def main():
     print("Summary")
     print("=" * 70)
     print(f"Total datasets created: {len(all_datasets)}")
-    print(f"  - Critical/Less Critical: {len(critical_datasets)}")
-    print(f"  - Fewshot Full Paper: {len(fewshot_full_datasets)}")
-    print(f"  - Fewshot Paper Parts: {len(fewshot_parts_datasets)}")
+    if not args.base_only:
+        print(f"  - Base: {len(base_datasets)}")
+        print(f"  - Critical/Less Critical: {len(critical_datasets)}")
+        print(f"  - Fewshot Full Paper: {len(fewshot_full_datasets)}")
+        print(f"  - Fewshot Paper Parts: {len(fewshot_parts_datasets)}")
     print("\nDataset names:")
     for name in sorted(all_datasets):
         print(f"  {name}")

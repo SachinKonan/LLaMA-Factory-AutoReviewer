@@ -130,7 +130,7 @@ DATASET="${DATASETS[$SLURM_ARRAY_TASK_ID]}"
 # ============================================================================
 # Determine model based on modality in dataset name
 if [[ "$DATASET" == *"vision"* ]] || [[ "$DATASET" == *"clean_images"* ]]; then
-    MODEL="Qwen/Qwen2.5-VL-7B-Instruct"
+    MODEL="/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/saves/qwen2.5vl-3b/full/sft_ds3/checkpoint-2500"
     TEMPLATE="qwen2_vl"
     MEDIA_DIR="."
 else

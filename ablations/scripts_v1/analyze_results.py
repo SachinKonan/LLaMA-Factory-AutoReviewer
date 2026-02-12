@@ -14,11 +14,11 @@ Outputs:
 
 Gemini Processing:
 python3 ablations/scripts_v1/analyze_results.py \
-    --results_dir ablations/results_v1/gemini \
+    --results_dir ablations/results_v1/gemini_2.5_flash \
     --gemini
 
 python3 ablations/scripts_v1/analyze_results.py \
-    --results_dir ablations/results_v1/ 
+    --results_dir ablations/results_v1/
 
 """
 
@@ -97,7 +97,51 @@ def load_gemini_metadata(subdir_path: Path) -> Tuple[list[dict], str]:
 
 
 def load_gemini_predictions(subdir_path: Path) -> List[Tuple[str, dict, dict]]:
-    """Load Gemini predictions from output.json and pair with metadata."""
+    """Load Gemini predictions from output.json or predictions_*.jsonl and pair with metadata.
+
+    Supports two formats:
+    1. Old format: output.json with concatenated JSON objects containing "response" field
+    2. New format: predictions_*.jsonl with standard {prompt, predict, label} format
+    """
+    # Try new format first (predictions_*.jsonl)
+    pred_files = list(subdir_path.glob("predictions_*.jsonl"))
+    # Filter out raw files
+    pred_files = [f for f in pred_files if "_raw" not in f.name]
+
+    if pred_files:
+        # Sort by timestamp (newest first) and use latest
+        pred_files.sort(key=lambda x: x.name, reverse=True)
+        pred_file = pred_files[0]
+
+        # Load metadata for paper IDs and labels
+        metadata_list, _ = load_gemini_metadata(subdir_path)
+
+        # Load predictions from JSONL
+        predictions = []
+        with open(pred_file) as f:
+            for line in f:
+                if line.strip():
+                    predictions.append(json.loads(line))
+
+        pair_results = []
+        for i, pred in enumerate(predictions):
+            if i < len(metadata_list):
+                meta = metadata_list[i]
+                paper_id = meta.get("submission_id", f"idx_{i}")
+            else:
+                paper_id = f"idx_{i}"
+                meta = {}
+
+            # The new format already has predict and label fields
+            pred_dict = {
+                "predict": pred.get("predict", ""),
+                "label": pred.get("label", "") or meta.get("label", ""),
+            }
+            pair_results.append((paper_id, pred_dict, meta))
+
+        return pair_results
+
+    # Fall back to old format (output.json)
     output_file = subdir_path / "output.json"
     if not output_file.exists():
         return []
@@ -339,11 +383,11 @@ def get_base_dataset_for_ablation(ablation_name: str) -> str:
     """Determine the base dataset path for an ablation dataset."""
     # Map ablation datasets to their base datasets
     if "vision" in ablation_name:
-        base = "iclr_2020_2025_85_5_10_split6_balanced_vision_binary_noreviews_v6_test"
+        base = "iclr_2020_2025_85_5_10_split7_ablation_v1_base_vision_test"
     elif "clean_images" in ablation_name:
-        base = "iclr_2020_2025_85_5_10_split6_balanced_clean_images_binary_noreviews_v6_test"
+        base = "iclr_2020_2025_85_5_10_split7_ablation_v1_base_clean_images_test"
     else:
-        base = "iclr_2020_2025_85_5_10_split6_balanced_clean_binary_noreviews_v6_test"
+        base = "iclr_2020_2025_85_5_10_split7_ablation_v1_base_clean_test"
     return base
 
 
@@ -417,7 +461,7 @@ def print_results_table(results: List[dict], title: str = "Results"):
     for r in results:
         name = r["dataset_name"]
         # Shorten the name for display
-        short_name = name.replace("iclr_2020_2025_85_5_10_split6_", "").replace("_binary_noreviews_v6_test", "").replace("ablation_v1_", "")
+        short_name = name.replace("iclr_2020_2025_85_5_10_split7_", "").replace("_binary_noreviews_v7_test", "").replace("ablation_v1_", "")
         print(f"{short_name:<70} {r['dataset_size']:>6} {r['true_acceptance_rate']:>5.1f}% {r['predicted_acceptance_rate']:>5.1f}% {r['accuracy']:>5.1f}% {r['accept_recall']:>5.1f}% {r['reject_recall']:>5.1f}%")
     print("=" * 140)
 
@@ -455,6 +499,25 @@ def main():
     metadata_cache = {}
     all_predictions = {}
 
+    # Master Year Map: Check local first, then remote
+    print("\nLoading Master Year Map...")
+    master_year_map = {}
+    master_base_path = data_dir / "iclr_2020_2025_85_5_10_split7_ablation_v1_base_clean_test"
+    if not master_base_path.exists():
+        master_base_path = base_data_dir / "iclr_2020_2025_85_5_10_split7_ablation_v1_base_clean_test"
+    
+    if master_base_path.exists():
+        try:
+            base_meta = load_metadata_mapping(master_base_path)
+            for m in base_meta:
+                 if m.get("submission_id"):
+                     master_year_map[m["submission_id"]] = m.get("year")
+            print(f"Loaded master year map with {len(master_year_map)} entries from {master_base_path}")
+        except Exception as e:
+            print(f"Warning: Failed to load master year map: {e}")
+    else:
+        print(f"Warning: Master base dataset not found at {master_base_path}")
+
     if args.gemini:
         # Gemini results are in subdirectories
         subdirs = [d for d in results_dir.iterdir() if d.is_dir()]
@@ -466,6 +529,12 @@ def main():
             if not predictions:
                 print(f"  No predictions found or metadata missing in {subdir.name}, skipping.")
                 continue
+            
+            # INJECT YEARS from master map
+            for p in predictions:
+                # p is (paper_id, pred_dict, metadata)
+                if p[2] and p[0] in master_year_map:
+                     p[2]["year"] = master_year_map[p[0]]
 
             # Store for intersection analysis
             all_predictions[subdir.name] = predictions
@@ -504,6 +573,13 @@ def main():
 
             # Load predictions with IDs
             predictions = load_predictions_with_ids(pred_file, metadata_list)
+            
+            # INJECT YEARS from master map
+            for p in predictions:
+                # p is (paper_id, pred_dict, metadata)
+                if p[2] and p[0] in master_year_map:
+                     p[2]["year"] = master_year_map[p[0]]
+            
             all_predictions[ablation_name] = predictions
 
             # Compute full metrics

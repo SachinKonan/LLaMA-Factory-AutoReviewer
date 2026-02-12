@@ -97,7 +97,6 @@ def vllm_infer(
         shard_id: Which shard this worker processes (0 to num_shards-1). Default is 0.
         num_shards: Total number of shards to split the dataset. Default is 1 (no sharding).
     """
-    image_max_pixels = 28*28*1280
     if pipeline_parallel_size > get_device_count():
         raise ValueError("Pipeline parallel size should be smaller than the number of gpus.")
 
@@ -140,7 +139,7 @@ def vllm_infer(
         "enable_lora": model_args.adapter_name_or_path is not None,
     }
     if template_obj.mm_plugin.__class__.__name__ != "BasePlugin":
-        engine_args["limit_mm_per_prompt"] = {"image": 400, "video": 2, "audio": 2}
+        engine_args["limit_mm_per_prompt"] = {"image": 250, "video": 0, "audio": 0}
 
     if isinstance(model_args.vllm_config, dict):
         engine_args.update(model_args.vllm_config)

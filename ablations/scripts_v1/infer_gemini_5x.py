@@ -16,7 +16,7 @@ source .venv_vllm_inf/bin/activate
 
 Usage:
     # Submit ablation v1 datasets
-    python ablations/scripts_v1/infer_gemini.py submit \
+    python ablations/scripts_v1/infer_gemini_5x.py submit \
         --data_dir data \
         --output_dir ablations/results_v1/gemini_2.5_flash \
         --project hip-gecko-485003-c4 \
@@ -28,7 +28,7 @@ Usage:
         --upload_images # SOMETIMES.
 
     # baselines since I forgot them earlier:
-    python ablations/scripts_v1/infer_gemini.py submit --base_only \
+    python ablations/scripts_v1/infer_gemini_5x.py submit --base_only \
         --data_dir data \
         --output_dir ablations/results_v1/gemini_2.5_flash \
         --project hip-gecko-485003-c4 \
