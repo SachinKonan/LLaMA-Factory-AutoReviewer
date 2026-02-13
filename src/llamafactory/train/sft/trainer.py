@@ -88,7 +88,19 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
 
             self.compute_loss_func = dft_loss_func
 
-        if training_args.fp8 and hasattr(self, "accelerator"): # verify FP8 status after trainer initialization
+        if finetuning_args.use_weighted_loss:
+            from ..trainer_utils import weighted_bce_loss_accept, weighted_bce_loss_reject
+
+            if finetuning_args.weighted_loss_variant == "accept":
+                self.compute_loss_func = lambda outputs, labels, **kwargs: weighted_bce_loss_accept(
+                    outputs, labels, gamma=finetuning_args.weighted_loss_gamma, **kwargs
+                )
+            else:
+                self.compute_loss_func = lambda outputs, labels, **kwargs: weighted_bce_loss_reject(
+                    outputs, labels, gamma=finetuning_args.weighted_loss_gamma, **kwargs
+                )
+
+        if training_args.fp8 and hasattr(self, "accelerator"):  # verify FP8 status after trainer initialization
             verify_fp8_status(self.accelerator, training_args)
 
     @override

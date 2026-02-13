@@ -22,7 +22,7 @@ from typing import Dict, List, Tuple
 SYSTEM_PROMPT = "You are an expert academic reviewer tasked with evaluating research papers."
 
 USER_PROMPT_TEMPLATE = """I am giving you a paper. I want to predict its acceptance outcome at ICLR.
- - Your answer will either be: \\boxed{Accept} or \\boxed{Reject}
+ - Your answer will either be: \\boxed{{Accept}} or \\boxed{{Reject}}
  - Note: ICLR generally has a ~30% acceptance rate
 
 {paper_content}"""

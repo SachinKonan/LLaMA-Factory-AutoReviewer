@@ -6039,5 +6039,61 @@
       "assistant_tag": "gpt",
       "system_tag": "system"
     }
+  },
+  "iclr_weighted_loss_train_1_2": {
+    "file_name": "2_11_26_training/weighted_loss_fn/data/iclr_weighted_loss_train_1_2/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "assistant",
+      "system_tag": "system"
+    }
+  },
+  "iclr_weighted_loss_train_1_3": {
+    "file_name": "2_11_26_training/weighted_loss_fn/data/iclr_weighted_loss_train_1_3/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "assistant",
+      "system_tag": "system"
+    }
+  },
+  "iclr_weighted_loss_train_1_4": {
+    "file_name": "2_11_26_training/weighted_loss_fn/data/iclr_weighted_loss_train_1_4/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "assistant",
+      "system_tag": "system"
+    }
+  },
+  "iclr_weighted_loss_train_1_8": {
+    "file_name": "2_11_26_training/weighted_loss_fn/data/iclr_weighted_loss_train_1_8/data.json",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "from",
+      "content_tag": "value",
+      "user_tag": "human",
+      "assistant_tag": "assistant",
+      "system_tag": "system"
+    }
   }
 }

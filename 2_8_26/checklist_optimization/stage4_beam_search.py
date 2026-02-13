@@ -212,7 +212,7 @@ def compute_composite_score(
 ) -> float:
     """Compute composite score for a question subset.
 
-    Score = 0.6 * accuracy + 0.3 * diversity + 0.1 * length_penalty
+    Score = 0.6 * accuracy # + 0.3 * diversity # + 0.01 * length_penalty
     """
     if not question_subset:
         return 0.0
@@ -232,9 +232,9 @@ def compute_composite_score(
     cluster_ids = [question_to_cluster.get(qid, 0) for qid in question_subset]
     diversity = len(set(cluster_ids)) / len(cluster_ids) if cluster_ids else 0.0
 
-    length_penalty = max(0.0, 1.0 - (len(question_subset) / 30.0))
+    # length_penalty = max(0.0, 1.0 - (len(question_subset) / 30.0))
 
-    return 0.6 * accuracy + 0.3 * diversity + 0.1 * length_penalty
+    return 0.6 * accuracy # + 0.3 * diversity +#0.1 * length_penalty
 
 
 def beam_search(

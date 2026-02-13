@@ -557,6 +557,30 @@ class FinetuningArguments(
         default=False,
         metadata={"help": "Whether to use the DFT loss."},
     )
+    use_weighted_loss: bool = field(
+        default=False,
+        metadata={"help": "Whether to use weighted BCE loss instead of standard cross-entropy."},
+    )
+    weighted_loss_variant: Literal["accept", "reject"] = field(
+        default="accept",
+        metadata={
+            "help": (
+                "Which class to weight more heavily. "
+                "'accept': penalize false negatives (gamma * accept_loss). "
+                "'reject': penalize false positives (gamma * reject_loss)."
+            )
+        },
+    )
+    weighted_loss_gamma: float = field(
+        default=1.0,
+        metadata={
+            "help": (
+                "Gamma weighting factor for weighted loss. "
+                "gamma=1.0 is standard BCE. "
+                "gamma>1.0 increases weighting on selected class."
+            )
+        },
+    )
     freeze_vision_tower: bool = field(
         default=True,
         metadata={"help": "Whether ot not to freeze the vision tower in MLLM training."},

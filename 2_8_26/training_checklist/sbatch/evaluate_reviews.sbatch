@@ -2,7 +2,7 @@
 #SBATCH --job-name=eval_reviews
 #SBATCH --time=8:00:00
 #SBATCH --mem=64G
-#SBATCH --gres=gpu:8
+#SBATCH --gres=gpu:2
 #SBATCH --cpus-per-task=8
 #SBATCH --output=2_8_26/training_checklist/logs/evaluate_reviews_%j.out
 #SBATCH --error=2_8_26/training_checklist/logs/evaluate_reviews_%j.err
@@ -27,12 +27,12 @@ echo "Running on: $(hostname)"
 echo "GPUs: $CUDA_VISIBLE_DEVICES"
 echo "=============================================="
 
-# Run evaluation
+# Run evaluation with smaller model (7B fits on 2 GPUs easily)
 python 2_8_26/training_checklist/scripts/evaluate_reviews.py \
     --checklist 2_8_26/checklist_optimization/data/optimal_checklist.json \
     --output 2_8_26/training_checklist/data/review_evaluations.jsonl \
-    --model Qwen/Qwen3-30B-A3B-Thinking-2507 \
-    --batch_size 16
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --batch_size 32
 
 echo ""
 echo "=============================================="
