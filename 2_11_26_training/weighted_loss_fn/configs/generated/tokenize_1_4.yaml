@@ -1,0 +1,33 @@
+### model
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+trust_remote_code: true
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+
+### dataset
+dataset: iclr_weighted_loss_train_1_4
+dataset_dir: 2_11_26_training/weighted_loss_fn
+template: qwen
+cutoff_len: 16384
+overwrite_cache: true
+preprocessing_num_workers: 16
+
+### output
+output_dir: saves/weighted_loss/tokenize_tmp_1_4
+overwrite_output_dir: true
+report_to: none
+
+### evaluation
+do_eval: true
+eval_dataset: iclr_2020_2025_85_5_10_split7_balanced_clean_binary_noreviews_v7_test
+
+### tokenized path (saves to disk and exits)
+tokenized_path: 2_11_26_training/weighted_loss_fn/tokenized/iclr_weighted_loss_train_1_4
+
+### train (minimal - just needed to satisfy config parsing)
+per_device_train_batch_size: 1
+num_train_epochs: 1.0
+bf16: true

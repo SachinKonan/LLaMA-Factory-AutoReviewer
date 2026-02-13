@@ -13,16 +13,16 @@ gradient_checkpointing: true
 gradient_checkpointing_kwargs: {"use_reentrant": false}
 
 ### dataset
-dataset: iclr_weighted_loss_train_1_2
+dataset: iclr_weighted_loss_train_1_4
 dataset_dir: 2_11_26_training/weighted_loss_fn
 template: qwen
 cutoff_len: 16384
 preprocessing_num_workers: 16
 dataloader_num_workers: 4
-tokenized_path: 2_11_26_training/weighted_loss_fn/tokenized/iclr_weighted_loss_train_1_2
+tokenized_path: 2_11_26_training/weighted_loss_fn/tokenized/iclr_weighted_loss_train_1_4
 
 ### output
-output_dir: saves/weighted_loss/baseline_gamma1.0_prop1_2
+output_dir: saves/weighted_loss/baseline_gamma1.0_prop1_4
 logging_steps: 10
 save_steps: 133
 plot_loss: true

@@ -22,7 +22,7 @@ dataloader_num_workers: 4
 tokenized_path: 2_11_26_training/weighted_loss_fn/tokenized/iclr_weighted_loss_train_1_2
 
 ### output
-output_dir: saves/weighted_loss/baseline_gamma1.0_prop1_2
+output_dir: saves/weighted_loss/reject_gamma2.0_prop1_2
 logging_steps: 10
 save_steps: 133
 plot_loss: true
@@ -34,7 +34,7 @@ report_to: none
 per_device_train_batch_size: 1
 gradient_accumulation_steps: 8
 learning_rate: 1.0e-5
-num_train_epochs: 3.0
+num_train_epochs: 1.0
 lr_scheduler_type: cosine
 warmup_ratio: 0.1
 bf16: true
@@ -49,6 +49,6 @@ per_device_eval_batch_size: 1
 
 ### weighted loss
 # For baseline (index 0), use standard BCE (can set use_weighted_loss=false or gamma=1.0)
-use_weighted_loss: false
-weighted_loss_variant: baseline
-weighted_loss_gamma: 1.0
+use_weighted_loss: true
+weighted_loss_variant: reject
+weighted_loss_gamma: 2.0

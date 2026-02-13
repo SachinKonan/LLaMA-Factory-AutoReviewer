@@ -1,8 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=train_weighted_loss
-#SBATCH --time=48:00:00
-#SBATCH --mem=256G
+#SBATCH --time=8:00:00
+#SBATCH --mem=64G
 #SBATCH --gres=gpu:4
+#SBATCH --cpus-per-task=4
 #SBATCH --array=0-35
 #SBATCH --output=2_11_26_training/weighted_loss_fn/logs/train_%A_%a.out
 #SBATCH --error=2_11_26_training/weighted_loss_fn/logs/train_%A_%a.err
@@ -47,6 +48,9 @@ source .venv/bin/activate
 # Set HuggingFace cache
 # export HF_HOME="/n/fs/vision-mix/sk7524/caches/.hf"
 
+# Increase NCCL heartbeat timeout to allow slow tokenization on non-main ranks
+export TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC=1800
+
 # Create logs directory
 mkdir -p 2_11_26_training/weighted_loss_fn/logs
 
@@ -78,8 +82,9 @@ else
     VARIANT=${VARIANTS[$VARIANT_IDX]}
 fi
 
-# Construct dataset name
+# Construct dataset name and tokenized path
 DATASET="iclr_weighted_loss_train_${PROPORTION}"
+TOKENIZED_PATH="2_11_26_training/weighted_loss_fn/tokenized/${DATASET}"
 
 # Construct output directory
 OUTPUT_DIR="saves/weighted_loss/${VARIANT}_gamma${GAMMA}_prop${PROPORTION}"
@@ -111,14 +116,14 @@ dataset: ${DATASET}
 dataset_dir: 2_11_26_training/weighted_loss_fn
 template: qwen
 cutoff_len: 16384
-overwrite_cache: true
 preprocessing_num_workers: 16
 dataloader_num_workers: 4
+tokenized_path: ${TOKENIZED_PATH}
 
 ### output
 output_dir: ${OUTPUT_DIR}
 logging_steps: 10
-save_steps: 500
+save_steps: 133
 plot_loss: true
 overwrite_output_dir: true
 save_only_model: false
@@ -128,7 +133,7 @@ report_to: none
 per_device_train_batch_size: 1
 gradient_accumulation_steps: 8
 learning_rate: 1.0e-5
-num_train_epochs: 3.0
+num_train_epochs: 1.0
 lr_scheduler_type: cosine
 warmup_ratio: 0.1
 bf16: true
@@ -155,6 +160,7 @@ echo "Gamma: ${GAMMA}"
 echo "Proportion: ${PROPORTION}"
 echo "Dataset: ${DATASET}"
 echo "Output: ${OUTPUT_DIR}"
+echo "Tokenized: ${TOKENIZED_PATH}"
 echo "Config: ${CONFIG_FILE}"
 echo "Running on: $(hostname)"
 echo "GPUs: ${CUDA_VISIBLE_DEVICES}"
