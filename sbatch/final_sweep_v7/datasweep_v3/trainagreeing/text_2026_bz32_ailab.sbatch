@@ -1,44 +1,37 @@
 #!/bin/bash
-#SBATCH --job-name=o25_vis16
-#SBATCH --time=11:00:00
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=350G
+#SBATCH --job-name=ta26_t32
+#SBATCH --time=13:00:00
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=200G
 #SBATCH --gres=gpu:4
 #SBATCH --partition=ailab
-#SBATCH --array=0-1
-#SBATCH --output=logs/final_sweep_v7_datasweepv3/optim_2020_2025_origin/vision_bz16/%A_%a.out
-#SBATCH --error=logs/final_sweep_v7_datasweepv3/optim_2020_2025_origin/vision_bz16/%A_%a.err
+#SBATCH --output=logs/final_sweep_v7_datasweepv3/trainagreeing/text_2026_bz32/%j.out
+#SBATCH --error=logs/final_sweep_v7_datasweepv3/trainagreeing/text_2026_bz32/%j.err
 
 set -e
 cd /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer
 source .venv/bin/activate
 export TRANSFORMERS_OFFLINE=1
 
-# BZ=16: 4 GPUs, per_device=4, grad_accum=1 → batch = 4*4*1 = 16
-# LR grid: [1e-6, 2e-6]
-LRS=("1e-6" "2e-6")
-SHORT_NAMES=("bz16_lr1e-6_vision" "bz16_lr2e-6_vision")
+# BZ=32: 4 GPUs, per_device=4, grad_accum=2 → batch = 4*4*2 = 32
+LR="1e-6"
+SHORT_NAME="bz32_lr1e-6_text_2026"
 
-LR="${LRS[$SLURM_ARRAY_TASK_ID]}"
-SHORT_NAME="${SHORT_NAMES[$SLURM_ARRAY_TASK_ID]}"
-
-DATASET="iclr_2020_2025_85_5_10_balanced_original_vision_corrected_v7_filtered"
-CONFIG_FILE="configs/final_sweep_v7_vision.yaml"
-TEMPLATE="qwen2_vl"
+DATASET="iclr_2020_2023_2025_2026_85_5_10_trainagreeing_original_text_labelfix_v7_filtered"
+CONFIG_FILE="configs/final_sweep_v7_clean.yaml"
+TEMPLATE="qwen"
 CUTOFF_LEN=24480
-IMAGE_MIN_PIXELS=784
-IMAGE_MAX_PIXELS=1003520
 
 PER_DEVICE_BATCH=4
-GRAD_ACCUM=1
+GRAD_ACCUM=2
 NUM_GPUS=4
 
-MODEL_DIR="saves/final_sweep_v7_datasweepv3/optim_2020_2025_origin/${SHORT_NAME}"
-RESULTS_DIR="results/final_sweep_v7_datasweepv3/optim_2020_2025_origin/${SHORT_NAME}"
-MASTER_PORT=$((29700 + SLURM_ARRAY_TASK_ID))
+MODEL_DIR="saves/final_sweep_v7_datasweepv3/trainagreeing/${SHORT_NAME}"
+RESULTS_DIR="results/final_sweep_v7_datasweepv3/trainagreeing/${SHORT_NAME}"
+MASTER_PORT=29700
 
 echo "=============================================="
-echo "Job: $SLURM_JOB_ID, Task: $SLURM_ARRAY_TASK_ID"
+echo "Job: $SLURM_JOB_ID"
 echo "Dataset: ${DATASET}"
 echo "Short Name: ${SHORT_NAME}"
 echo "LR: ${LR}"
@@ -50,7 +43,7 @@ echo "Model Dir: ${MODEL_DIR}"
 echo "Results Dir: ${RESULTS_DIR}"
 echo "=============================================="
 
-mkdir -p logs/final_sweep_v7_datasweepv3/optim_2020_2025_origin/vision_bz16 "${MODEL_DIR}" "${RESULTS_DIR}"
+mkdir -p logs/final_sweep_v7_datasweepv3/trainagreeing/text_2026_bz32 "${MODEL_DIR}" "${RESULTS_DIR}"
 
 # Write trainjob touch file
 echo "${SLURM_JOB_ID}" > "${MODEL_DIR}/.trainjob.touch"
@@ -65,8 +58,6 @@ python scripts/auto_infer_watcher.py \
     --template "${TEMPLATE}" \
     --cutoff_len "${CUTOFF_LEN}" \
     --max_new_tokens 1280 \
-    --image_min_pixels "${IMAGE_MIN_PIXELS}" \
-    --image_max_pixels "${IMAGE_MAX_PIXELS}" \
     --compute_train_accuracy \
     --delete_safetensors_posteval \
     --keep_safetensors_epoch_idx "2" \
@@ -77,7 +68,7 @@ AUTO_INFER_PID=$!
 echo "Started auto-inference watcher (PID: ${AUTO_INFER_PID})"
 
 # ======================
-# PHASE 1: TRAINING (3 epochs)
+# PHASE 1: TRAINING (4 epochs)
 # ======================
 echo ""
 echo "=== PHASE 1: TRAINING ==="

@@ -43,6 +43,9 @@ MAX_NEW_TOKENS=${MAX_NEW_TOKENS:-1280}
 COMPUTE_TRAIN_ACCURACY=${COMPUTE_TRAIN_ACCURACY:-0}
 TRAIN_ACCURACY_MAX_SAMPLES=${TRAIN_ACCURACY_MAX_SAMPLES:-2000}
 TRAIN_ACCURACY_BATCH_SIZE=${TRAIN_ACCURACY_BATCH_SIZE:-2}
+DELETE_SAFETENSORS=${DELETE_SAFETENSORS:-0}
+TEMPERATURE=${TEMPERATURE:-0}
+SAVE_LOGPROBS=${SAVE_LOGPROBS:-0}
 
 # Derive train dataset from test dataset if not provided
 # e.g., dataset_test -> dataset_train
@@ -66,6 +69,9 @@ echo "Image Params: ${IMAGE_PARAMS:-<none>}"
 echo "Compute Train Accuracy: ${COMPUTE_TRAIN_ACCURACY}"
 echo "Train Accuracy Max Samples: ${TRAIN_ACCURACY_MAX_SAMPLES}"
 echo "Train Accuracy Batch Size: ${TRAIN_ACCURACY_BATCH_SIZE}"
+echo "Delete Safetensors: ${DELETE_SAFETENSORS}"
+echo "Temperature: ${TEMPERATURE}"
+echo "Save Logprobs: ${SAVE_LOGPROBS}"
 echo "=============================================="
 
 # Create directories
@@ -134,8 +140,17 @@ echo "=== Step 2: vLLM inference on test data ==="
 echo "Output: ${OUTPUT_FILE}"
 echo ""
 
+# Build extra args for temperature and logprobs
+INFER_EXTRA_ARGS=""
+if [ "$TEMPERATURE" != "" ]; then
+    INFER_EXTRA_ARGS="$INFER_EXTRA_ARGS --temperature $TEMPERATURE"
+fi
+if [ "$SAVE_LOGPROBS" = "1" ]; then
+    INFER_EXTRA_ARGS="$INFER_EXTRA_ARGS --save_logprobs"
+fi
+
 # Run inference
-# Note: IMAGE_PARAMS is intentionally unquoted to allow word splitting
+# Note: IMAGE_PARAMS and INFER_EXTRA_ARGS are intentionally unquoted to allow word splitting
 python scripts/vllm_infer.py \
     --model_name_or_path "${CHECKPOINT_DIR}" \
     --dataset "${DATASET}" \
@@ -143,10 +158,27 @@ python scripts/vllm_infer.py \
     --cutoff_len "${CUTOFF_LEN}" \
     --max_new_tokens "${MAX_NEW_TOKENS}" \
     ${IMAGE_PARAMS} \
+    ${INFER_EXTRA_ARGS} \
     --save_name "${OUTPUT_FILE}"
 
 # Write .inferdone.touch file to signal completion
 echo "${OUTPUT_FILE}" > "${CHECKPOINT_DIR}/.inferdone.touch"
+
+# ============================================
+# Step 3: Delete safetensors to save disk space (optional)
+# ============================================
+if [ "$DELETE_SAFETENSORS" = "1" ]; then
+    echo ""
+    echo "=== Step 3: Cleaning up safetensors ==="
+    SAFETENSOR_COUNT=$(ls "${CHECKPOINT_DIR}"/*.safetensors 2>/dev/null | wc -l)
+    if [ "$SAFETENSOR_COUNT" -gt 0 ]; then
+        rm -f "${CHECKPOINT_DIR}"/*.safetensors
+        touch "${CHECKPOINT_DIR}/.cleaned.touch"
+        echo "Cleaned ${SAFETENSOR_COUNT} safetensors file(s) from ${CHECKPOINT_DIR}"
+    else
+        echo "No safetensors files found in ${CHECKPOINT_DIR}"
+    fi
+fi
 
 echo ""
 echo "=============================================="

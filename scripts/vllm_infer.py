@@ -54,7 +54,7 @@ def vllm_infer(
     vllm_config: str = "{}",
     save_name: str = "generated_predictions.jsonl",
     matrix_save_name: str = None,
-    temperature: float = 0.95,
+    temperature: float = 0,  # TODO: revert to 0.95 after optim_search sweep completes
     top_p: float = 0.7,
     top_k: int = 50,
     max_new_tokens: int = 1024,
@@ -69,6 +69,7 @@ def vllm_infer(
     video_fps: float = 2.0,
     video_maxlen: int = 128,
     batch_size: int = 1024,
+    save_logprobs: bool = True,  # TODO: revert to False after optim_search sweep completes
 ):
     r"""Perform batch generation using vLLM engine, which supports tensor parallelism.
 
@@ -145,6 +146,7 @@ def vllm_infer(
         max_tokens=generating_args.max_new_tokens,
         skip_special_tokens=skip_special_tokens,
         seed=seed,
+        logprobs=1 if save_logprobs else None,
     )
     if model_args.adapter_name_or_path is not None:
         lora_request = LoRARequest("default", 1, model_args.adapter_name_or_path[0])
@@ -153,6 +155,7 @@ def vllm_infer(
 
     # Store all results in these lists
     all_prompts, all_preds, all_labels = [], [], []
+    all_logprobs = [] if save_logprobs else None
     need_video_kwargs = _need_video_kwargs(template)
 
     model_predict_start_time = time.time()
@@ -226,6 +229,20 @@ def vllm_infer(
         results = llm.generate(vllm_inputs, sampling_params, lora_request=lora_request)
         preds = [result.outputs[0].text for result in results]
 
+        if save_logprobs:
+            batch_logprobs = []
+            for result in results:
+                output = result.outputs[0]
+                token_lps = []
+                if output.logprobs is not None:
+                    for i, step_lp in enumerate(output.logprobs):
+                        if step_lp is not None and output.token_ids[i] in step_lp:
+                            token_lps.append(step_lp[output.token_ids[i]].logprob)
+                        else:
+                            token_lps.append(None)
+                batch_logprobs.append(token_lps)
+            all_logprobs.extend(batch_logprobs)
+
         # Accumulate results
         all_prompts.extend(prompts)
         all_preds.extend(preds)
@@ -235,8 +252,11 @@ def vllm_infer(
     model_predict_end_time = time.time()
     # Write all results at once outside the loop
     with open(save_name, "w", encoding="utf-8") as f:
-        for text, pred, label in zip(all_prompts, all_preds, all_labels):
-            f.write(json.dumps({"prompt": text, "predict": pred, "label": label}, ensure_ascii=False) + "\n")
+        for idx, (text, pred, label) in enumerate(zip(all_prompts, all_preds, all_labels)):
+            entry = {"prompt": text, "predict": pred, "label": label}
+            if save_logprobs and all_logprobs is not None:
+                entry["token_logprobs"] = all_logprobs[idx]
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
     print("*" * 70)
     print(f"{len(all_prompts)} total generated results have been saved at {save_name}.")

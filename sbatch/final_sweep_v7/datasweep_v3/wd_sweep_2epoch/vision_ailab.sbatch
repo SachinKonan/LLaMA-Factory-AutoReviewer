@@ -1,47 +1,50 @@
 #!/bin/bash
-#SBATCH --job-name=o25_vis16
-#SBATCH --time=11:00:00
+#SBATCH --job-name=wd2e_vis
+#SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=350G
-#SBATCH --gres=gpu:4
+#SBATCH --gres=gpu:2
 #SBATCH --partition=ailab
-#SBATCH --array=0-1
-#SBATCH --output=logs/final_sweep_v7_datasweepv3/optim_2020_2025_origin/vision_bz16/%A_%a.out
-#SBATCH --error=logs/final_sweep_v7_datasweepv3/optim_2020_2025_origin/vision_bz16/%A_%a.err
+#SBATCH --array=0-2
+#SBATCH --output=logs/final_sweep_v7_datasweepv3/wd_sweep_2epoch/vision/%A_%a.out
+#SBATCH --error=logs/final_sweep_v7_datasweepv3/wd_sweep_2epoch/vision/%A_%a.err
 
 set -e
 cd /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer
 source .venv/bin/activate
 export TRANSFORMERS_OFFLINE=1
 
-# BZ=16: 4 GPUs, per_device=4, grad_accum=1 → batch = 4*4*1 = 16
-# LR grid: [1e-6, 2e-6]
-LRS=("1e-6" "2e-6")
-SHORT_NAMES=("bz16_lr1e-6_vision" "bz16_lr2e-6_vision")
+# Weight decay sweep: 0.001, 0.002, 0.004
+# Fixed: bz16, lr=1e-6, 4 epochs, cosine_then_constant (decay_ratio=0.5, min_lr_rate=0.001)
+# Cosine 1e-6→1e-9 over 2 epochs, then linear 1e-9→0 over 2 more epochs
+WDS=("0.001" "0.002" "0.004")
+SHORT_NAMES=("bz16_lr1e-6_wd0.001_vision" "bz16_lr1e-6_wd0.002_vision" "bz16_lr1e-6_wd0.004_vision")
 
-LR="${LRS[$SLURM_ARRAY_TASK_ID]}"
+WD="${WDS[$SLURM_ARRAY_TASK_ID]}"
 SHORT_NAME="${SHORT_NAMES[$SLURM_ARRAY_TASK_ID]}"
 
-DATASET="iclr_2020_2025_85_5_10_balanced_original_vision_corrected_v7_filtered"
+DATASET="iclr_2020_2023_2025_85_5_10_balanced_original_vision_v7_filtered"
 CONFIG_FILE="configs/final_sweep_v7_vision.yaml"
 TEMPLATE="qwen2_vl"
 CUTOFF_LEN=24480
 IMAGE_MIN_PIXELS=784
 IMAGE_MAX_PIXELS=1003520
 
-PER_DEVICE_BATCH=4
+# BZ=16: 2 GPUs, per_device=8, grad_accum=1 -> batch = 2*8*1 = 16
+PER_DEVICE_BATCH=8
 GRAD_ACCUM=1
-NUM_GPUS=4
+NUM_GPUS=2
 
-MODEL_DIR="saves/final_sweep_v7_datasweepv3/optim_2020_2025_origin/${SHORT_NAME}"
-RESULTS_DIR="results/final_sweep_v7_datasweepv3/optim_2020_2025_origin/${SHORT_NAME}"
+MODEL_DIR="saves/final_sweep_v7_datasweepv3/wd_sweep_2epoch/${SHORT_NAME}"
+RESULTS_DIR="results/final_sweep_v7_datasweepv3/wd_sweep_2epoch/${SHORT_NAME}"
 MASTER_PORT=$((29700 + SLURM_ARRAY_TASK_ID))
 
 echo "=============================================="
 echo "Job: $SLURM_JOB_ID, Task: $SLURM_ARRAY_TASK_ID"
 echo "Dataset: ${DATASET}"
 echo "Short Name: ${SHORT_NAME}"
-echo "LR: ${LR}"
+echo "LR: 1e-6, Weight Decay: ${WD}"
+echo "Scheduler: cosine_then_constant (decay_ratio=0.5, min_lr_rate=0.001) -> linear to 0"
 echo "GPUs: ${NUM_GPUS}, per_device: ${PER_DEVICE_BATCH}, grad_accum: ${GRAD_ACCUM}"
 echo "Effective batch: $((PER_DEVICE_BATCH * NUM_GPUS * GRAD_ACCUM))"
 echo "Cutoff len: ${CUTOFF_LEN}"
@@ -50,7 +53,7 @@ echo "Model Dir: ${MODEL_DIR}"
 echo "Results Dir: ${RESULTS_DIR}"
 echo "=============================================="
 
-mkdir -p logs/final_sweep_v7_datasweepv3/optim_2020_2025_origin/vision_bz16 "${MODEL_DIR}" "${RESULTS_DIR}"
+mkdir -p logs/final_sweep_v7_datasweepv3/wd_sweep_2epoch/vision "${MODEL_DIR}" "${RESULTS_DIR}"
 
 # Write trainjob touch file
 echo "${SLURM_JOB_ID}" > "${MODEL_DIR}/.trainjob.touch"
@@ -77,14 +80,14 @@ AUTO_INFER_PID=$!
 echo "Started auto-inference watcher (PID: ${AUTO_INFER_PID})"
 
 # ======================
-# PHASE 1: TRAINING (3 epochs)
+# PHASE 1: TRAINING (4 epochs)
 # ======================
 echo ""
 echo "=== PHASE 1: TRAINING ==="
 echo ""
 
 accelerate launch \
-    --config_file configs/fsdp2_4gpu_config.yaml \
+    --config_file configs/fsdp2_2gpu_config.yaml \
     --main_process_port "${MASTER_PORT}" \
     src/train.py "${CONFIG_FILE}" \
     dataset="${DATASET}_train" \
@@ -94,10 +97,11 @@ accelerate launch \
     per_device_train_batch_size="${PER_DEVICE_BATCH}" \
     gradient_accumulation_steps="${GRAD_ACCUM}" \
     cutoff_len="${CUTOFF_LEN}" \
-    learning_rate="${LR}" \
+    learning_rate=1e-6 \
     num_train_epochs=4.0 \
     lr_scheduler_type=cosine \
-    'lr_scheduler_kwargs={"custom_scheduler": "cosine_then_constant", "decay_ratio": 0.75, "min_lr_rate": 0.001}'
+    'lr_scheduler_kwargs={"custom_scheduler": "cosine_then_constant", "decay_ratio": 0.5, "min_lr_rate": 0.001}' \
+    weight_decay="${WD}"
 
 echo ""
 echo "=== Training complete! Waiting for auto-inference watcher to finish... ==="

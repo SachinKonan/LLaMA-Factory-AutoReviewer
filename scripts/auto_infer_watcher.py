@@ -165,6 +165,35 @@ def parse_args() -> argparse.Namespace:
         default=2,
         help="Batch size for training accuracy computation (default: 2)",
     )
+    parser.add_argument(
+        "--delete_safetensors_posteval",
+        action="store_true",
+        help="Delete safetensors from checkpoint dir after inference completes (saves disk space)",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0,
+        help="Sampling temperature for inference (default: 0)",
+    )
+    parser.add_argument(
+        "--save_logprobs",
+        action="store_true",
+        help="Save token logprobs in inference output (default: False)",
+    )
+    parser.add_argument(
+        "--keep_safetensors_epochs",
+        type=str,
+        default="",
+        help="DEPRECATED: Comma-separated checkpoint steps to keep safetensors for (skip deletion)",
+    )
+    parser.add_argument(
+        "--keep_safetensors_epoch_idx",
+        type=str,
+        default="",
+        help="Comma-separated epoch numbers (1-indexed) to keep safetensors for (skip deletion). "
+             "Checkpoints are sorted by step; the i-th checkpoint = epoch i.",
+    )
 
     return parser.parse_args()
 
@@ -206,18 +235,6 @@ def get_all_checkpoints(save_dir: Path) -> list[Path]:
     checkpoints.sort(key=lambda x: x[0])
     return [ckpt for _, ckpt in checkpoints]
 
-
-def is_final_checkpoint(checkpoint_dir: Path, save_dir: Path) -> bool:
-    """
-    Check if this is the final checkpoint (training completed).
-    Final checkpoint is handled by end-of-training scripts (PHASE 2).
-    """
-    # Check if training completed (all_results.json exists)
-    if (save_dir / "all_results.json").exists():
-        all_checkpoints = get_all_checkpoints(save_dir)
-        if all_checkpoints and checkpoint_dir == all_checkpoints[-1]:
-            return True
-    return False
 
 
 def submit_sbatch(
@@ -310,18 +327,30 @@ def main():
         logger.info(f"Image params: {image_params}")
     logger.info(f"Poll interval: {args.poll_interval}s")
     logger.info(f"Dry run: {args.dry_run}")
+    logger.info(f"Delete safetensors post-eval: {args.delete_safetensors_posteval}")
+    logger.info(f"Temperature: {args.temperature}")
+    logger.info(f"Save logprobs: {args.save_logprobs}")
+    logger.info(f"Keep safetensors epochs (steps): {args.keep_safetensors_epochs}")
+    logger.info(f"Keep safetensors epoch idx: {args.keep_safetensors_epoch_idx}")
     logger.info(f"Log file: {log_file}")
+
+    # Parse keep_safetensors_epochs (legacy: exact step numbers)
+    keep_steps = set()
+    if args.keep_safetensors_epochs:
+        keep_steps = set(int(s) for s in args.keep_safetensors_epochs.split(",") if s.strip())
+
+    # Parse keep_safetensors_epoch_idx (new: 1-indexed epoch positions)
+    keep_epoch_idx = set()
+    if args.keep_safetensors_epoch_idx:
+        keep_epoch_idx = set(int(s) for s in args.keep_safetensors_epoch_idx.split(",") if s.strip())
     logger.info("=" * 60)
 
     # Main polling loop
     while True:
         try:
-            # Check if training complete
-            if (args.save_dir / "all_results.json").exists():
-                logger.info("Training complete (all_results.json found), exiting watcher")
-                break
+            training_complete = (args.save_dir / "all_results.json").exists()
 
-            # Scan for unprocessed checkpoints
+            # Scan for unprocessed checkpoints (including final checkpoint)
             for ckpt_dir in args.save_dir.glob("checkpoint-*"):
                 try:
                     if not ckpt_dir.is_dir():
@@ -333,11 +362,6 @@ def main():
 
                     if not is_checkpoint_complete(ckpt_dir):
                         continue  # Still being written
-
-                    # Skip final checkpoint (handled by training sbatch PHASE 2)
-                    if is_final_checkpoint(ckpt_dir, args.save_dir):
-                        logger.info(f"Skipping final checkpoint: {ckpt_dir.name}")
-                        continue
 
                     ckpt_step = get_checkpoint_step(ckpt_dir)
                     if ckpt_step is None:
@@ -355,10 +379,26 @@ def main():
                         "COMPUTE_TRAIN_ACCURACY": "1" if args.compute_train_accuracy else "0",
                         "TRAIN_ACCURACY_MAX_SAMPLES": str(args.train_accuracy_max_samples),
                         "TRAIN_ACCURACY_BATCH_SIZE": str(args.train_accuracy_batch_size),
+                        "TEMPERATURE": str(args.temperature),
+                        "SAVE_LOGPROBS": "1" if args.save_logprobs else "0",
                     }
 
                     if image_params:
                         env["IMAGE_PARAMS"] = image_params
+
+                    if args.delete_safetensors_posteval:
+                        should_keep = ckpt_step in keep_steps
+                        if not should_keep and keep_epoch_idx:
+                            # Sort all checkpoints by step, find 1-indexed position
+                            all_steps = sorted(
+                                get_checkpoint_step(d)
+                                for d in args.save_dir.glob("checkpoint-*")
+                                if d.is_dir() and get_checkpoint_step(d) is not None
+                            )
+                            epoch_num = all_steps.index(ckpt_step) + 1
+                            should_keep = epoch_num in keep_epoch_idx
+                        if not should_keep:
+                            env["DELETE_SAFETENSORS"] = "1"
 
                     # Submit job
                     job_id = submit_sbatch(sbatch_script, env, dry_run=args.dry_run)
@@ -378,6 +418,11 @@ def main():
         except Exception as e:
             # Catch-all: log error, don't crash the watcher
             logger.warning(f"Watcher loop error (will retry): {e}")
+
+        # Exit after final scan once training is done
+        if training_complete:
+            logger.info("Training complete (all_results.json found), all checkpoints processed, exiting watcher")
+            break
 
         # Wait for next poll
         time.sleep(args.poll_interval)

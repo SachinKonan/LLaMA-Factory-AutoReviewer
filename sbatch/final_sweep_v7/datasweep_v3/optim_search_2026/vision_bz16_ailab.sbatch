@@ -1,13 +1,13 @@
 #!/bin/bash
-#SBATCH --job-name=o25_vis16
-#SBATCH --time=11:00:00
+#SBATCH --job-name=o26_vis16
+#SBATCH --time=14:00:00
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=350G
 #SBATCH --gres=gpu:4
 #SBATCH --partition=ailab
 #SBATCH --array=0-1
-#SBATCH --output=logs/final_sweep_v7_datasweepv3/optim_2020_2025_origin/vision_bz16/%A_%a.out
-#SBATCH --error=logs/final_sweep_v7_datasweepv3/optim_2020_2025_origin/vision_bz16/%A_%a.err
+#SBATCH --output=logs/final_sweep_v7_datasweepv3/optim_search_2026/vision_bz16/%A_%a.out
+#SBATCH --error=logs/final_sweep_v7_datasweepv3/optim_search_2026/vision_bz16/%A_%a.err
 
 set -e
 cd /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer
@@ -22,7 +22,7 @@ SHORT_NAMES=("bz16_lr1e-6_vision" "bz16_lr2e-6_vision")
 LR="${LRS[$SLURM_ARRAY_TASK_ID]}"
 SHORT_NAME="${SHORT_NAMES[$SLURM_ARRAY_TASK_ID]}"
 
-DATASET="iclr_2020_2025_85_5_10_balanced_original_vision_corrected_v7_filtered"
+DATASET="iclr_2020_2023_2025_2026_85_5_10_balanced_original_vision_labelfix_v7_filtered_filtered24480"
 CONFIG_FILE="configs/final_sweep_v7_vision.yaml"
 TEMPLATE="qwen2_vl"
 CUTOFF_LEN=24480
@@ -33,8 +33,8 @@ PER_DEVICE_BATCH=4
 GRAD_ACCUM=1
 NUM_GPUS=4
 
-MODEL_DIR="saves/final_sweep_v7_datasweepv3/optim_2020_2025_origin/${SHORT_NAME}"
-RESULTS_DIR="results/final_sweep_v7_datasweepv3/optim_2020_2025_origin/${SHORT_NAME}"
+MODEL_DIR="saves/final_sweep_v7_datasweepv3/optim_search_2026/${SHORT_NAME}"
+RESULTS_DIR="results/final_sweep_v7_datasweepv3/optim_search_2026/${SHORT_NAME}"
 MASTER_PORT=$((29700 + SLURM_ARRAY_TASK_ID))
 
 echo "=============================================="
@@ -50,7 +50,7 @@ echo "Model Dir: ${MODEL_DIR}"
 echo "Results Dir: ${RESULTS_DIR}"
 echo "=============================================="
 
-mkdir -p logs/final_sweep_v7_datasweepv3/optim_2020_2025_origin/vision_bz16 "${MODEL_DIR}" "${RESULTS_DIR}"
+mkdir -p logs/final_sweep_v7_datasweepv3/optim_search_2026/vision_bz16 "${MODEL_DIR}" "${RESULTS_DIR}"
 
 # Write trainjob touch file
 echo "${SLURM_JOB_ID}" > "${MODEL_DIR}/.trainjob.touch"
