@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=pretokenize
-#SBATCH --time=4:00:00
-#SBATCH --mem=128G
+#SBATCH --time=30:00
+#SBATCH --mem=32G
 #SBATCH --gres=gpu:1
 #SBATCH --array=0-3
 #SBATCH --output=2_11_26_training/weighted_loss_fn/logs/tokenize_%A_%a.out
@@ -26,7 +26,8 @@
 
 set -e
 
-PROJECT_DIR="/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer"
+PROJECT_DIR="/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer"
+export HF_HOME="/scratch/gpfs/ZHUANGL/jl0796/.hf_home"
 cd "${PROJECT_DIR}"
 
 source .venv/bin/activate
@@ -49,7 +50,7 @@ CONFIG_FILE="2_11_26_training/weighted_loss_fn/configs/generated/tokenize_${PROP
 
 cat > "${CONFIG_FILE}" << EOF
 ### model
-model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+model_name_or_path: /scratch/gpfs/ZHUANGL/jl0796/.hf_home/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28
 trust_remote_code: true
 
 ### method

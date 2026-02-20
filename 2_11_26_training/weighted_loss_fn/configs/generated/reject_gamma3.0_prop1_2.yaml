@@ -13,16 +13,16 @@ gradient_checkpointing: true
 gradient_checkpointing_kwargs: {"use_reentrant": false}
 
 ### dataset
-dataset: iclr_weighted_loss_train_1_3
+dataset: iclr_weighted_loss_train_1_2
 dataset_dir: 2_11_26_training/weighted_loss_fn
 template: qwen
 cutoff_len: 16384
 preprocessing_num_workers: 16
 dataloader_num_workers: 4
-tokenized_path: 2_11_26_training/weighted_loss_fn/tokenized/iclr_weighted_loss_train_1_3
+tokenized_path: 2_11_26_training/weighted_loss_fn/tokenized/iclr_weighted_loss_train_1_2
 
 ### output
-output_dir: saves/weighted_loss/baseline_gamma1.0_prop1_3
+output_dir: saves/weighted_loss/reject_gamma3.0_prop1_2
 logging_steps: 10
 save_steps: 133
 plot_loss: true
@@ -49,6 +49,6 @@ per_device_eval_batch_size: 2
 
 ### weighted loss
 # For baseline (index 0), use standard BCE (can set use_weighted_loss=false or gamma=1.0)
-use_weighted_loss: false
-weighted_loss_variant: baseline
-weighted_loss_gamma: 1.0
+use_weighted_loss: true
+weighted_loss_variant: reject
+weighted_loss_gamma: 3.0

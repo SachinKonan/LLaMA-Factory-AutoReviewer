@@ -3,7 +3,7 @@
 ## TL;DR - Run Everything
 
 ```bash
-cd /n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer
+cd /scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer
 
 # Step 1: Validate implementation
 python 2_11_26_training/weighted_loss_fn/scripts/validate_implementation.py

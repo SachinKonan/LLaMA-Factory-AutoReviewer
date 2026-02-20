@@ -26,9 +26,9 @@ import numpy as np
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
 # Paths
-RESULTS_DIR = Path("/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/results")
-METRICS_DIR = Path("/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/metrics")
-TEST_DATA_PATH = "/n/fs/vision-mix/sk7524/LLaMA-Factory/data/iclr_2020_2025_85_5_10_split7_balanced_clean_binary_noreviews_v7_test/data.json"
+RESULTS_DIR = Path("/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/results")
+METRICS_DIR = Path("/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/metrics")
+TEST_DATA_PATH = "/scratch/gpfs/ZHUANGL/jl0796/shared/data/iclr_2020_2025_85_5_10_balanced_original_text_v7_filtered_test/data.json"
 
 
 def parse_prediction(text: str) -> str:

@@ -16,7 +16,7 @@ import json
 from pathlib import Path
 
 # Base paths
-BASE_DIR = Path("/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer")
+BASE_DIR = Path("/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer")
 EXPERIMENT_DIR = BASE_DIR / "2_11_26_training/weighted_loss_fn"
 
 
@@ -82,8 +82,7 @@ def check_code_modifications() -> bool:
     checks = [
         ("weighted_bce_loss_accept" in content, "weighted_bce_loss_accept function"),
         ("weighted_bce_loss_reject" in content, "weighted_bce_loss_reject function"),
-        ("_weighted_cross_entropy_accept" in content, "_weighted_cross_entropy_accept function"),
-        ("_weighted_cross_entropy_reject" in content, "_weighted_cross_entropy_reject function"),
+        ("_get_binary_decision_logit" in content, "_get_binary_decision_logit function"),
     ]
 
     for check, description in checks:
@@ -158,6 +157,7 @@ def main():
     print("\nChecking script files...")
     scripts = [
         (EXPERIMENT_DIR / "scripts/stage1_generate_datasets.py", "Stage 1: Dataset generation"),
+        (EXPERIMENT_DIR / "scripts/stage1b_pretokenize.sbatch", "Stage 1b: Pre-tokenization"),
         (EXPERIMENT_DIR / "scripts/stage2_train_models.sbatch", "Stage 2: Training"),
         (EXPERIMENT_DIR / "scripts/stage3_run_inference.sbatch", "Stage 3: Inference"),
         (EXPERIMENT_DIR / "scripts/stage4_evaluate.py", "Stage 4: Evaluation"),

@@ -1,5 +1,5 @@
 ### model
-model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+model_name_or_path: /scratch/gpfs/ZHUANGL/jl0796/.hf_home/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28
 trust_remote_code: true
 
 ### method

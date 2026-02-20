@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=train_weighted_loss
-#SBATCH --time=8:00:00
+#SBATCH --time=16:00:00
 #SBATCH --mem=64G
 #SBATCH --gres=gpu:4
-#SBATCH --cpus-per-task=4
+#SBATCH --constraint="intel&gpu40"
 #SBATCH --array=0-35
 #SBATCH --output=2_11_26_training/weighted_loss_fn/logs/train_%A_%a.out
 #SBATCH --error=2_11_26_training/weighted_loss_fn/logs/train_%A_%a.err
@@ -39,14 +39,14 @@
 set -e
 
 # Navigate to project directory
-PROJECT_DIR="/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer"
+PROJECT_DIR="/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer"
 cd "${PROJECT_DIR}"
 
 # Activate training environment
 source .venv/bin/activate
 
 # Set HuggingFace cache
-# export HF_HOME="/n/fs/vision-mix/sk7524/caches/.hf"
+export HF_HOME="/scratch/gpfs/ZHUANGL/jl0796/.hf_home"
 
 # Increase NCCL heartbeat timeout to allow slow tokenization on non-main ranks
 export TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC=1800
@@ -98,7 +98,7 @@ mkdir -p 2_11_26_training/weighted_loss_fn/configs/generated
 # Generate config file from base
 cat > "${CONFIG_FILE}" << EOF
 ### model
-model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+model_name_or_path: /scratch/gpfs/ZHUANGL/jl0796/.hf_home/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28
 trust_remote_code: true
 flash_attn: fa2
 enable_liger_kernel: True
@@ -130,10 +130,10 @@ save_only_model: false
 report_to: none
 
 ### train
-per_device_train_batch_size: 1
+per_device_train_batch_size: 2
 gradient_accumulation_steps: 8
 learning_rate: 1.0e-5
-num_train_epochs: 1.0
+num_train_epochs: 5.0
 lr_scheduler_type: cosine
 warmup_ratio: 0.1
 bf16: true
@@ -144,7 +144,7 @@ do_eval: true
 eval_dataset: iclr_2020_2025_85_5_10_split7_balanced_clean_binary_noreviews_v7_test
 eval_strategy: steps
 eval_steps: 500
-per_device_eval_batch_size: 1
+per_device_eval_batch_size: 2
 
 ### weighted loss
 # For baseline (index 0), use standard BCE (can set use_weighted_loss=false or gamma=1.0)

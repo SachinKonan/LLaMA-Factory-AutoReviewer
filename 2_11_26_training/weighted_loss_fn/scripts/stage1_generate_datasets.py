@@ -20,8 +20,8 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 # Paths
-ORIGINAL_TRAIN = "/n/fs/vision-mix/sk7524/LLaMA-Factory/data/iclr_2020_2025_85_5_10_split7_balanced_clean_binary_noreviews_v7_train/data.json"
-OUTPUT_DIR = Path("/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/data")
+ORIGINAL_TRAIN = "/scratch/gpfs/ZHUANGL/jl0796/shared/data/iclr_2020_2025_85_5_10_balanced_original_text_v7_filtered_train/data.json"
+OUTPUT_DIR = Path("/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/data")
 
 # Acceptance rates to test: accept_fraction = accept / (accept + reject)
 # e.g. 1/2 means 50% accept, 1/3 means 33% accept, etc.

@@ -6,7 +6,7 @@
 
 **Hypothesis**: By manipulating loss weighting (gamma parameter) and training data composition, we can control the model's predicted acceptance rate while observing the impact on overall accuracy and calibration.
 
-**Location**: `/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn`
+**Location**: `/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn`
 
 ### Quick Reference
 
@@ -46,10 +46,10 @@
    - Expected to decrease predicted acceptance rate
 
 **Dataset Accept/Reject Proportions**:
-- `1:2` (50% accept, 50% reject) - Balanced baseline
-- `1:3` (33% accept, 67% reject) - Moderate reject bias
-- `1:4` (25% accept, 75% reject) - Reject-heavy
-- `1:8` (12.5% accept, 87.5% reject) - Extreme reject bias
+- `1/2` (50% accept, 50% reject) - Balanced baseline
+- `1/3` (33% accept, 67% reject) - Moderate reject bias
+- `1/4` (25% accept, 75% reject) - Reject-heavy
+- `1/8` (12.5% accept, 87.5% reject) - Extreme reject bias
 
 ### Experiment Matrix
 
@@ -146,19 +146,19 @@
 ### Source Data
 
 **Original Training Set**:
-- Path: `/n/fs/vision-mix/sk7524/LLaMA-Factory/data/iclr_2020_2025_85_5_10_split7_balanced_clean_binary_noreviews_v7_train/data.json`
+- Path: `/scratch/gpfs/ZHUANGL/jl0796/shared/data/iclr_2020_2025_85_5_10_balanced_original_text_v7_filtered_train/data.json`
 - Total samples: 17,101
 - Distribution: 8,553 accepts (50.0%), 8,548 rejects (50.0%)
 
 **Original Test Set** (NEVER MODIFIED):
-- Path: `/n/fs/vision-mix/sk7524/LLaMA-Factory/data/iclr_2020_2025_85_5_10_split7_balanced_clean_binary_noreviews_v7_test/data.json`
+- Path: `/scratch/gpfs/ZHUANGL/jl0796/shared/data/iclr_2020_2025_85_5_10_balanced_pdftitleabs_clean_v7_filtered_test/data.json`
 - Total samples: 2,024
 - Distribution: 1,013 accepts (50.0%), 1,011 rejects (50.0%)
 - This dataset is used for ALL evaluations to ensure fair comparison
 
 ### Generated Training Sets
 
-**Output Location**: `/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/data/`
+**Output Location**: `/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/data/`
 
 **Dataset Naming Convention**:
 ```
@@ -233,7 +233,7 @@ Where proportion ∈ {1_2, 1_4, 1_3, 1_8}
 
 ### File to Modify
 
-**Path**: `/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/src/llamafactory/train/trainer_utils.py`
+**Path**: `/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer/src/llamafactory/train/trainer_utils.py`
 
 ### Implementation Strategy
 
@@ -514,8 +514,8 @@ from pathlib import Path
 from typing import List, Dict, Tuple
 
 # Paths
-ORIGINAL_TRAIN = "/n/fs/vision-mix/sk7524/LLaMA-Factory/data/iclr_2020_2025_85_5_10_split7_balanced_clean_binary_noreviews_v7_train/data.json"
-OUTPUT_DIR = Path("/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/data")
+ORIGINAL_TRAIN = "/scratch/gpfs/ZHUANGL/jl0796/shared/data/iclr_2020_2025_85_5_10_balanced_original_text_v7_filtered_train/data.json"
+OUTPUT_DIR = Path("/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/data")
 
 # Proportions to generate (accept:reject)
 PROPORTIONS = {
@@ -790,14 +790,14 @@ weighted_loss_gamma: 2.0
 set -e
 
 # Navigate to project directory
-PROJECT_DIR="/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer"
+PROJECT_DIR="/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer"
 cd "${PROJECT_DIR}"
 
 # Activate training environment
 source .venv/bin/activate
 
 # Set HuggingFace cache
-export HF_HOME="/n/fs/vision-mix/sk7524/caches/.hf"
+export HF_HOME="/scratch/gpfs/ZHUANGL/jl0796/.hf_home"
 
 # Create logs directory
 mkdir -p 2_11_26_training/weighted_loss_fn/logs
@@ -973,10 +973,11 @@ sbatch --array=7-10 2_11_26_training/weighted_loss_fn/scripts/stage2_train_model
 
 set -e
 
-PROJECT_DIR="/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer"
+PROJECT_DIR="/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer"
 cd "${PROJECT_DIR}"
+export HF_HOME="/scratch/gpfs/ZHUANGL/jl0796/.hf_home"
 
-source .vllm/bin/activate
+source .venv/bin/activate
 
 mkdir -p 2_11_26_training/weighted_loss_fn/results
 
@@ -1042,7 +1043,7 @@ echo "=============================================="
 python inference_scaling/scripts/vllm_infer_ensemble.py \
     --model_name_or_path "${MODEL_DIR}" \
     --dataset "${TEST_DATASET}" \
-    --dataset_dir /n/fs/vision-mix/sk7524/LLaMA-Factory/data \
+    --dataset_dir 2_11_26_training/weighted_loss_fn \
     --template qwen \
     --cutoff_len 4096 \
     --max_new_tokens 1024 \
@@ -1087,9 +1088,9 @@ import numpy as np
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
 # Paths
-RESULTS_DIR = Path("/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/results")
-METRICS_DIR = Path("/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/metrics")
-TEST_DATA_PATH = "/n/fs/vision-mix/sk7524/LLaMA-Factory/data/iclr_2020_2025_85_5_10_split7_balanced_clean_binary_noreviews_v7_test/data.json"
+RESULTS_DIR = Path("/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/results")
+METRICS_DIR = Path("/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/metrics")
+TEST_DATA_PATH = "/scratch/gpfs/ZHUANGL/jl0796/shared/data/iclr_2020_2025_85_5_10_balanced_pdftitleabs_clean_v7_filtered_test/data.json"
 
 
 def parse_prediction(text: str) -> str:
@@ -1284,7 +1285,7 @@ import pandas as pd
 import seaborn as sns
 
 # Paths
-METRICS_DIR = Path("/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/metrics")
+METRICS_DIR = Path("/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/metrics")
 PLOTS_DIR = METRICS_DIR / "plots"
 
 # Plot styling
@@ -1684,7 +1685,7 @@ For each of the 32 trained models:
 
 ```bash
 # 1. Create directory structure
-mkdir -p /n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/{data,configs,scripts,logs,results,metrics}
+mkdir -p /scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/{data,configs,scripts,logs,results,metrics}
 
 # 2. Implement loss functions
 # Edit: src/llamafactory/train/trainer_utils.py
@@ -1707,7 +1708,7 @@ mkdir -p /n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/wei
 
 ```bash
 # Test dataset generation
-cd /n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer
+cd /scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer
 python 2_11_26_training/weighted_loss_fn/scripts/stage1_generate_datasets.py --debug
 
 # Generate full datasets
@@ -1966,7 +1967,7 @@ cat 2_11_26_training/weighted_loss_fn/metrics/all_metrics.json
 
 ## References
 
-- **Original Dataset**: `/n/fs/vision-mix/sk7524/LLaMA-Factory/data/iclr_2020_2025_85_5_10_split7_balanced_clean_binary_noreviews_v7_{train,test}`
+- **Original Dataset**: `/scratch/gpfs/ZHUANGL/jl0796/shared/data/iclr_2020_2025_85_5_10_balanced_original_text_v7_filtered_train/data.json` and `..._test/data.json`
 - **LLaMA Factory Docs**: https://github.com/hiyouga/LLaMA-Factory
 - **FSDP2 Config**: `configs/fsdp2_4gpu_config.yaml`
 - **Qwen Model**: https://huggingface.co/Qwen/Qwen2.5-7B-Instruct

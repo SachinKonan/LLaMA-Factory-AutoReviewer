@@ -16,10 +16,11 @@
 
 set -e
 
-PROJECT_DIR="/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer"
+PROJECT_DIR="/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer"
 cd "${PROJECT_DIR}"
+export HF_HOME="/scratch/gpfs/ZHUANGL/jl0796/.hf_home"
 
-source .vllm/bin/activate
+source .venv/bin/activate
 
 mkdir -p 2_11_26_training/weighted_loss_fn/results
 
@@ -85,7 +86,7 @@ echo "=============================================="
 python inference_scaling/scripts/vllm_infer_ensemble.py \
     --model_name_or_path "${MODEL_DIR}" \
     --dataset "${TEST_DATASET}" \
-    --dataset_dir /n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/ \
+    --dataset_dir 2_11_26_training/weighted_loss_fn \
     --template qwen \
     --cutoff_len 4096 \
     --max_new_tokens 1024 \

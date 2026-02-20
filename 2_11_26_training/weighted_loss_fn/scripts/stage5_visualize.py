@@ -22,7 +22,7 @@ import pandas as pd
 import seaborn as sns
 
 # Paths
-METRICS_DIR = Path("/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/metrics")
+METRICS_DIR = Path("/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/metrics")
 PLOTS_DIR = METRICS_DIR / "plots"
 
 # Plot styling
