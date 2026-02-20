@@ -679,60 +679,76 @@ def _dft_cross_entropy(
     return loss
 
 
-def weighted_bce_loss_accept(outputs, labels, gamma=1.0, num_items_in_batch=None):
+def _get_binary_decision_logit(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    accept_ids: list[int],
+    reject_ids: list[int],
+    ignore_index: int = -100,
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
-    Weighted BCE that penalizes false negatives (missed accepts) more heavily.
-    Loss = -sum(gamma * y * log(p) + (1-y) * log(1-p))
+    Identifies the binary decision positions and computes the logit difference (L_accept - L_reject).
+    """
+    valid_mask = labels != ignore_index
+    if not valid_mask.any():
+        return torch.tensor([], device=logits.device), torch.tensor([], device=logits.device)
 
-    Args:
-        outputs: Model outputs containing logits
-        labels: Ground truth labels
-        gamma: Weighting factor for accept class (y=1)
-        num_items_in_batch: Unused (for compatibility)
+    accept_ids_tensor = torch.tensor(accept_ids, device=labels.device)
+    reject_ids_tensor = torch.tensor(reject_ids, device=labels.device)
+
+    is_accept = torch.any(labels.unsqueeze(-1) == accept_ids_tensor, dim=-1)
+    is_reject = torch.any(labels.unsqueeze(-1) == reject_ids_tensor, dim=-1)
+    is_decision = is_accept | is_reject
+
+    if not is_decision.any():
+        return torch.tensor([], device=logits.device), torch.tensor([], device=logits.device)
+
+    decision_logits = logits[is_decision]
+    decision_labels = labels[is_decision]
+
+    l_accept = torch.max(decision_logits[:, accept_ids], dim=-1)[0]
+    l_reject = torch.max(decision_logits[:, reject_ids], dim=-1)[0]
+
+    logit_diff = l_accept - l_reject
+    target_y = torch.any(decision_labels.unsqueeze(-1) == accept_ids_tensor, dim=-1).float()
+
+    return logit_diff, target_y
+
+
+def weighted_bce_loss_accept(outputs, labels, gamma=1.0, accept_ids=None, reject_ids=None, num_items_in_batch=None):
+    """
+    Weighted BCE using the requested pattern:
+    p* = sigma(L_accept - L_reject)
+    noisy_y = (1 - y) * gamma + y
+    Loss = BCE(p*, noisy_y)
     """
     logits = outputs.get("logits")
     if logits is None:
         return outputs.get("loss", torch.tensor(0.0))
 
-    vocab_size = logits.size(-1)
+    if accept_ids is None or reject_ids is None:
+        accept_ids = [16646]
+        reject_ids = [78413]
 
-    # Shift labels for causal LM
+    vocab_size = logits.size(-1)
     labels = torch.nn.functional.pad(labels, (0, 1), value=-100)
     shift_labels = labels[..., 1:].contiguous()
     logits = logits.view(-1, vocab_size)
-    shift_labels = shift_labels.view(-1)
-    shift_labels = shift_labels.to(logits.device)
+    shift_labels = shift_labels.view(-1).to(logits.device)
 
-    loss = _weighted_cross_entropy_accept(logits, shift_labels, gamma)
-    return loss
+    logit_diff, target_y = _get_binary_decision_logit(logits, shift_labels, accept_ids, reject_ids)
+
+    if logit_diff.numel() == 0:
+        return torch.nn.functional.cross_entropy(logits, shift_labels, ignore_index=-100)
+
+    p_star = torch.sigmoid(logit_diff)
+    weight = (1.0 - target_y) * gamma + target_y
+
+    return torch.nn.functional.binary_cross_entropy(p_star, target_y, weight=weight.float())
 
 
-def weighted_bce_loss_reject(outputs, labels, gamma=1.0, num_items_in_batch=None):
-    """
-    Weighted BCE that penalizes false positives (incorrect accepts) more heavily.
-    Loss = -sum(y * log(p) + gamma * (1-y) * log(1-p))
-
-    Args:
-        outputs: Model outputs containing logits
-        labels: Ground truth labels
-        gamma: Weighting factor for reject class (y=0)
-        num_items_in_batch: Unused (for compatibility)
-    """
-    logits = outputs.get("logits")
-    if logits is None:
-        return outputs.get("loss", torch.tensor(0.0))
-
-    vocab_size = logits.size(-1)
-
-    # Shift labels for causal LM
-    labels = torch.nn.functional.pad(labels, (0, 1), value=-100)
-    shift_labels = labels[..., 1:].contiguous()
-    logits = logits.view(-1, vocab_size)
-    shift_labels = shift_labels.view(-1)
-    shift_labels = shift_labels.to(logits.device)
-
-    loss = _weighted_cross_entropy_reject(logits, shift_labels, gamma)
-    return loss
+def weighted_bce_loss_reject(outputs, labels, gamma=1.0, accept_ids=None, reject_ids=None, num_items_in_batch=None):
+    return weighted_bce_loss_accept(outputs, labels, gamma, accept_ids, reject_ids, num_items_in_batch)
 
 
 def _weighted_cross_entropy_accept(

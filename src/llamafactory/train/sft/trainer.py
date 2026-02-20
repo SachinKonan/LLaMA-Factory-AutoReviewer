@@ -64,6 +64,7 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
                 patch_accelerator_for_fp8()
 
         super().__init__(**kwargs)
+        self.compute_loss_func = None
         if processor is not None:
             # avoid wrong loss under gradient accumulation
             # https://github.com/huggingface/transformers/pull/36044#issuecomment-2746657112
@@ -91,13 +92,24 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
         if finetuning_args.use_weighted_loss:
             from ..trainer_utils import weighted_bce_loss_accept, weighted_bce_loss_reject
 
+            # Precompute accept/reject IDs for the loss function
+            tokenizer = self.processing_class
+            self.accept_ids = tokenizer.encode("Accept", add_special_tokens=False) + \
+                              tokenizer.encode("accept", add_special_tokens=False)
+            self.reject_ids = tokenizer.encode("Reject", add_special_tokens=False) + \
+                              tokenizer.encode("reject", add_special_tokens=False)
+            self.accept_ids = list(set(self.accept_ids))
+            self.reject_ids = list(set(self.reject_ids))
+
             if finetuning_args.weighted_loss_variant == "accept":
                 self.compute_loss_func = lambda outputs, labels, **kwargs: weighted_bce_loss_accept(
-                    outputs, labels, gamma=finetuning_args.weighted_loss_gamma, **kwargs
+                    outputs, labels, gamma=finetuning_args.weighted_loss_gamma,
+                    accept_ids=self.accept_ids, reject_ids=self.reject_ids, **kwargs
                 )
             else:
                 self.compute_loss_func = lambda outputs, labels, **kwargs: weighted_bce_loss_reject(
-                    outputs, labels, gamma=finetuning_args.weighted_loss_gamma, **kwargs
+                    outputs, labels, gamma=finetuning_args.weighted_loss_gamma,
+                    accept_ids=self.accept_ids, reject_ids=self.reject_ids, **kwargs
                 )
 
         if training_args.fp8 and hasattr(self, "accelerator"):  # verify FP8 status after trainer initialization
@@ -124,8 +136,18 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
         return super()._get_train_sampler(*args, **kwargs)
 
     @override
-    def compute_loss(self, model, inputs, *args, **kwargs):
-        return super().compute_loss(model, inputs, *args, **kwargs)
+    def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+        if self.compute_loss_func is not None and "labels" in inputs:
+            labels = inputs.pop("labels")
+            outputs = model(**inputs)
+            if self.args.past_index >= 0:
+                self._past = outputs[self.args.past_index]
+
+            num_items_in_batch = kwargs.get("num_items_in_batch")
+            loss = self.compute_loss_func(outputs, labels, num_items_in_batch=num_items_in_batch)
+            return (loss, outputs) if return_outputs else loss
+
+        return super().compute_loss(model, inputs, return_outputs, **kwargs)
 
     @override
     def prediction_step(
