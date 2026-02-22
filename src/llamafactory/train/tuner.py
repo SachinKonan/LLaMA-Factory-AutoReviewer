@@ -30,7 +30,6 @@ from ..model import load_model, load_tokenizer
 from .callbacks import LogCallback, PissaConvertCallback, ReporterCallback
 from .cls import run_cls
 from .dpo import run_dpo
-from .grpo import run_grpo
 from .kto import run_kto
 from .pt import run_pt
 from .rm import run_rm
@@ -93,6 +92,7 @@ def _training_function(config: dict[str, Any]) -> None:
         from .ppo import run_ppo  # lazy import to avoid TRL API incompatibility with GRPO
         run_ppo(model_args, data_args, training_args, finetuning_args, generating_args, callbacks)
     elif finetuning_args.stage == "grpo":
+        from .grpo import run_grpo  # lazy import to avoid TRL API incompatibility with SFT
         run_grpo(model_args, data_args, training_args, finetuning_args, generating_args, callbacks)
     elif finetuning_args.stage == "dpo":
         run_dpo(model_args, data_args, training_args, finetuning_args, callbacks)

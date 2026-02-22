@@ -646,6 +646,38 @@ class FinetuningArguments(
         default=False,
         metadata={"help": "Whether or not to compute effective tokens per second."},
     )
+    visualize_attention: bool = field(
+        default=False,
+        metadata={"help": "Whether to visualize attention maps during evaluation."},
+    )
+    attention_viz_output_dir: Optional[str] = field(
+        default=None,
+        metadata={"help": "Directory to save attention visualization results. If None, uses output_dir/attention_viz."},
+    )
+    attention_viz_max_new_tokens: int = field(
+        default=512,
+        metadata={"help": "Maximum number of tokens to generate for attention visualization."},
+    )
+    attention_viz_image_root: str = field(
+        default="/scratch/gpfs/ZHUANGL/jl0796/shared/data/images",
+        metadata={"help": "Root for images used in attention visualization."},
+    )
+    attention_viz_save_per_layer: bool = field(
+        default=False,
+        metadata={"help": "Whether to save per-layer attention maps (large output). If False, only saves average and last-layer."},
+    )
+    visualize_attention_text: bool = field(
+        default=False,
+        metadata={"help": "Whether to visualize attention over paper text tokens during evaluation (text-only variant)."},
+    )
+    attention_viz_text_output_dir: Optional[str] = field(
+        default=None,
+        metadata={"help": "Directory for text attention viz results. If None, uses output_dir/attention_viz_text."},
+    )
+    attention_viz_text_paper_start_marker: str = field(
+        default="\n\n# ",
+        metadata={"help": "Marker in the decoded prompt that separates the fixed instruction prefix from the paper content."},
+    )
     def __post_init__(self):
         def split_arg(arg):
             if isinstance(arg, str):
