@@ -26,9 +26,9 @@ import numpy as np
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
 # Paths
-RESULTS_DIR = Path("/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/results")
-METRICS_DIR = Path("/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/metrics")
-TEST_DATA_PATH = "/scratch/gpfs/ZHUANGL/jl0796/shared/data/iclr_2020_2025_85_5_10_balanced_original_text_v7_filtered_test/data.json"
+RESULTS_DIR = Path("/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/results")
+METRICS_DIR = Path("/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/metrics")
+TEST_DATA_PATH = "/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/data/iclr_2020_2025_85_5_10_split7_balanced_clean_binary_noreviews_v7_test/data.json"
 
 
 def parse_prediction(text: str) -> str:
@@ -98,12 +98,14 @@ def compute_metrics(predictions: List[str], ground_truth: List[str]) -> Dict:
     # Compute metrics
     metrics = {
         "accuracy": accuracy_score(y_true, y_pred),
-        "precision": precision_score(y_true, y_pred, zero_division=0),
-        "recall": recall_score(y_true, y_pred, zero_division=0),
+        "accept_precision": precision_score(y_true, y_pred, pos_label=1, zero_division=0),
+        "accept_recall": recall_score(y_true, y_pred, pos_label=1, zero_division=0),
+        "reject_precision": precision_score(y_true, y_pred, pos_label=0, zero_division=0),
+        "reject_recall": recall_score(y_true, y_pred, pos_label=0, zero_division=0),
         "f1": f1_score(y_true, y_pred, zero_division=0),
         "predicted_accept_rate": np.mean(y_pred),
         "actual_accept_rate": np.mean(y_true),
-        "total_samples": len(y_true),
+        "num_valid": len(y_true),
         "num_unknowns": len(predictions) - len(y_true),
     }
 
@@ -142,11 +144,14 @@ def evaluate_experiment(experiment_name: str) -> Dict:
     # Compute metrics
     metrics = compute_metrics(predictions, ground_truth)
 
-    print(f"  Accuracy: {metrics['accuracy']:.3f}")
-    print(f"  Precision: {metrics['precision']:.3f}")
-    print(f"  Recall: {metrics['recall']:.3f}")
-    print(f"  F1: {metrics['f1']:.3f}")
-    print(f"  Predicted Accept Rate: {metrics['predicted_accept_rate']:.3f}")
+    print(f"  Accuracy:          {metrics['accuracy']:.3f}")
+    print(f"  Accept precision:  {metrics['accept_precision']:.3f}")
+    print(f"  Accept recall:     {metrics['accept_recall']:.3f}")
+    print(f"  Reject precision:  {metrics['reject_precision']:.3f}")
+    print(f"  Reject recall:     {metrics['reject_recall']:.3f}")
+    print(f"  F1:                {metrics['f1']:.3f}")
+    print(f"  Predicted accept rate: {metrics['predicted_accept_rate']:.3f}")
+    print(f"  Valid answers:     {metrics['num_valid']}  (unknowns: {metrics['num_unknowns']})")
 
     return metrics
 

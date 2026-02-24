@@ -22,7 +22,7 @@ import pandas as pd
 import seaborn as sns
 
 # Paths
-METRICS_DIR = Path("/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/metrics")
+METRICS_DIR = Path("/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/2_11_26_training/weighted_loss_fn/metrics")
 PLOTS_DIR = METRICS_DIR / "plots"
 
 # Plot styling
@@ -44,24 +44,45 @@ def parse_experiment_name(exp_name: str) -> Dict:
 
     Example: "accept_gamma2.0_prop1_2" -> {variant: "accept", gamma: 2.0, proportion: "1_2"}
     """
-    parts = exp_name.split("_")
-
-    # Extract variant
-    variant = parts[0]
-
-    # Extract gamma
-    gamma_str = [p for p in parts if p.startswith("gamma")][0]
-    gamma = float(gamma_str.replace("gamma", ""))
-
-    # Extract proportion
-    prop_idx = parts.index("prop")
-    proportion = "_".join(parts[prop_idx + 1 :])
-
-    return {
-        "variant": variant,
-        "gamma": gamma,
-        "proportion": proportion,
-    }
+    try:
+        parts = exp_name.split("_")
+        variant = parts[0]
+        gamma = None
+        proportion = None
+        # Handle baseline
+        if variant == "baseline":
+            # e.g. baseline_gamma1.0_prop1_2
+            gamma_str = [p for p in parts if p.startswith("gamma")]
+            if gamma_str:
+                gamma = float(gamma_str[0].replace("gamma", ""))
+            prop_idx = next((i for i, p in enumerate(parts) if p.startswith("prop")), None)
+            if prop_idx is not None:
+                prop_num = parts[prop_idx].replace("prop", "")
+                if prop_idx + 1 < len(parts) and parts[prop_idx + 1].isdigit():
+                    proportion = f"{prop_num}_{parts[prop_idx + 1]}"
+                else:
+                    proportion = prop_num
+        else:
+            gamma_str = [p for p in parts if p.startswith("gamma")]
+            if gamma_str:
+                gamma = float(gamma_str[0].replace("gamma", ""))
+            prop_idx = next((i for i, p in enumerate(parts) if p.startswith("prop")), None)
+            if prop_idx is not None:
+                prop_num = parts[prop_idx].replace("prop", "")
+                if prop_idx + 1 < len(parts) and parts[prop_idx + 1].isdigit():
+                    proportion = f"{prop_num}_{parts[prop_idx + 1]}"
+                else:
+                    proportion = prop_num
+        if gamma is None or proportion is None:
+            raise ValueError("Missing gamma or proportion")
+        return {
+            "variant": variant,
+            "gamma": gamma,
+            "proportion": proportion,
+        }
+    except (IndexError, ValueError) as e:
+        print(f"  WARNING: Could not parse experiment name '{exp_name}': {e}")
+        return None
 
 
 def create_dataframe(all_metrics: Dict) -> pd.DataFrame:
@@ -70,6 +91,8 @@ def create_dataframe(all_metrics: Dict) -> pd.DataFrame:
 
     for exp_name, metrics in all_metrics.items():
         exp_params = parse_experiment_name(exp_name)
+        if exp_params is None:
+            continue
 
         row = {
             "experiment": exp_name,
@@ -78,7 +101,20 @@ def create_dataframe(all_metrics: Dict) -> pd.DataFrame:
         }
         rows.append(row)
 
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+
+    # Derived columns
+    total = df["num_valid"]
+    actual_accepts = df["actual_accept_rate"] * total
+    predicted_accepts = df["predicted_accept_rate"] * total
+    tp = df["accept_recall"] * actual_accepts  # TP for accept class
+    tn = total - predicted_accepts - actual_accepts + tp
+    actual_rejects = total - actual_accepts
+
+    # accept_recall and reject_recall are already in metrics, skip recomputation
+    df["acceptance_rate"] = df["predicted_accept_rate"]
+
+    return df
 
 
 def plot_acceptance_rate_vs_gamma(df: pd.DataFrame, output_path: Path):
@@ -193,10 +229,12 @@ def plot_precision_recall(df: pd.DataFrame, output_path: Path):
     # Color by variant, marker by gamma, size by proportion
     for variant in ["accept", "reject"]:
         df_variant = df[df["variant"] == variant]
+        recall_col = f"{variant}_recall"
+        precision_col = f"{variant}_precision"
 
         ax.scatter(
-            df_variant["recall"],
-            df_variant["precision"],
+            df_variant[recall_col],
+            df_variant[precision_col],
             label=f"Weight {variant.capitalize()}s",
             s=100,
             alpha=0.7,
@@ -244,11 +282,66 @@ def main():
     plot_precision_recall(df, PLOTS_DIR / "precision_recall.png")
 
     # Heatmaps for each metric
-    for metric in ["accuracy", "predicted_accept_rate", "f1", "precision", "recall"]:
+    for metric in ["accuracy", "predicted_accept_rate", "f1"]:
         plot_heatmap_metric(df, metric, PLOTS_DIR / f"heatmap_{metric}.png")
+
+    # Custom gamma comparison plot
+    plot_gamma_comparison(df, PLOTS_DIR / "gamma_comparison.png")
 
     print("\nVisualization complete!")
     print(f"Plots saved to: {PLOTS_DIR}")
+def plot_gamma_comparison(df: pd.DataFrame, output_path: Path):
+    """Plot 6 metrics with custom x-axis: accept/reject gammas and baseline."""
+    # Define x-axis order and labels
+    x_order = [
+        ("accept", 8.0), ("accept", 4.0), ("accept", 3.0), ("accept", 2.0),
+        ("baseline", 1.0),
+        ("reject", 2.0), ("reject", 3.0), ("reject", 4.0), ("reject", 8.0)
+    ]
+    x_labels = [
+        "accept_8", "accept_4", "accept_3", "accept_2",
+        "baseline", "reject_2", "reject_3", "reject_4", "reject_8"
+    ]
+
+    # Only use prop1_2
+    prop = "1_2"
+    metrics = [
+        ("accuracy", "Accuracy", "Accuracy"),
+        ("reject_recall", "Reject Recall", "Recall (Reject)"),
+        ("accept_recall", "Accept Recall", "Recall (Accept)"),
+        ("f1", "F1 Score", "F1"),
+        ("num_valid", "Number Valid", "Samples"),
+        ("acceptance_rate", "Acceptance Rate", "Accept Rate"),
+    ]
+
+    # Prepare values for each metric
+    values = {m[0]: [] for m in metrics}
+    for variant, gamma in x_order:
+        row = df[(df["variant"] == variant) & (df["gamma"] == gamma) & (df["proportion"] == prop)]
+        if len(row) == 0:
+            for m in metrics:
+                values[m[0]].append(np.nan)
+            continue
+        row = row.iloc[0]
+        for col, _, _ in metrics:
+            values[col].append(row[col] if col in row.index else np.nan)
+
+    # Plot
+    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    for idx, (metric, title, ylabel) in enumerate(metrics):
+        ax = axes[idx // 3, idx % 3]
+        ax.plot(x_labels, values[metric], marker="o", linewidth=2)
+        ax.set_title(title, fontsize=14)
+        ax.set_xlabel("Gamma Variant", fontsize=12)
+        ax.set_ylabel(ylabel, fontsize=12)
+        ax.grid(True, alpha=0.3)
+        ax.set_xticks(range(len(x_labels)))
+        ax.set_xticklabels(x_labels, rotation=30)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    print(f"Saved: {output_path}")
+    plt.close()
 
 
 if __name__ == "__main__":

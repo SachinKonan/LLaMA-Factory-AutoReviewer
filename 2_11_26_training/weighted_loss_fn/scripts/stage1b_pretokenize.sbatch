@@ -26,8 +26,8 @@
 
 set -e
 
-PROJECT_DIR="/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer"
-export HF_HOME="/scratch/gpfs/ZHUANGL/jl0796/.hf_home"
+PROJECT_DIR="/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer"
+export HF_HOME="/n/fs/vision-mix/jl0796/.hf_home"
 cd "${PROJECT_DIR}"
 
 source .venv/bin/activate
@@ -50,7 +50,7 @@ CONFIG_FILE="2_11_26_training/weighted_loss_fn/configs/generated/tokenize_${PROP
 
 cat > "${CONFIG_FILE}" << EOF
 ### model
-model_name_or_path: /scratch/gpfs/ZHUANGL/jl0796/.hf_home/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28
+model_name_or_path: /n/fs/vision-mix/jl0796/.hf_home/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28
 trust_remote_code: true
 
 ### method

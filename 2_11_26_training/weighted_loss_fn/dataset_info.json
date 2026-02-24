@@ -56,7 +56,7 @@
     }
   },
   "iclr_2020_2025_85_5_10_split7_balanced_clean_binary_noreviews_v7_test": {
-    "file_name": "/scratch/gpfs/ZHUANGL/jl0796/shared/data/iclr_2020_2025_85_5_10_balanced_original_text_v7_filtered_test/data.json",
+    "file_name": "data/iclr_2020_2025_85_5_10_split7_balanced_clean_binary_noreviews_v7_test/data.json",
     "formatting": "sharegpt",
     "columns": {
       "messages": "conversations"

@@ -16,7 +16,7 @@ import json
 from pathlib import Path
 
 # Base paths
-BASE_DIR = Path("/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer")
+BASE_DIR = Path("/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer")
 EXPERIMENT_DIR = BASE_DIR / "2_11_26_training/weighted_loss_fn"
 
 

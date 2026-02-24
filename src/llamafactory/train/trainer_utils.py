@@ -717,10 +717,10 @@ def _get_binary_decision_logit(
 
 def weighted_bce_loss_accept(outputs, labels, gamma=1.0, accept_ids=None, reject_ids=None, num_items_in_batch=None):
     """
-    Weighted BCE using the requested pattern:
+    Weighted BCE using accept upweighting:
     p* = sigma(L_accept - L_reject)
-    noisy_y = (1 - y) * gamma + y
-    Loss = BCE(p*, noisy_y)
+    weight = y * gamma + (1 - y)
+    Loss = BCE(p*, y, weight=weight)
     """
     logits = outputs.get("logits")
     if logits is None:
@@ -742,13 +742,45 @@ def weighted_bce_loss_accept(outputs, labels, gamma=1.0, accept_ids=None, reject
         return torch.nn.functional.cross_entropy(logits, shift_labels, ignore_index=-100)
 
     p_star = torch.sigmoid(logit_diff)
-    weight = (1.0 - target_y) * gamma + target_y
+    target_y = target_y.to(p_star.dtype)
+    # Accept variant: upweight accept samples (y=1) to compensate for reject-heavy data
+    weight = target_y * gamma + (1.0 - target_y)
 
-    return torch.nn.functional.binary_cross_entropy(p_star, target_y, weight=weight.float())
+    return torch.nn.functional.binary_cross_entropy(p_star, target_y, weight=weight.to(p_star.dtype))
 
 
 def weighted_bce_loss_reject(outputs, labels, gamma=1.0, accept_ids=None, reject_ids=None, num_items_in_batch=None):
-    return weighted_bce_loss_accept(outputs, labels, gamma, accept_ids, reject_ids, num_items_in_batch)
+    """
+    Weighted BCE using reject upweighting:
+    p* = sigma(L_accept - L_reject)
+    weight = (1 - y) * gamma + y
+    Loss = BCE(p*, y, weight=weight)
+    """
+    logits = outputs.get("logits")
+    if logits is None:
+        return outputs.get("loss", torch.tensor(0.0))
+
+    if accept_ids is None or reject_ids is None:
+        accept_ids = [16646]
+        reject_ids = [78413]
+
+    vocab_size = logits.size(-1)
+    labels = torch.nn.functional.pad(labels, (0, 1), value=-100)
+    shift_labels = labels[..., 1:].contiguous()
+    logits = logits.view(-1, vocab_size)
+    shift_labels = shift_labels.view(-1).to(logits.device)
+
+    logit_diff, target_y = _get_binary_decision_logit(logits, shift_labels, accept_ids, reject_ids)
+
+    if logit_diff.numel() == 0:
+        return torch.nn.functional.cross_entropy(logits, shift_labels, ignore_index=-100)
+
+    p_star = torch.sigmoid(logit_diff)
+    target_y = target_y.to(p_star.dtype)
+    # Reject variant: upweight reject samples (y=0) to compensate for accept-heavy data
+    weight = (1.0 - target_y) * gamma + target_y
+
+    return torch.nn.functional.binary_cross_entropy(p_star, target_y, weight=weight.to(p_star.dtype))
 
 
 def _weighted_cross_entropy_accept(

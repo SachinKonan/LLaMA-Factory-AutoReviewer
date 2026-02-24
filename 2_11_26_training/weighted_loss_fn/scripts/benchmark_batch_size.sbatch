@@ -10,13 +10,13 @@
 set -e
 
 # Navigate to project directory
-PROJECT_DIR="/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer"
+PROJECT_DIR="/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer"
 cd "${PROJECT_DIR}"
 
 # Activate training environment
 source .venv/bin/activate
 
-export HF_HOME="/scratch/gpfs/ZHUANGL/jl0796/.hf_home"
+export HF_HOME="/n/fs/vision-mix/jl0796/.hf_home"
 
 # Use a small subset of raw data for benchmarking if tokenized is not ready
 # But here we will try to use the raw data directly to avoid waiting for pre-tokenization
@@ -38,7 +38,7 @@ run_benchmark() {
     
     cat > "${CONFIG_FILE}" << EOF
 ### model
-model_name_or_path: /scratch/gpfs/ZHUANGL/jl0796/.hf_home/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28
+model_name_or_path: /n/fs/vision-mix/jl0796/.hf_home/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28
 trust_remote_code: true
 flash_attn: fa2
 enable_liger_kernel: True

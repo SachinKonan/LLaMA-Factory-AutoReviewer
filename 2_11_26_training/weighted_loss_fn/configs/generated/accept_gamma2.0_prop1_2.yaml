@@ -1,5 +1,5 @@
 ### model
-model_name_or_path: /scratch/gpfs/ZHUANGL/jl0796/.hf_home/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28
+model_name_or_path: /n/fs/vision-mix/jl0796/.hf_home/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28
 trust_remote_code: true
 flash_attn: fa2
 enable_liger_kernel: True
@@ -24,15 +24,15 @@ tokenized_path: 2_11_26_training/weighted_loss_fn/tokenized/iclr_weighted_loss_t
 ### output
 output_dir: saves/weighted_loss/accept_gamma2.0_prop1_2
 logging_steps: 10
-save_steps: 133
+save_steps: 134
 plot_loss: true
 overwrite_output_dir: true
 save_only_model: false
 report_to: none
 
 ### train
-per_device_train_batch_size: 2
-gradient_accumulation_steps: 8
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 16
 learning_rate: 1.0e-5
 num_train_epochs: 5.0
 lr_scheduler_type: cosine
@@ -44,7 +44,7 @@ ddp_timeout: 180000000
 do_eval: true
 eval_dataset: iclr_2020_2025_85_5_10_split7_balanced_clean_binary_noreviews_v7_test
 eval_strategy: steps
-eval_steps: 500
+eval_steps: 501
 per_device_eval_batch_size: 2
 
 ### weighted loss
