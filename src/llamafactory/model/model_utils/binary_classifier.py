@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 from typing import TYPE_CHECKING, Optional
 
 import torch
@@ -36,10 +37,19 @@ class ModelForBinaryClassification(nn.Module):
     All parameters created in __init__ for FSDP2 compatibility.
     """
 
-    def __init__(self, backbone: nn.Module, hidden_size: int, add_rating_head: bool = False):
+    def __init__(
+        self,
+        backbone: nn.Module,
+        hidden_size: int,
+        add_rating_head: bool = False,
+        noise_aware: bool = False,
+        noise_alpha_init: float = 0.506,
+        noise_beta_init: float = 0.15,
+    ):
         super().__init__()
         self.backbone = backbone
         self.add_rating_head = add_rating_head
+        self.noise_aware = noise_aware
 
         # Shared feature layer
         self.shared_layer = nn.Sequential(
@@ -51,6 +61,18 @@ class ModelForBinaryClassification(nn.Module):
         # Optional rating head
         if add_rating_head:
             self.rating_head = nn.Linear(hidden_size, 1)
+
+        # Noise transition matrix parameters (learnable, stored as unconstrained logits)
+        # Wrapped in a submodule so FSDP2 sees dotted names (noise_logits.alpha, noise_logits.beta)
+        if noise_aware:
+            noise_mod = nn.Module()
+            noise_mod.alpha = nn.Parameter(
+                torch.tensor([math.log(noise_alpha_init / (1.0 - noise_alpha_init))])
+            )
+            noise_mod.beta = nn.Parameter(
+                torch.tensor([math.log(noise_beta_init / (1.0 - noise_beta_init))])
+            )
+            self.noise_logits = noise_mod
 
         # For compatibility with save/load patterns
         self._keys_to_ignore_on_save = None
@@ -102,10 +124,35 @@ class ModelForBinaryClassification(nn.Module):
 
         # Compute losses
         loss = loss_bce = loss_rating = None
+        noise_alpha = noise_beta = None
         if labels is not None:
-            loss_bce = nn.functional.binary_cross_entropy_with_logits(
-                decision_logits.float(), labels.float()
-            )
+            if self.noise_aware:
+                # Noise-aware BCE in log-space for numerical stability.
+                # p_noisy_accept = (1-α)·σ(z) + β·σ(-z)
+                # p_noisy_reject = α·σ(z) + (1-β)·σ(-z)
+                # loss = -[y·log(p_noisy_accept) + (1-y)·log(p_noisy_reject)].mean()
+                alpha = torch.sigmoid(self.noise_logits.alpha)
+                beta = torch.sigmoid(self.noise_logits.beta)
+
+                log_sig_z = nn.functional.logsigmoid(decision_logits.float())
+                log_sig_neg_z = nn.functional.logsigmoid(-decision_logits.float())
+
+                log_p_noisy = torch.logaddexp(
+                    torch.log(1.0 - alpha) + log_sig_z,
+                    torch.log(beta) + log_sig_neg_z,
+                )
+                log_1mp_noisy = torch.logaddexp(
+                    torch.log(alpha) + log_sig_z,
+                    torch.log(1.0 - beta) + log_sig_neg_z,
+                )
+
+                loss_bce = -(labels.float() * log_p_noisy + (1.0 - labels.float()) * log_1mp_noisy).mean()
+                noise_alpha = alpha.detach()
+                noise_beta = beta.detach()
+            else:
+                loss_bce = nn.functional.binary_cross_entropy_with_logits(
+                    decision_logits.float(), labels.float()
+                )
             loss = loss_bce
 
             if self.add_rating_head and ratings is not None:
@@ -125,6 +172,8 @@ class ModelForBinaryClassification(nn.Module):
             "rating_logits": rating_logits,
             "loss_bce": loss_bce,
             "loss_rating": loss_rating,
+            "noise_alpha": noise_alpha,
+            "noise_beta": noise_beta,
         }
 
     # Forward properties/methods to backbone for compatibility

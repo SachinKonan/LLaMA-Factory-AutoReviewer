@@ -315,6 +315,9 @@ class TrainAccuracyTracker:
         self._stored_metrics: dict[str, dict[str, list[torch.Tensor]]] = defaultdict(
             lambda: defaultdict(list)
         )
+        # Per-sample predictions accumulated during eval: [[idx, p_accept, p_reject, gt], ...]
+        self._per_sample_predictions: dict[str, list] = defaultdict(list)
+        self._sample_counter: dict[str, int] = defaultdict(int)
 
     def update(
         self,
@@ -361,6 +364,16 @@ class TrainAccuracyTracker:
         self._stored_metrics[phase][f"{prefix}sft_p_correct_mean"].append(p_correct_mean.detach())
         self._stored_metrics[phase][f"{prefix}sft_pred_positive_rate"].append(pred_positive_rate.detach())
         self._stored_metrics[phase][f"{prefix}sft_gt_positive_rate"].append(gt_positive_rate.detach())
+
+        # Conditional probability metrics: p(token | ground_truth_class)
+        gt_accept_mask = results["ground_truth"] == 1
+        gt_reject_mask = results["ground_truth"] == 0
+        if gt_accept_mask.any():
+            self._stored_metrics[phase][f"{prefix}sft_p_accept_gtaccept_mean"].append(results["p_positive"][gt_accept_mask].mean().detach())
+            self._stored_metrics[phase][f"{prefix}sft_p_reject_gtaccept_mean"].append(results["p_negative"][gt_accept_mask].mean().detach())
+        if gt_reject_mask.any():
+            self._stored_metrics[phase][f"{prefix}sft_p_accept_gtreject_mean"].append(results["p_positive"][gt_reject_mask].mean().detach())
+            self._stored_metrics[phase][f"{prefix}sft_p_reject_gtreject_mean"].append(results["p_negative"][gt_reject_mask].mean().detach())
 
     def update_from_sliced_logits(
         self,
@@ -425,6 +438,29 @@ class TrainAccuracyTracker:
         self._stored_metrics[phase][f"{prefix}sft_pred_positive_rate"].append(predictions.float().mean().detach())
         self._stored_metrics[phase][f"{prefix}sft_gt_positive_rate"].append(ground_truth.float().mean().detach())
 
+        # Conditional probability metrics: p(token | ground_truth_class)
+        gt_accept_mask = ground_truth == 1
+        gt_reject_mask = ground_truth == 0
+        if gt_accept_mask.any():
+            self._stored_metrics[phase][f"{prefix}sft_p_accept_gtaccept_mean"].append(p_positive[gt_accept_mask].mean().detach())
+            self._stored_metrics[phase][f"{prefix}sft_p_reject_gtaccept_mean"].append(p_negative[gt_accept_mask].mean().detach())
+        if gt_reject_mask.any():
+            self._stored_metrics[phase][f"{prefix}sft_p_accept_gtreject_mean"].append(p_positive[gt_reject_mask].mean().detach())
+            self._stored_metrics[phase][f"{prefix}sft_p_reject_gtreject_mean"].append(p_negative[gt_reject_mask].mean().detach())
+
+        # Per-sample predictions (eval only to avoid unbounded growth during training)
+        if not is_training:
+            p_pos_list = p_positive.detach().cpu().tolist()
+            p_neg_list = p_negative.detach().cpu().tolist()
+            gt_list = ground_truth.detach().cpu().tolist()
+            counter = self._sample_counter[phase]
+            for i in range(len(p_pos_list)):
+                self._per_sample_predictions[phase].append(
+                    [counter, p_pos_list[i], p_neg_list[i], gt_list[i]]
+                )
+                counter += 1
+            self._sample_counter[phase] = counter
+
     def has_metrics(self, phase: str) -> bool:
         """Check if there are stored metrics for the given phase."""
         return phase in self._stored_metrics and len(self._stored_metrics[phase]) > 0
@@ -458,8 +494,15 @@ class TrainAccuracyTracker:
                 # Move to CPU and compute mean
                 metrics[key] = metric_tensor.cpu().mean().item()
 
+        # Include per-sample predictions if any were collected
+        if phase in self._per_sample_predictions and self._per_sample_predictions[phase]:
+            prefix = "" if phase == "train" else "eval_"
+            metrics[f"{prefix}sft_predictions"] = self._per_sample_predictions[phase]
+
         # Clear stored metrics after aggregation
         self._stored_metrics[phase].clear()
+        self._per_sample_predictions[phase] = []
+        self._sample_counter[phase] = 0
 
         return metrics
 

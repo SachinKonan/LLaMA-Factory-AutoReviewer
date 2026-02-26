@@ -90,6 +90,7 @@ accelerate launch \
     gradient_accumulation_steps="${GRAD_ACCUM}" \
     cutoff_len="${CUTOFF_LEN}" \
     learning_rate="${LR}" \
+    weight_decay=0.001 \
     num_train_epochs=4.0 \
     lr_scheduler_type=cosine \
     'lr_scheduler_kwargs={"custom_scheduler": "cosine_then_constant", "decay_ratio": 0.75, "min_lr_rate": 0.001}'

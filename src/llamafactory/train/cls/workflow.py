@@ -81,6 +81,9 @@ def run_cls(
             else:
                 keys += ["eval_loss", "eval_accuracy", "eval_f1"]
 
+            if finetuning_args.noise_aware_loss:
+                keys += ["noise_alpha", "noise_beta"]
+
             plot_loss(training_args.output_dir, keys=keys)
 
     # Evaluation

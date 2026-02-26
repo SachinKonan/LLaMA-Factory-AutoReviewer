@@ -97,6 +97,20 @@ def _optim_2020_2025_origin_dataset(variant_name: str) -> str:
     return "iclr_2020_2025_85_5_10_balanced_original_vision_corrected_v7_filtered"
 
 
+def _trainagreeing_dataset(variant_name: str) -> str:
+    """Dataset for trainagreeing variants (2026 labelfix vs no-2026)."""
+    has_2026 = "2026" in variant_name and "no2026" not in variant_name
+    is_text = "_text" in variant_name
+    if has_2026:
+        if is_text:
+            return "iclr_2020_2023_2025_2026_85_5_10_trainagreeing_original_text_labelfix_v7_filtered"
+        return "iclr_2020_2023_2025_2026_85_5_10_trainagreeing_original_vision_labelfix_v7_filtered"
+    else:
+        if is_text:
+            return "iclr_2020_2023_2025_85_5_10_trainagreeing_original_text_v7_filtered"
+        return "iclr_2020_2023_2025_85_5_10_trainagreeing_original_vision_v7_filtered"
+
+
 # Subdirectories to scan and their dataset resolver functions.
 # Each entry is (subdir_name, dataset_resolver_fn).
 # The resolver takes a variant name and returns the dataset name.
@@ -110,6 +124,7 @@ SUBDIR_CONFIGS = [
     ("optim_search_6epochs", _optim_no2024_dataset),
     ("optim_search_2026", _optim_2026_labelfix_dataset),
     ("optim_2020_2025_origin", _optim_2020_2025_origin_dataset),
+    ("trainagreeing", _trainagreeing_dataset),
 ]
 
 DATA_DIR = Path("data")

@@ -30,7 +30,7 @@ from ...extras.constants import IGNORE_INDEX
 from ...extras.packages import is_transformers_version_greater_than
 from ..callbacks import SaveProcessorCallback
 from ..fp8_utils import configure_fp8_environment, patch_accelerator_for_fp8, verify_fp8_status
-from ..trainer_utils import create_custom_optimizer, create_custom_scheduler
+from ..trainer_utils import create_custom_optimizer, create_custom_scheduler, _cosine_then_constant_lambda, _cosine_drop_linear_lambda, _exponential_decay_lambda
 from .train_accuracy import TrainAccuracyTracker, create_output_format_handler
 
 
@@ -118,6 +118,64 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
         self, num_training_steps: int, optimizer: Optional["torch.optim.Optimizer"] = None
     ) -> "torch.optim.lr_scheduler.LRScheduler":
         create_custom_scheduler(self.args, num_training_steps, optimizer)
+        scheduler_kwargs = self.args.lr_scheduler_kwargs or {}
+        if scheduler_kwargs.get("custom_scheduler") == "cosine_then_constant":
+            from torch.optim.lr_scheduler import LambdaLR
+            from functools import partial
+
+            num_warmup_steps = int(scheduler_kwargs["num_warmup_steps"])
+            num_decay_steps = int(scheduler_kwargs["num_decay_steps"])
+            num_total_steps = int(scheduler_kwargs["num_total_steps"])
+            min_lr_rate = float(scheduler_kwargs["min_lr_rate"])
+            self.lr_scheduler = LambdaLR(
+                optimizer if optimizer is not None else self.optimizer,
+                partial(
+                    _cosine_then_constant_lambda,
+                    num_warmup_steps=num_warmup_steps,
+                    num_decay_steps=num_decay_steps,
+                    num_total_steps=num_total_steps,
+                    min_lr_rate=min_lr_rate,
+                ),
+            )
+            return self.lr_scheduler
+        if scheduler_kwargs.get("custom_scheduler") == "cosine_drop_linear":
+            from torch.optim.lr_scheduler import LambdaLR
+            from functools import partial
+
+            num_warmup_steps = int(scheduler_kwargs["num_warmup_steps"])
+            num_cosine_steps = int(scheduler_kwargs["num_cosine_steps"])
+            num_drop_step = int(scheduler_kwargs["num_drop_step"])
+            num_total_steps = int(scheduler_kwargs["num_total_steps"])
+            min_lr_rate = float(scheduler_kwargs["min_lr_rate"])
+            self.lr_scheduler = LambdaLR(
+                optimizer if optimizer is not None else self.optimizer,
+                partial(
+                    _cosine_drop_linear_lambda,
+                    num_warmup_steps=num_warmup_steps,
+                    num_cosine_steps=num_cosine_steps,
+                    num_drop_step=num_drop_step,
+                    num_total_steps=num_total_steps,
+                    min_lr_rate=min_lr_rate,
+                ),
+            )
+            return self.lr_scheduler
+        if scheduler_kwargs.get("custom_scheduler") == "exponential_decay":
+            from torch.optim.lr_scheduler import LambdaLR
+            from functools import partial
+
+            num_warmup_steps = int(scheduler_kwargs["num_warmup_steps"])
+            num_decay_steps = int(scheduler_kwargs["num_decay_steps"])
+            min_lr_rate = float(scheduler_kwargs["min_lr_rate"])
+            self.lr_scheduler = LambdaLR(
+                optimizer if optimizer is not None else self.optimizer,
+                partial(
+                    _exponential_decay_lambda,
+                    num_warmup_steps=num_warmup_steps,
+                    num_decay_steps=num_decay_steps,
+                    min_lr_rate=min_lr_rate,
+                ),
+            )
+            return self.lr_scheduler
         return super().create_scheduler(num_training_steps, optimizer)
 
     @override

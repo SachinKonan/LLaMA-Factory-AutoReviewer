@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Optional, Tuple, Union
 
 import numpy as np
 import torch
-from transformers import Trainer
+from transformers import Trainer, TrainerCallback
 from typing_extensions import override
 
 from ...extras import logging
@@ -30,13 +30,63 @@ from ..trainer_utils import create_custom_optimizer, create_custom_scheduler
 
 
 if TYPE_CHECKING:
-    from transformers import PreTrainedModel, ProcessorMixin
+    from transformers import PreTrainedModel, ProcessorMixin, TrainerControl, TrainerState, TrainingArguments
     from transformers.trainer import PredictionOutput
 
     from ...hparams import FinetuningArguments
 
 
 logger = logging.get_logger(__name__)
+
+
+class NoiseEMCallback(TrainerCallback):
+    """Callback for EM-style training: alternates between model and noise parameter phases."""
+
+    def __init__(self, model_epochs: float, noise_epochs: float, steps_per_epoch: int):
+        self.model_steps = max(1, int(model_epochs * steps_per_epoch))
+        self.noise_steps = max(1, int(noise_epochs * steps_per_epoch))
+        self.cycle_steps = self.model_steps + self.noise_steps
+        self._noise_params: list = None
+        self._trainable_model_params: list = None
+        self._current_phase: str = None
+
+    def on_step_begin(
+        self,
+        args: "TrainingArguments",
+        state: "TrainerState",
+        control: "TrainerControl",
+        model: "PreTrainedModel" = None,
+        **kwargs,
+    ):
+        if model is None:
+            return
+
+        if self._noise_params is None:
+            # Cache param references once
+            self._noise_params = []
+            self._trainable_model_params = []
+            for name, param in model.named_parameters():
+                if name in ("noise_logits.alpha", "noise_logits.beta"):
+                    self._noise_params.append(param)
+                elif param.requires_grad:
+                    self._trainable_model_params.append(param)
+
+        cycle_pos = state.global_step % self.cycle_steps
+        phase = "noise" if cycle_pos >= self.model_steps else "model"
+
+        if phase != self._current_phase:
+            self._current_phase = phase
+            if phase == "model":
+                for p in self._noise_params:
+                    p.requires_grad_(False)
+                for p in self._trainable_model_params:
+                    p.requires_grad_(True)
+            else:
+                for p in self._noise_params:
+                    p.requires_grad_(True)
+                for p in self._trainable_model_params:
+                    p.requires_grad_(False)
+            logger.info_rank0(f"EM phase switch at step {state.global_step}: {phase}")
 
 
 class BinaryClassificationTrainer(Trainer):
@@ -63,6 +113,28 @@ class BinaryClassificationTrainer(Trainer):
 
             self.accelerator.clip_grad_norm_ = MethodType(clip_grad_norm_old_version, self.accelerator)
             self.add_callback(BAdamCallback)
+
+        if finetuning_args.noise_aware_loss and finetuning_args.noise_strategy == "em":
+            # Compute steps_per_epoch lazily: max_steps / num_train_epochs is computed later,
+            # so use dataset size / effective batch as approximation
+            train_dataset = kwargs.get("train_dataset")
+            if train_dataset is not None:
+                num_gpus = max(1, int(os.environ.get("WORLD_SIZE", 1)))
+                effective_batch = (
+                    kwargs.get("args").per_device_train_batch_size
+                    * num_gpus
+                    * kwargs.get("args").gradient_accumulation_steps
+                )
+                steps_per_epoch = max(1, len(train_dataset) // effective_batch)
+            else:
+                steps_per_epoch = 1  # fallback
+            self.add_callback(
+                NoiseEMCallback(
+                    model_epochs=finetuning_args.noise_em_model_epochs,
+                    noise_epochs=finetuning_args.noise_em_noise_epochs,
+                    steps_per_epoch=steps_per_epoch,
+                )
+            )
 
     @override
     def create_optimizer(self) -> "torch.optim.Optimizer":
@@ -131,6 +203,13 @@ class BinaryClassificationTrainer(Trainer):
                 self._stored_metrics[train_eval][f"{prefix}loss_bce"].append(outputs["loss_bce"].detach())
             if outputs.get("loss_rating") is not None:
                 self._stored_metrics[train_eval][f"{prefix}loss_rating"].append(outputs["loss_rating"].detach())
+
+        # Store noise transition matrix params for logging
+        if self.finetuning_args.noise_aware_loss:
+            if outputs.get("noise_alpha") is not None:
+                self._stored_metrics[train_eval][f"{prefix}noise_alpha"].append(outputs["noise_alpha"])
+            if outputs.get("noise_beta") is not None:
+                self._stored_metrics[train_eval][f"{prefix}noise_beta"].append(outputs["noise_beta"])
 
         if return_outputs:
             return loss, (loss, logits, labels)

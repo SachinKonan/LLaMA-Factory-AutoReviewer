@@ -569,6 +569,45 @@ class FinetuningArguments(
         default=0.1,
         metadata={"help": "Weight for rating SmoothL1 loss. Total = BCE + weight * SmoothL1."},
     )
+    noise_aware_loss: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Use noise-aware BCE loss for classification. Models observed labels as noisy "
+                "versions of true labels using a learnable noise transition matrix."
+            )
+        },
+    )
+    noise_alpha_init: float = field(
+        default=0.506,
+        metadata={"help": "Initial P(noisy=reject | true=accept). Default from NIPS 2021 disagreement data."},
+    )
+    noise_beta_init: float = field(
+        default=0.15,
+        metadata={"help": "Initial P(noisy=accept | true=reject). Default from NIPS 2021 disagreement data."},
+    )
+    noise_strategy: Literal["end_to_end", "em"] = field(
+        default="end_to_end",
+        metadata={"help": "Training strategy: 'end_to_end' (joint) or 'em' (alternating model/noise phases)."},
+    )
+    noise_em_model_epochs: float = field(
+        default=5.0,
+        metadata={"help": "Epochs to train model per EM cycle (only for noise_strategy=em)."},
+    )
+    noise_em_noise_epochs: float = field(
+        default=1.0,
+        metadata={"help": "Epochs to train noise params per EM cycle (only for noise_strategy=em)."},
+    )
+    noise_learning_rate: float = field(
+        default=1e-3,
+        metadata={
+            "help": (
+                "Learning rate for noise transition matrix parameters (alpha, beta). "
+                "Must be larger than backbone LR to overcome bf16 precision limits. "
+                "Default: 1e-3."
+            )
+        },
+    )
     finetuning_type: Literal["lora", "oft", "freeze", "full"] = field(
         default="lora",
         metadata={"help": "Which fine-tuning method to use."},
@@ -698,6 +737,12 @@ class FinetuningArguments(
 
         if self.add_predict_ratings and self.stage != "cls":
             raise ValueError("`add_predict_ratings` is only valid for stage=cls.")
+
+        if self.noise_aware_loss and self.stage != "cls":
+            raise ValueError("`noise_aware_loss` is only valid for stage=cls.")
+
+        if self.noise_aware_loss and self.label_smoothing_eps > 0:
+            raise ValueError("`noise_aware_loss` and `label_smoothing_eps` are mutually exclusive.")
 
         if self.finetuning_type != "lora":
             if self.loraplus_lr_ratio is not None:

@@ -59,7 +59,7 @@ accelerate launch \
     --main_process_port "${MASTER_PORT}" \
     src/train.py \
     --stage cls \
-    --model_name_or_path Qwen/Qwen2.5-VL-7B-Instruct \
+    --model_name_or_path Qwen/Qwen2.5-VL-3B-Instruct \
     --dataset "${DATASET}_train" \
     --eval_dataset "${DATASET}_test" \
     --template "${TEMPLATE}" \

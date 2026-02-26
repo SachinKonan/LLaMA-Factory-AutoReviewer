@@ -1,0 +1,26 @@
+EM Schedule for Noise-Aware Loss
+=================================
+
+Parameters:
+  noise_em_model_epochs = 0.5
+  noise_em_noise_epochs = 0.05
+  num_train_epochs = 3
+  cycle_length = 0.55 epochs
+
+Schedule:
+  0.00 - 0.50  model training (noise params frozen)
+  0.50 - 0.55  noise param training (model frozen)
+  0.55 - 1.05  model training
+  1.05 - 1.10  noise param training
+  1.10 - 1.60  model training
+  1.60 - 1.65  noise param training
+  1.65 - 2.15  model training
+  2.15 - 2.20  noise param training
+  2.20 - 2.70  model training
+  2.70 - 2.75  noise param training
+  2.75 - 3.00  model training (partial cycle)
+
+Summary:
+  ~5 noise recalibrations across 3 epochs
+  ~9% of training steps spent on noise params
+  ~91% of training steps spent on model

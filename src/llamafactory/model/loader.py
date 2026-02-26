@@ -214,7 +214,15 @@ def load_model(
 
         hidden_size = model.config.hidden_size
         add_rating_head = getattr(finetuning_args, "add_predict_ratings", False)
-        model = ModelForBinaryClassification(model, hidden_size, add_rating_head=add_rating_head)
+        noise_aware = getattr(finetuning_args, "noise_aware_loss", False)
+        model = ModelForBinaryClassification(
+            model,
+            hidden_size,
+            add_rating_head=add_rating_head,
+            noise_aware=noise_aware,
+            noise_alpha_init=getattr(finetuning_args, "noise_alpha_init", 0.506),
+            noise_beta_init=getattr(finetuning_args, "noise_beta_init", 0.15),
+        )
 
         # Load classifier head weights if resuming
         if model_args.adapter_name_or_path is not None:

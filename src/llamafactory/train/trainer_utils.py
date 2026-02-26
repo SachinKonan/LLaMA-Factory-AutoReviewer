@@ -18,6 +18,7 @@
 # limitations under the License.
 
 import json
+import math
 import os
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -413,9 +414,11 @@ def _create_cls_optimizer(
     finetuning_args: "FinetuningArguments",
 ) -> "torch.optim.Optimizer":
     r"""
-    Create optimizer with different learning rates for backbone vs classification head.
+    Create optimizer with different learning rates for backbone, classification head, and noise params.
 
-    Uses cls_backbone_learning_rate for backbone, learning_rate for head.
+    Uses cls_backbone_learning_rate for backbone (falls back to learning_rate if not set),
+    learning_rate for head, and noise_learning_rate for noise transition matrix params.
+    Noise params need a much higher LR to overcome bf16 precision limits in FSDP2.
     """
     # Verify this is a binary classification model
     # Support both old architecture (classifier) and new architecture (decision_head + optional rating_head)
@@ -428,23 +431,26 @@ def _create_cls_optimizer(
             "cls_backbone_learning_rate is only valid for binary classification models."
         )
 
-    backbone_lr = finetuning_args.cls_backbone_learning_rate
     head_lr = training_args.learning_rate
+    backbone_lr = finetuning_args.cls_backbone_learning_rate or head_lr
+    noise_lr = finetuning_args.noise_learning_rate
 
     decay_param_names = _get_decay_parameter_names(model)
 
-    # Separate parameters into 4 groups: backbone/head x decay/no-decay
+    # Separate parameters into groups: backbone/head/noise x decay/no-decay
     backbone_decay_params = []
     backbone_nodecay_params = []
     head_decay_params = []
     head_nodecay_params = []
+    noise_params = []
 
     for name, param in model.named_parameters():
         if not param.requires_grad:
             continue
 
+        # Noise params get their own group with higher LR
+        is_noise = name.startswith("noise_logits.")
         # Check if parameter is in classifier (head) or backbone
-        # Support old architecture (classifier.*) and new architecture (shared_layer.*, decision_head.*, rating_head.*)
         is_classifier = (
             name.startswith("classifier.")
             or name.startswith("shared_layer.")
@@ -453,7 +459,9 @@ def _create_cls_optimizer(
         )
         has_decay = name in decay_param_names
 
-        if is_classifier:
+        if is_noise:
+            noise_params.append(param)
+        elif is_classifier:
             if has_decay:
                 head_decay_params.append(param)
             else:
@@ -473,10 +481,14 @@ def _create_cls_optimizer(
         dict(params=head_decay_params, lr=head_lr, weight_decay=training_args.weight_decay),
     ]
 
+    if noise_params:
+        param_groups.append(dict(params=noise_params, lr=noise_lr, weight_decay=0.0))
+
     optimizer = optim_class(param_groups, **optim_kwargs)
-    logger.info_rank0(
-        f"Using custom classification optimizer with backbone_lr={backbone_lr:.2e}, head_lr={head_lr:.2e}"
-    )
+    lr_info = f"backbone_lr={backbone_lr:.2e}, head_lr={head_lr:.2e}"
+    if noise_params:
+        lr_info += f", noise_lr={noise_lr:.2e}"
+    logger.info_rank0(f"Using custom classification optimizer with {lr_info}")
     return optimizer
 
 
@@ -601,7 +613,8 @@ def create_custom_optimizer(
     finetuning_args: "FinetuningArguments",
 ) -> Optional["torch.optim.Optimizer"]:
     # Check for classification-specific optimizer FIRST
-    if finetuning_args.cls_backbone_learning_rate is not None:
+    # Also use custom optimizer when noise_aware_loss is enabled (noise params need higher LR)
+    if finetuning_args.cls_backbone_learning_rate is not None or finetuning_args.noise_aware_loss:
         return _create_cls_optimizer(model, training_args, finetuning_args)
 
     if finetuning_args.use_galore:
@@ -621,6 +634,58 @@ def create_custom_optimizer(
 
     if finetuning_args.use_muon:
         return _create_muon_optimizer(model, training_args)
+
+
+def _cosine_then_constant_lambda(current_step, num_warmup_steps, num_decay_steps, num_total_steps, min_lr_rate):
+    """Warmup → cosine decay to min_lr_rate → linear decay to 0."""
+    if current_step < num_warmup_steps:
+        return current_step / max(1, num_warmup_steps)
+    decay_progress = current_step - num_warmup_steps
+    if decay_progress >= num_decay_steps:
+        # Linear decay from min_lr_rate to 0 over remaining steps
+        remaining_total = num_total_steps - num_warmup_steps - num_decay_steps
+        if remaining_total <= 0:
+            return min_lr_rate
+        linear_progress = (decay_progress - num_decay_steps) / remaining_total
+        return min_lr_rate * (1.0 - min(linear_progress, 1.0))
+    cosine_val = 0.5 * (1.0 + math.cos(math.pi * decay_progress / num_decay_steps))
+    return min_lr_rate + (1.0 - min_lr_rate) * cosine_val
+
+
+def _cosine_drop_linear_lambda(current_step, num_warmup_steps, num_cosine_steps, num_drop_step, num_total_steps, min_lr_rate):
+    """Warmup → partial cosine decay → drop to min_lr_rate → linear decay to 0."""
+    if current_step < num_warmup_steps:
+        return current_step / max(1, num_warmup_steps)
+    if current_step >= num_drop_step:
+        # Linear decay from min_lr_rate to 0 over remaining steps
+        remaining_total = num_total_steps - num_drop_step
+        if remaining_total <= 0:
+            return min_lr_rate
+        linear_progress = (current_step - num_drop_step) / remaining_total
+        return min_lr_rate * (1.0 - min(linear_progress, 1.0))
+    decay_progress = current_step - num_warmup_steps
+    cosine_val = 0.5 * (1.0 + math.cos(math.pi * decay_progress / num_cosine_steps))
+    return min_lr_rate + (1.0 - min_lr_rate) * cosine_val
+
+
+def _exponential_decay_lambda(current_step, num_warmup_steps, num_decay_steps, min_lr_rate):
+    """Warmup → exponential decay to 0 → hold at 0.
+
+    Uses a shifted exponential so the multiplier goes exactly from 1.0 to 0.0
+    over the decay phase. min_lr_rate controls the decay speed (steepness).
+    After the decay phase, LR stays at 0.
+    """
+    if current_step < num_warmup_steps:
+        return current_step / max(1, num_warmup_steps)
+    decay_progress = current_step - num_warmup_steps
+    if decay_progress >= num_decay_steps:
+        return 0.0
+    progress = decay_progress / max(1, num_decay_steps)
+    # Shifted exponential: f(p) = (exp(-k*p) - exp(-k)) / (1 - exp(-k))
+    # At p=0: 1.0, at p=1: 0.0. k controls steepness.
+    k = -math.log(max(min_lr_rate, 1e-10))
+    exp_neg_k = math.exp(-k)
+    return (math.exp(-k * progress) - exp_neg_k) / (1.0 - exp_neg_k)
 
 
 def create_custom_scheduler(
@@ -643,6 +708,58 @@ def create_custom_scheduler(
                 scheduler_kwargs[key] = value
 
         training_args.lr_scheduler_kwargs = scheduler_kwargs
+
+    scheduler_kwargs = training_args.lr_scheduler_kwargs or {}
+    if scheduler_kwargs.get("custom_scheduler") == "cosine_then_constant":
+        decay_ratio = float(scheduler_kwargs.get("decay_ratio", 0.5))
+        min_lr_rate = float(scheduler_kwargs.get("min_lr_rate", 0.0))
+        num_warmup_steps = training_args.get_warmup_steps(num_training_steps)
+        num_decay_steps = int((num_training_steps - num_warmup_steps) * decay_ratio)
+        scheduler_kwargs["num_warmup_steps"] = num_warmup_steps
+        scheduler_kwargs["num_decay_steps"] = num_decay_steps
+        scheduler_kwargs["num_total_steps"] = num_training_steps
+        scheduler_kwargs["min_lr_rate"] = min_lr_rate
+        training_args.lr_scheduler_kwargs = scheduler_kwargs
+        logger.info_rank0(
+            f"Using cosine_then_constant scheduler: warmup={num_warmup_steps}, "
+            f"decay={num_decay_steps}, total={num_training_steps}, "
+            f"decay_ratio={decay_ratio}, min_lr_rate={min_lr_rate}"
+        )
+
+    if scheduler_kwargs.get("custom_scheduler") == "cosine_drop_linear":
+        cosine_period_ratio = float(scheduler_kwargs.get("cosine_period_ratio", 0.75))
+        drop_ratio = float(scheduler_kwargs.get("drop_ratio", 0.5))
+        min_lr_rate = float(scheduler_kwargs.get("min_lr_rate", 0.0))
+        num_warmup_steps = training_args.get_warmup_steps(num_training_steps)
+        num_cosine_steps = int((num_training_steps - num_warmup_steps) * cosine_period_ratio)
+        num_drop_step = num_warmup_steps + int((num_training_steps - num_warmup_steps) * drop_ratio)
+        scheduler_kwargs["num_warmup_steps"] = num_warmup_steps
+        scheduler_kwargs["num_cosine_steps"] = num_cosine_steps
+        scheduler_kwargs["num_drop_step"] = num_drop_step
+        scheduler_kwargs["num_total_steps"] = num_training_steps
+        scheduler_kwargs["min_lr_rate"] = min_lr_rate
+        training_args.lr_scheduler_kwargs = scheduler_kwargs
+        logger.info_rank0(
+            f"Using cosine_drop_linear scheduler: warmup={num_warmup_steps}, "
+            f"cosine_steps={num_cosine_steps}, drop_step={num_drop_step}, "
+            f"total={num_training_steps}, cosine_period_ratio={cosine_period_ratio}, "
+            f"drop_ratio={drop_ratio}, min_lr_rate={min_lr_rate}"
+        )
+
+    if scheduler_kwargs.get("custom_scheduler") == "exponential_decay":
+        decay_ratio = float(scheduler_kwargs.get("decay_ratio", 1.0))
+        min_lr_rate = float(scheduler_kwargs.get("min_lr_rate", 0.001))
+        num_warmup_steps = training_args.get_warmup_steps(num_training_steps)
+        num_decay_steps = int((num_training_steps - num_warmup_steps) * decay_ratio)
+        scheduler_kwargs["num_warmup_steps"] = num_warmup_steps
+        scheduler_kwargs["num_decay_steps"] = num_decay_steps
+        scheduler_kwargs["min_lr_rate"] = min_lr_rate
+        training_args.lr_scheduler_kwargs = scheduler_kwargs
+        logger.info_rank0(
+            f"Using exponential_decay scheduler: warmup={num_warmup_steps}, "
+            f"decay_steps={num_decay_steps}, total={num_training_steps}, "
+            f"decay_ratio={decay_ratio}, min_lr_rate={min_lr_rate}"
+        )
 
     if optimizer is not None and isinstance(optimizer, DummyOptimizer):
         optimizer_dict = optimizer.optimizer_dict

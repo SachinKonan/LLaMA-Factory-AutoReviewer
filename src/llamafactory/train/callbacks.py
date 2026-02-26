@@ -142,8 +142,10 @@ def fix_cls_checkpoint(
     os.remove(path_to_checkpoint)
     backbone_state_dict, cls_head_state_dict = {}, {}
 
+    CLS_HEAD_PREFIXES = ("classifier.", "shared_layer.", "decision_head.", "rating_head.", "noise_logits.")
+
     for name, param in state_dict.items():
-        if name.startswith("classifier."):
+        if any(name.startswith(p) for p in CLS_HEAD_PREFIXES):
             cls_head_state_dict[name] = param
         else:
             # Remove "backbone." prefix if present
