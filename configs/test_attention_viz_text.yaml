@@ -1,0 +1,33 @@
+### Model
+model_name_or_path: /scratch/gpfs/ZHUANGL/jl0796/shared/saves/bz16_lr1e-6_text
+trust_remote_code: true
+flash_attn: disabled        # REQUIRED for attention hooks
+bf16: true
+
+### Method
+stage: sft
+do_predict: true
+do_train: false
+finetuning_type: full
+per_device_eval_batch_size: 1
+
+### Dataset
+dataset_dir: /scratch/gpfs/ZHUANGL/jl0796/shared/data
+eval_dataset: iclr_2020_2023_2025_85_5_10_balanced_original_text_v7_filtered_test
+template: qwen
+cutoff_len: 16384
+max_samples: 10  # Change this: 1 for quick test, 100 for full run (50A/50R)
+
+### Output
+output_dir: saves/test_attn_viz_text
+overwrite_output_dir: true
+logging_steps: 1
+
+### Eval
+predict_with_generate: true
+remove_unused_columns: false
+
+### Text Attention Visualization Hook
+visualize_attention_text: true
+attention_viz_text_output_dir: outputs/test_attn_viz_text
+attention_viz_max_new_tokens: 128

@@ -675,7 +675,7 @@ class FinetuningArguments(
         metadata={"help": "Directory for text attention viz results. If None, uses output_dir/attention_viz_text."},
     )
     attention_viz_text_paper_start_marker: str = field(
-        default="\n\n# ",
+        default="\n\n",
         metadata={"help": "Marker in the decoded prompt that separates the fixed instruction prefix from the paper content."},
     )
     def __post_init__(self):
