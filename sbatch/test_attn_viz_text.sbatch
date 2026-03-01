@@ -25,7 +25,10 @@ export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 export WANDB_DISABLED=true
 
+# Choose a random port for torchrun to avoid EADDRINUSE collisions
+MASTER_PORT=$(( RANDOM % 10000 + 20000 ))
+
 # Run prediction with the text attention visualization config
-torchrun --nproc_per_node=1 src/train.py configs/test_attention_viz_text.yaml
+torchrun --nproc_per_node=1 --master_port=$MASTER_PORT src/train.py configs/test_attention_viz_text.yaml
 
 echo "Test complete."

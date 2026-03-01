@@ -183,17 +183,53 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
 
     def _get_sections_from_blocks(self, blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Group content blocks into sections by headers."""
+        import re
         sections = []
         current_section = {"header": "Preamble", "blocks": []}
+        
+        # Keep track of top-level headers (e.g., "1" -> "1 Introduction")
+        top_level_headers = {}
+        
         for b in blocks:
             if b.get("type") == "text" and "text_level" in b:
+                raw_header = b.get("text", "Header").strip()
+                
+                # Match top-level "N Title" or "N. Title"
+                top_match = re.match(r'^(\d+)(?:\.|\s+)(.+)$', raw_header)
+                # Match sub-level "N.M Title" or "N.M.K Title"
+                sub_match = re.match(r'^(\d+)\.\d+(?:\.\d+)*\s*(.*)$', raw_header)
+                
+                if sub_match:
+                    base_num = sub_match.group(1)
+                    resolved_header = top_level_headers.get(base_num, raw_header)
+                elif top_match:
+                    base_num = top_match.group(1)
+                    resolved_header = raw_header
+                    top_level_headers[base_num] = raw_header
+                else:
+                    resolved_header = raw_header
+
                 if current_section["blocks"] or current_section["header"] != "Preamble":
-                    sections.append(current_section)
-                current_section = {"header": b.get("text", "Header"), "blocks": []}
+                    if current_section["header"] != resolved_header:
+                        sections.append(current_section)
+                        current_section = {"header": resolved_header, "blocks": []}
+                else:
+                    current_section["header"] = resolved_header
+            
             current_section["blocks"].append(b)
+            
         if current_section["blocks"]:
             sections.append(current_section)
-        return sections
+            
+        # Second pass: group adjacent sections with the same header
+        merged_sections = []
+        for sec in sections:
+            if merged_sections and merged_sections[-1]["header"] == sec["header"]:
+                merged_sections[-1]["blocks"].extend(sec["blocks"])
+            else:
+                merged_sections.append(sec)
+                
+        return merged_sections
 
     def _get_token_to_section_mapping(self, paper_token_ids, sections) -> list[str]:
         """Map each paper token to a section header string."""
@@ -470,112 +506,142 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
 
     # Modified for better colors & normalization (linear)
     def _save_semantic_heatmaps(self, paper_id, section_weights, sections, image_paths, output_dir):
-    """Color PDF bounding boxes based on section-wise attention weights."""
+        """Color PDF bounding boxes based on section-wise attention weights."""
 
-    if not paper_id or not section_weights:
-        return
+        if not paper_id or not section_weights:
+            return
 
-    # If image_paths is missing (text-only), reconstruct them
-    if not image_paths:
-        image_paths = [
-            f"data/images/{paper_id}/page_{p+1}_noreferences_original.png"
-            for p in range(10)  # Assume 10 pages or check metadata
-        ]
+        # If image_paths is missing (text-only), reconstruct them
+        if not image_paths:
+            image_paths = [
+                f"data/images/{paper_id}/page_{p+1}_noreferences_original.png"
+                for p in range(10)  # Assume 10 pages or check metadata
+            ]
 
-    import numpy as np
-    import os
-    import cv2
-    import matplotlib.cm as cm
+        import numpy as np
+        import os
+        import cv2
+        import matplotlib.cm as cm
 
-    # Normalize weights by dividing by max
-    all_vals = np.array(list(section_weights.values()))
-    max_v = all_vals.max() if len(all_vals) > 0 else 1.0
+        # Normalize weights by dividing by max
+        all_vals = np.array(list(section_weights.values()))
+        max_v = all_vals.max() if len(all_vals) > 0 else 1.0
 
-    # Use viridis colormap (smooth perceptual gradient)
-    colormap = cm.get_cmap("viridis")
+        # Use viridis colormap (smooth perceptual gradient)
+        colormap = cm.get_cmap("viridis")
 
-    processed_pages = []
+        processed_pages = []
 
-    for page_idx, p in enumerate(image_paths):
+        for page_idx, p in enumerate(image_paths):
 
-        if not os.path.isabs(p):
-            actual_rel = p.replace("data/images/", "")
-            p = os.path.join(self.finetuning_args.attention_viz_image_root, actual_rel)
+            if not os.path.isabs(p):
+                actual_rel = p.replace("data/images/", "")
+                p = os.path.join(self.finetuning_args.attention_viz_image_root, actual_rel)
 
-        if not os.path.exists(p):
-            if "_noreferences_original" not in p:
-                p_alt = p.replace(".png", "_noreferences_original.png")
-                if os.path.exists(p_alt):
-                    p = p_alt
+            if not os.path.exists(p):
+                if "_noreferences_original" not in p:
+                    p_alt = p.replace(".png", "_noreferences_original.png")
+                    if os.path.exists(p_alt):
+                        p = p_alt
 
-        if not os.path.exists(p):
-            continue
-
-        img = cv2.imread(p)
-        if img is None:
-            continue
-
-        overlay = img.copy()
-        H, W = img.shape[:2]
-        any_drawn = False
-
-        for section in sections:
-            header = section["header"]
-            weight = section_weights.get(header, 0.0)
-
-            if weight <= 0 or max_v == 0:
+            if not os.path.exists(p):
                 continue
 
-            # Normalize by max
-            norm_w = weight / max_v
-            norm_w = np.clip(norm_w, 0.0, 1.0)
+            img = cv2.imread(p)
+            if img is None:
+                continue
 
-            rgba = colormap(norm_w)
-            bgr = (
-                int(rgba[2] * 255),
-                int(rgba[1] * 255),
-                int(rgba[0] * 255),
+            overlay = img.copy()
+            H, W = img.shape[:2]
+            any_drawn = False
+
+            for section in sections:
+                header = section["header"]
+                weight = section_weights.get(header, 0.0)
+
+                if weight <= 0 or max_v == 0:
+                    continue
+
+                # Normalize by max
+                norm_w = weight / max_v
+                norm_w = np.clip(norm_w, 0.0, 1.0)
+
+                rgba = colormap(norm_w)
+                bgr = (
+                    int(rgba[2] * 255),
+                    int(rgba[1] * 255),
+                    int(rgba[0] * 255),
+                )
+
+                for block in section["blocks"]:
+                    if block.get("page_idx") == page_idx and "bbox" in block:
+                        x0, y0, x1, y1 = block["bbox"]
+
+                        ix0 = int(x0 * W / 1000)
+                        iy0 = int(y0 * H / 1000)
+                        ix1 = int(x1 * W / 1000)
+                        iy1 = int(y1 * H / 1000)
+
+                        cv2.rectangle(overlay, (ix0, iy0), (ix1, iy1), bgr, -1)
+                        any_drawn = True
+
+            if any_drawn:
+                alpha = 0.4
+                cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
+
+            # Standardize size for grid
+            grid_img = cv2.resize(img, (512, 640), interpolation=cv2.INTER_AREA)
+            processed_pages.append(grid_img)
+
+        if processed_pages:
+            n_pages = len(processed_pages)
+            half_n = (n_pages + 1) // 2
+
+            top_row = processed_pages[:half_n]
+            bottom_row = processed_pages[half_n:]
+
+            if len(bottom_row) < half_n:
+                h, w, c = top_row[-1].shape
+                bottom_row.append(np.zeros((h, w, c), dtype=np.uint8))
+
+            top_stitched = cv2.hconcat(top_row)
+            bottom_stitched = cv2.hconcat(bottom_row)
+            stitched = cv2.vconcat([top_stitched, bottom_stitched])
+
+            # Append a horizontal colorbar strip showing the viridis scale
+            import io
+            import matplotlib.pyplot as plt
+
+            grid_w = stitched.shape[1]
+            bar_h = 60
+
+            sorted_sections = sorted(section_weights.items(), key=lambda x: x[1])
+            min_sec = sorted_sections[0][0]
+            max_sec = sorted_sections[-1][0]
+
+            fig, ax = plt.subplots(figsize=(grid_w / 100, bar_h / 100))
+            gradient = np.linspace(0, 1, 256).reshape(1, -1)
+            ax.imshow(gradient, aspect="auto", cmap="viridis")
+            ax.set_yticks([])
+            ax.set_xticks([0, 255])
+            ax.set_xticklabels([f"{min_sec}\n(low)", f"{max_sec}\n(high)"], fontsize=7)
+            ax.set_title("Section attention (↑ = more attended)", fontsize=8, pad=3)
+            plt.tight_layout(pad=0.3)
+
+            buf = io.BytesIO()
+            fig.savefig(buf, format="png", dpi=100)
+            plt.close(fig)
+            buf.seek(0)
+            bar_arr = np.frombuffer(buf.getvalue(), dtype=np.uint8)
+            bar_bgr = cv2.imdecode(bar_arr, cv2.IMREAD_COLOR)
+            bar_bgr = cv2.resize(bar_bgr, (grid_w, bar_h), interpolation=cv2.INTER_AREA)
+
+            stitched = cv2.vconcat([stitched, bar_bgr])
+
+            cv2.imwrite(
+                os.path.join(output_dir, "semantic_heatmap_grid.jpg"),
+                stitched
             )
-
-            for block in section["blocks"]:
-                if block.get("page_idx") == page_idx and "bbox" in block:
-                    x0, y0, x1, y1 = block["bbox"]
-
-                    ix0 = int(x0 * W / 1000)
-                    iy0 = int(y0 * H / 1000)
-                    ix1 = int(x1 * W / 1000)
-                    iy1 = int(y1 * H / 1000)
-
-                    cv2.rectangle(overlay, (ix0, iy0), (ix1, iy1), bgr, -1)
-                    any_drawn = True
-
-        if any_drawn:
-            alpha = 0.4
-            cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
-
-        # Standardize size for grid
-        grid_img = cv2.resize(img, (512, 640), interpolation=cv2.INTER_AREA)
-        processed_pages.append(grid_img)
-
-    if processed_pages:
-        n_pages = len(processed_pages)
-        half_n = (n_pages + 1) // 2
-
-        top_row = processed_pages[:half_n]
-        bottom_row = processed_pages[half_n:]
-
-        if len(bottom_row) < half_n:
-            h, w, c = top_row[-1].shape
-            bottom_row.append(np.zeros((h, w, c), dtype=np.uint8))
-
-        top_stitched = cv2.hconcat(top_row)
-        bottom_stitched = cv2.hconcat(bottom_row)
-        stitched = cv2.vconcat([top_stitched, bottom_stitched])
-
-        cv2.imwrite(
-            os.path.join(output_dir, "semantic_heatmap_grid.jpg"),
-            stitched
-        )
 
     @override
     def create_optimizer(self) -> "torch.optim.Optimizer":
@@ -1415,7 +1481,13 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
         paper_start_token = bisect.bisect_left(tok_char_starts, paper_start_char)
         paper_start_token = min(paper_start_token, len(prompt_ids_1d))
 
-        return paper_start_token, len(prompt_ids_1d)
+        ending_pos = chars.find("<|im_end|>\n<|im_start|>assistant\n")
+        if ending_pos != -1:
+            paper_end_token = bisect.bisect_right(tok_char_starts, ending_pos)
+            paper_end_token = min(paper_end_token, len(prompt_ids_1d)) - 1  # Exclude trailing <|im_end|>
+            return paper_start_token, paper_end_token - paper_start_token
+        else:
+            return paper_start_token, len(prompt_ids_1d) - paper_start_token
 
     def _prediction_step_with_attention_viz_text(
         self,

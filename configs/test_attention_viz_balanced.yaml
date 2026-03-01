@@ -1,7 +1,7 @@
 ### Model
 model_name_or_path: /scratch/gpfs/ZHUANGL/jl0796/shared/saves/best_2025_2026_vision/checkpoint-2648
 trust_remote_code: true
-flash_attn: fa2
+flash_attn: disabled
 bf16: true
 image_max_pixels: 1003520
 
@@ -15,13 +15,13 @@ per_device_eval_batch_size: 1
 ### Dataset
 dataset_dir: /scratch/gpfs/ZHUANGL/jl0796/shared/data
 media_dir: /scratch/gpfs/ZHUANGL/jl0796/shared
-eval_dataset: iclr_2020_2023_2025_85_5_10_balanced_original_vision_v7_filtered_test
+eval_dataset: iclr_balanced_50_test
 template: qwen2_vl
 cutoff_len: 20000
-max_samples: 20  # Change this: 1 for quick test, 100 for full run (50A/50R)
+max_samples: 50
 
 ### Output
-output_dir: saves/best_2025_2026_vision
+output_dir: saves/best_2025_2026_vision_balanced
 overwrite_output_dir: true
 logging_steps: 1
 
@@ -31,7 +31,7 @@ remove_unused_columns: false
 
 ### Attention Visualization Hook
 visualize_attention: true
-attention_viz_output_dir: outputs/best_2025_2026_vision
+attention_viz_output_dir: outputs/best_2025_2026_vision_balanced
 attention_viz_max_new_tokens: 128
 attention_viz_image_root: /scratch/gpfs/ZHUANGL/jl0796/shared/data/images
 attention_viz_save_per_layer: false

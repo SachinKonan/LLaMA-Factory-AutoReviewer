@@ -1,7 +1,7 @@
 ### Model
 model_name_or_path: /scratch/gpfs/ZHUANGL/jl0796/shared/saves/best_2025_2026_text/checkpoint-1322
 trust_remote_code: true
-flash_attn: disabled        # REQUIRED for attention hooks
+flash_attn: disabled
 bf16: true
 
 ### Method
@@ -13,13 +13,13 @@ per_device_eval_batch_size: 1
 
 ### Dataset
 dataset_dir: /scratch/gpfs/ZHUANGL/jl0796/shared/data
-eval_dataset: iclr_2020_2023_2025_85_5_10_balanced_original_text_v7_filtered_test
+eval_dataset: iclr_balanced_50_test
 template: qwen
 cutoff_len: 20000
-max_samples: 20  # Change this: 1 for quick test, 100 for full run (50A/50R)
+max_samples: 50
 
 ### Output
-output_dir: saves/best_2025_2026_text
+output_dir: saves/best_2025_2026_text_balanced
 overwrite_output_dir: true
 logging_steps: 1
 
@@ -29,5 +29,5 @@ remove_unused_columns: false
 
 ### Text Attention Visualization Hook
 visualize_attention_text: true
-attention_viz_text_output_dir: outputs/best_2025_2026_text
+attention_viz_text_output_dir: outputs/best_2025_2026_text_balanced
 attention_viz_max_new_tokens: 128
