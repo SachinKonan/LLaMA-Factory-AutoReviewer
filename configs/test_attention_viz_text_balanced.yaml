@@ -13,7 +13,7 @@ per_device_eval_batch_size: 1
 
 ### Dataset
 dataset_dir: /scratch/gpfs/ZHUANGL/jl0796/shared/data
-eval_dataset: iclr_balanced_50_test
+eval_dataset: iclr_balanced_50_text_test
 template: qwen
 cutoff_len: 20000
 max_samples: 50

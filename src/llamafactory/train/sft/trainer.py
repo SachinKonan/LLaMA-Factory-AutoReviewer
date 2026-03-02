@@ -157,7 +157,7 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
     def _get_block_metadata(self, submission_id: str) -> Optional[list[dict[str, Any]]]:
         """Lazy loader for massive_metadata_v7.csv content_list_json."""
         if self._block_metadata is None:
-            metadata_path = "/scratch/gpfs/ZHUANGL/jl0796/shared/data/massive_metadata_v7.csv"
+            metadata_path = "/scratch/gpfs/ZHUANGL/jl0796/shared/data/massive_metadata_v7_5.csv"
             if not os.path.exists(metadata_path):
                 logger.warning_rank0(f"Metadata file {metadata_path} not found.")
                 self._block_metadata = {}
