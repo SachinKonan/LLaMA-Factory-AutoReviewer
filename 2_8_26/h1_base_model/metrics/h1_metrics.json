@@ -1,0 +1,46 @@
+{
+  "base_model": {
+    "total": 2011,
+    "accuracy": 0.494778717056191,
+    "acceptance_rate": 0.9726504226752859,
+    "accept_recall": 0.9624876604146101,
+    "reject_recall": 0.019782393669634024,
+    "accept_precision": 0.49846625766871167,
+    "reject_precision": 0.36363636363636365,
+    "confusion_matrix": {
+      "TP": 975,
+      "TN": 20,
+      "FP": 981,
+      "FN": 35
+    }
+  },
+  "instruct_model": {
+    "total": 1986,
+    "accuracy": 0.5040281973816717,
+    "acceptance_rate": 0.9944612286002014,
+    "accept_recall": 0.981243830207305,
+    "reject_recall": 0.006923837784371909,
+    "accept_precision": 0.5032911392405063,
+    "reject_precision": 0.6363636363636364,
+    "confusion_matrix": {
+      "TP": 994,
+      "TN": 7,
+      "FP": 981,
+      "FN": 4
+    }
+  },
+  "agreement": {
+    "total_aligned": 1978,
+    "both_correct": 958,
+    "both_wrong": 956,
+    "base_only_correct": 23,
+    "instruct_only_correct": 41,
+    "agreement_rate": 0.967644084934277,
+    "disagreement_detail": {
+      "base_accept_instruct_reject_gt_accept": 3,
+      "base_accept_instruct_reject_gt_reject": 7,
+      "base_reject_instruct_accept_gt_accept": 34,
+      "base_reject_instruct_accept_gt_reject": 20
+    }
+  }
+}

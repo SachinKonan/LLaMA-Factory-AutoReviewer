@@ -1,4 +1,16 @@
+<<<<<<< HEAD
+<<<<<<<< HEAD:examples/inference/qwen3.yaml
 model_name_or_path: Qwen/Qwen3-4B-Instruct-2507
+========
+model_name_or_path: saves/qwen3-4b/full/sft
+>>>>>>>> inference_scaling:examples/inference/qwen3_full_sft.yaml
+=======
+<<<<<<<< HEAD:examples/inference/qwen3_full_sft.yaml
+model_name_or_path: saves/qwen3-4b/full/sft
+========
+model_name_or_path: Qwen/Qwen3-4B-Instruct-2507
+>>>>>>>> inference_scaling:examples/inference/qwen3.yaml
+>>>>>>> inference_scaling
 template: qwen3_nothink
 infer_backend: huggingface  # choices: [huggingface, vllm, sglang, ktransformers]
 trust_remote_code: true

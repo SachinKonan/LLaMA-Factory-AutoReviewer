@@ -73,6 +73,10 @@ class CustomGRPOTrainer(GRPOTrainer):
             vllm_mode=finetuning_args.grpo_vllm_mode,
             vllm_gpu_memory_utilization=finetuning_args.grpo_vllm_gpu_memory_utilization,
             vllm_tensor_parallel_size=finetuning_args.grpo_vllm_tensor_parallel_size,
+<<<<<<< HEAD
+=======
+            vllm_enable_sleep_mode=finetuning_args.grpo_vllm_enable_sleep_mode,
+>>>>>>> inference_scaling
             # Training arguments
             output_dir=training_args.output_dir,
             learning_rate=training_args.learning_rate,

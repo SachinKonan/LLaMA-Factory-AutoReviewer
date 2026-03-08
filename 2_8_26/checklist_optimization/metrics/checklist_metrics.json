@@ -1,0 +1,74 @@
+{
+  "overall": {
+    "accuracy": 0.5294612794612794,
+    "precision": 0.529126213592233,
+    "recall": 0.5495798319327732,
+    "f1": 0.5391591096455071,
+    "confusion_matrix": {
+      "TP": 327,
+      "TN": 302,
+      "FP": 291,
+      "FN": 268
+    }
+  },
+  "optimal_threshold": 0.26,
+  "question_correlations": {
+    "q036": {
+      "correlation": 0.02004856828886918,
+      "p_value": 0.4899656324115309,
+      "text": "Does the review provide questions for the authors?",
+      "category": "sentiment",
+      "fraction_yes": 0.2037037037037037
+    },
+    "q005": {
+      "correlation": 0.02907392210407788,
+      "p_value": 0.31670182812757935,
+      "text": "Does the review compare the contribution to existing methods?",
+      "category": "novelty",
+      "fraction_yes": 0.43602693602693604
+    },
+    "q024": {
+      "correlation": 0.01991509702921251,
+      "p_value": 0.4928603335708489,
+      "text": "Does the review discuss the practical applicability of the work?",
+      "category": "impact",
+      "fraction_yes": 0.015993265993265993
+    },
+    "q001": {
+      "correlation": -0.0015691177942911971,
+      "p_value": 0.956914072953428,
+      "text": "Does the review discuss whether the paper presents a novel contribution?",
+      "category": "novelty",
+      "fraction_yes": 0.8409090909090909
+    }
+  },
+  "checklist": {
+    "n_questions": 4,
+    "questions": [
+      {
+        "id": "q036",
+        "text": "Does the review provide questions for the authors?",
+        "category": "sentiment",
+        "cluster_id": 11
+      },
+      {
+        "id": "q005",
+        "text": "Does the review compare the contribution to existing methods?",
+        "category": "novelty",
+        "cluster_id": 23
+      },
+      {
+        "id": "q024",
+        "text": "Does the review discuss the practical applicability of the work?",
+        "category": "impact",
+        "cluster_id": 10
+      },
+      {
+        "id": "q001",
+        "text": "Does the review discuss whether the paper presents a novel contribution?",
+        "category": "novelty",
+        "cluster_id": 2
+      }
+    ]
+  }
+}

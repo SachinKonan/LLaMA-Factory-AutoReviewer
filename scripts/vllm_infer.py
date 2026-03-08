@@ -48,6 +48,7 @@ def vllm_infer(
     adapter_name_or_path: str = None,
     dataset: str = "alpaca_en_demo",
     dataset_dir: str = "data",
+    media_dir: Optional[str] = None,
     template: str = "default",
     cutoff_len: int = 2048,
     max_samples: int | None = None,
@@ -64,15 +65,21 @@ def vllm_infer(
     enable_thinking: bool = True,
     seed: int | None = None,
     pipeline_parallel_size: int = 1,
-    image_max_pixels: int = 768 * 768,
-    image_min_pixels: int = 32 * 32,
+    image_max_pixels: int = 28*28*1280,
+    image_min_pixels: int = 1*28*28,
     video_fps: float = 2.0,
     video_maxlen: int = 128,
-    batch_size: int = 1024,
+    batch_size: int = 32,
+    image_mismatch_mode: str = "crop",
 ):
     r"""Perform batch generation using vLLM engine, which supports tensor parallelism.
 
     Usage: python vllm_infer.py --model_name_or_path meta-llama/Llama-2-7b-hf --template llama --dataset alpaca_en_demo
+
+    Args:
+        image_mismatch_mode: How to handle mismatch between number of images and <image> tags.
+            - "crop": Crop images list to match the number of <image> tags (default)
+            - "skip": Skip samples where image count doesn't match tag count
     """
     # Map common template aliases to valid names
     template_aliases = {
@@ -92,6 +99,7 @@ def vllm_infer(
             adapter_name_or_path=adapter_name_or_path,
             dataset=dataset,
             dataset_dir=dataset_dir,
+            media_dir=media_dir,
             template=template,
             cutoff_len=cutoff_len,
             max_samples=max_samples,
@@ -162,13 +170,39 @@ def vllm_infer(
         batch = train_dataset[i : min(i + batch_size, len(train_dataset))]
 
         for j in range(len(batch["input_ids"])):
+            skip_this_sample = False
+            video_metadata_kwargs = None
+
             if batch["images"][j] is not None:
                 image = batch["images"][j]
-                multi_modal_data = {
-                    "image": template_obj.mm_plugin._regularize_images(
-                        image, image_max_pixels=image_max_pixels, image_min_pixels=image_min_pixels
-                    )["images"]
-                }
+                num_images = len(image) if isinstance(image, list) else 1
+                # Count <image> placeholders in input_ids by decoding
+                input_text = tokenizer.decode(batch["input_ids"][j], skip_special_tokens=False)
+                num_placeholders = input_text.count("<image>") + input_text.count("<|image_pad|>")
+
+                if num_images != num_placeholders and num_placeholders > 0:
+                    if image_mismatch_mode == "skip":
+                        print(f"DEBUG: Sample {i+j}: {num_images} images vs {num_placeholders} placeholders - skipping sample")
+                        skip_this_sample = True
+                    else:  # crop mode
+                        print(f"DEBUG: Sample {i+j}: {num_images} images vs {num_placeholders} placeholders - cropping images")
+                        if isinstance(image, list):
+                            image = image[:num_placeholders]
+                        # If single image but no placeholder, skip this sample's images
+                        elif num_placeholders == 0:
+                            image = []
+
+                if skip_this_sample:
+                    continue
+
+                if not image:
+                    multi_modal_data = None
+                else:
+                    multi_modal_data = {
+                        "image": template_obj.mm_plugin._regularize_images(
+                            image, image_max_pixels=image_max_pixels, image_min_pixels=image_min_pixels
+                        )["images"]
+                    }
             elif batch["videos"][j] is not None:
                 video_metadata, video_metadata_kwargs = None, None
                 video = batch["videos"][j]
@@ -211,7 +245,7 @@ def vllm_infer(
                 multi_modal_data = None
 
             vllm_input_data = {"prompt_token_ids": batch["input_ids"][j], "multi_modal_data": multi_modal_data}
-            if "video_metadata_kwargs" in locals() and video_metadata_kwargs is not None:
+            if video_metadata_kwargs is not None:
                 vllm_input_data["mm_processor_kwargs"] = video_metadata_kwargs
 
             vllm_inputs.append(vllm_input_data)
@@ -238,9 +272,9 @@ def vllm_infer(
         for text, pred, label in zip(all_prompts, all_preds, all_labels):
             f.write(json.dumps({"prompt": text, "predict": pred, "label": label}, ensure_ascii=False) + "\n")
 
-    print("*" * 70)
-    print(f"{len(all_prompts)} total generated results have been saved at {save_name}.")
-    print("*" * 70)
+    print("*" * 70, flush=True)
+    print(f"{len(all_prompts)} total generated results have been saved at {save_name}.", flush=True)
+    print("*" * 70, flush=True)
 
     # Write all matrix results when matrix_save_name is not None,
     # The result matrix is referencing src.llamafactory.train.sft.workflow.run_sft # 127~132

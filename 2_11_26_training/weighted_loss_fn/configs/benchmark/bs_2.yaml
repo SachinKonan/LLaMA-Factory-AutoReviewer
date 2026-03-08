@@ -1,0 +1,41 @@
+### model
+model_name_or_path: /scratch/gpfs/ZHUANGL/jl0796/.hf_home/hub/models--Qwen--Qwen2.5-7B-Instruct/snapshots/a09a35458c702b33eeacc393d103063234e8bc28
+trust_remote_code: true
+flash_attn: fa2
+enable_liger_kernel: True
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+gradient_checkpointing: true
+gradient_checkpointing_kwargs: {"use_reentrant": false}
+
+### dataset
+dataset: iclr_weighted_loss_train_1_2
+dataset_dir: 2_11_26_training/weighted_loss_fn
+template: qwen
+cutoff_len: 16384
+preprocessing_num_workers: 4
+dataloader_num_workers: 2
+
+### output
+output_dir: saves/benchmark/bs_2
+logging_steps: 1
+save_steps: 1000
+overwrite_output_dir: true
+save_only_model: false
+report_to: none
+
+### train
+per_device_train_batch_size: 2
+gradient_accumulation_steps: 1
+learning_rate: 1.0e-5
+num_train_epochs: 1.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+max_steps: 5  # Run only 5 steps
+
+### weighted loss (disable for benchmark)
+use_weighted_loss: false

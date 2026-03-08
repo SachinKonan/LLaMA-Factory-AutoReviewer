@@ -1,0 +1,72 @@
+{
+  "title_abstract": {
+    "total": 2024,
+    "accuracy": 0.5009881422924901,
+    "acceptance_rate": 0.9935770750988142,
+    "accept_recall": 0.9940769990128332,
+    "reject_recall": 0.006923837784371909,
+    "accept_precision": 0.5007458975634013,
+    "reject_precision": 0.5384615384615384,
+    "confusion_matrix": {
+      "TP": 1007,
+      "TN": 7,
+      "FP": 1004,
+      "FN": 6
+    }
+  },
+  "title_intro": {
+    "total": 2024,
+    "accuracy": 0.5,
+    "acceptance_rate": 0.9965415019762845,
+    "accept_recall": 0.9960513326752222,
+    "reject_recall": 0.002967359050445104,
+    "accept_precision": 0.5002478929102627,
+    "reject_precision": 0.42857142857142855,
+    "confusion_matrix": {
+      "TP": 1009,
+      "TN": 3,
+      "FP": 1008,
+      "FN": 4
+    }
+  },
+  "title_conclusion": {
+    "total": 2024,
+    "accuracy": 0.4980237154150198,
+    "acceptance_rate": 0.991600790513834,
+    "accept_recall": 0.9891411648568608,
+    "reject_recall": 0.005934718100890208,
+    "accept_precision": 0.4992526158445441,
+    "reject_precision": 0.35294117647058826,
+    "confusion_matrix": {
+      "TP": 1002,
+      "TN": 6,
+      "FP": 1005,
+      "FN": 11
+    }
+  },
+  "full_paper": {
+    "total": 2015,
+    "accuracy": 0.5027295285359802,
+    "acceptance_rate": 0.998014888337469,
+    "accept_recall": 0.9970384995064165,
+    "reject_recall": 0.002967359050445104,
+    "accept_precision": 0.5022376926902039,
+    "reject_precision": 0.75,
+    "confusion_matrix": {
+      "TP": 1010,
+      "TN": 3,
+      "FP": 1001,
+      "FN": 1
+    }
+  },
+  "title_only_similarity": {
+    "mean": 0.7165066192933992,
+    "median": 0.7293454770434863,
+    "std": 0.08878404094787096,
+    "min": 0.24500038915255867,
+    "max": 0.898432126597649,
+    "pct_above_0.8": 0.15998018821198612,
+    "pct_above_0.9": 0.0,
+    "n_samples": 2019
+  }
+}

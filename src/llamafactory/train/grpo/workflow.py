@@ -40,7 +40,10 @@ logger = logging.get_logger(__name__)
 
 def load_grpo_dataset(
     data_args: "DataArguments",
+<<<<<<< HEAD
     finetuning_args: "FinetuningArguments",
+=======
+>>>>>>> inference_scaling
     data_dir: str,
 ) -> Dataset:
     """Load dataset in format suitable for TRL's GRPOTrainer.
@@ -101,10 +104,14 @@ def load_grpo_dataset(
             if role == "system":
                 prompt_messages.append({"role": "system", "content": content})
             elif role == "human":
+<<<<<<< HEAD
                 content_to_add = content
                 if finetuning_args.grpo_append_reasoning_explicit:
                     content_to_add += "\n - Reason about the outcome before providing your boxed answer"
                 prompt_messages.append({"role": "user", "content": content_to_add})
+=======
+                prompt_messages.append({"role": "user", "content": content})
+>>>>>>> inference_scaling
             elif role == "gpt":
                 # Extract ground truth from \boxed{} in assistant response
                 ground_truth = extract_boxed_answer(content) or ""
@@ -148,7 +155,11 @@ def run_grpo(
     # Load dataset in TRL format (NOT using LlamaFactory's data processing)
     # TRL's GRPOTrainer expects raw text prompts, not tokenized data
     data_dir = data_args.dataset_dir or "data"
+<<<<<<< HEAD
     train_dataset = load_grpo_dataset(data_args, finetuning_args, data_dir)
+=======
+    train_dataset = load_grpo_dataset(data_args, data_dir)
+>>>>>>> inference_scaling
 
     # Load model (NO value head needed for GRPO, unlike PPO)
     model = load_model(tokenizer, model_args, finetuning_args, training_args.do_train, add_valuehead=False)

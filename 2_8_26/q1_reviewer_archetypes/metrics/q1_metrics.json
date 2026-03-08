@@ -1,0 +1,108 @@
+{
+  "n_clusters": 5,
+  "n_reviews": 4682,
+  "distribution": {
+    "0": 0.2308842375053396,
+    "1": 0.2466894489534387,
+    "2": 0.2052541648868005,
+    "3": 0.20568133276377618,
+    "4": 0.11149081589064502
+  },
+  "cluster_info": {
+    "0": {
+      "top_keywords": [
+        "models",
+        "which",
+        "data",
+        "performance",
+        "language",
+        "different",
+        "llms",
+        "such"
+      ],
+      "size": 1081,
+      "avg_length": 2910.750231267345,
+      "avg_rating": 5.718778908418131,
+      "std_rating": 1.600332062026608,
+      "avg_strengths_len": 484.0037002775208,
+      "avg_weaknesses_len": 1228.4283071230343,
+      "weakness_to_strength_ratio": 2.5380556107704777
+    },
+    "1": {
+      "top_keywords": [
+        "which",
+        "learning",
+        "training",
+        "what",
+        "data",
+        "they",
+        "there",
+        "only"
+      ],
+      "size": 1155,
+      "avg_length": 2984.9411255411255,
+      "avg_rating": 5.570562770562771,
+      "std_rating": 1.6735785166088448,
+      "avg_strengths_len": 428.4926406926407,
+      "avg_weaknesses_len": 1273.1809523809525,
+      "weakness_to_strength_ratio": 2.971301794875422
+    },
+    "2": {
+      "top_keywords": [
+        "diffusion",
+        "which",
+        "image",
+        "models",
+        "performance",
+        "training",
+        "such",
+        "data"
+      ],
+      "size": 961,
+      "avg_length": 2795.080124869927,
+      "avg_rating": 5.643080124869927,
+      "std_rating": 1.6386895105535764,
+      "avg_strengths_len": 456.24245577523413,
+      "avg_weaknesses_len": 1159.4568158168574,
+      "weakness_to_strength_ratio": 2.541317234159503
+    },
+    "3": {
+      "top_keywords": [
+        "which",
+        "performance",
+        "graph",
+        "what",
+        "there",
+        "learning",
+        "data",
+        "other"
+      ],
+      "size": 963,
+      "avg_length": 2981.9293873312563,
+      "avg_rating": 5.419522326064382,
+      "std_rating": 1.690641573695062,
+      "avg_strengths_len": 431.46832814122536,
+      "avg_weaknesses_len": 1283.1869158878505,
+      "weakness_to_strength_ratio": 2.974000250298433
+    },
+    "4": {
+      "top_keywords": [
+        "learning",
+        "which",
+        "policy",
+        "there",
+        "algorithm",
+        "reward",
+        "what",
+        "performance"
+      ],
+      "size": 522,
+      "avg_length": 3051.0632183908046,
+      "avg_rating": 5.747126436781609,
+      "std_rating": 1.6693201231845596,
+      "avg_strengths_len": 477.81609195402297,
+      "avg_weaknesses_len": 1219.7911877394636,
+      "weakness_to_strength_ratio": 2.5528466041215623
+    }
+  }
+}

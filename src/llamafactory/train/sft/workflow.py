@@ -80,6 +80,17 @@ def run_sft(
         metric_module["compute_metrics"] = ComputeAccuracy()
         metric_module["preprocess_logits_for_metrics"] = eval_logit_processor
 
+    # Add accept/reject probability tracking callback if enabled
+    if finetuning_args.track_decision_probs:
+        from ..callbacks import AcceptRejectProbabilityCallback
+        if callbacks is None:
+            callbacks = []
+        callbacks.append(AcceptRejectProbabilityCallback(
+            tokenizer=tokenizer,
+            output_dir=training_args.output_dir
+        ))
+        logger.info("Added AcceptRejectProbabilityCallback for decision probability tracking")
+
     # Keyword arguments for `model.generate`
     gen_kwargs = generating_args.to_dict(obey_generation_config=True)
 

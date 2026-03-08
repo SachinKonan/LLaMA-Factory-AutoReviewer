@@ -1,0 +1,18 @@
+[project]
+name = "textgrad-paper-reviewer"
+version = "0.1.0"
+description = "TextGrad-based prompt optimization for paper review prediction"
+requires-python = ">=3.11"
+dependencies = [
+    "textgrad>=0.1.4",
+    "litellm",
+    "openai",
+    "pandas",
+    "scikit-learn",
+    "fire",
+    "tqdm",
+    "transformers",
+]
+
+[tool.uv]
+# vLLM servers managed separately via SLURM script

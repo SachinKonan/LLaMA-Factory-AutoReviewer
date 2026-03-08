@@ -5,6 +5,10 @@ Analyze prediction results from grid search experiments.
 Usage:
     python scripts/analyze.py --dir grid_searchv2
     python scripts/analyze.py --dir grid_searchv2 --indicators binary,citation
+<<<<<<< HEAD
+=======
+    python scripts/analyze.py --dir grid_searchv2 --version _v5
+>>>>>>> inference_scaling
 """
 
 import argparse
@@ -30,6 +34,7 @@ def extract_boxed_answer(text: str) -> str | None:
     return None
 
 
+<<<<<<< HEAD
 def extract_gemini_answer(text: str) -> str | None:
     """Extract answer from Gemini output (simple string matching)."""
     if not text:
@@ -45,6 +50,8 @@ def extract_gemini_answer(text: str) -> str | None:
     return None
 
 
+=======
+>>>>>>> inference_scaling
 def load_jsonl(path: str) -> pd.DataFrame:
     """Load jsonl file as dataframe."""
     with open(path) as f:
@@ -73,7 +80,11 @@ def get_dataset_size(dataset_name: str, data_dir: str = "data") -> int | None:
 
 
 def discover_results(
+<<<<<<< HEAD
     results_dir: Path, force_type: str | None = None
+=======
+    results_dir: Path, version_filter: str | None = None
+>>>>>>> inference_scaling
 ) -> dict[str, list[tuple[str, str, Path]]]:
     """
     Discover all result files in the directory.
@@ -82,8 +93,13 @@ def discover_results(
     run_name is like "base" or "finetuned2871".
 
     Args:
+<<<<<<< HEAD
         results_dir: Directory to scan for results
         force_type: If specified, treat all results as this type (binary/multiclass/citation)
+=======
+        results_dir: Directory to scan for results.
+        version_filter: If provided, only include paths containing this string (e.g., "_v5").
+>>>>>>> inference_scaling
     """
     results = {"binary": [], "multiclass": [], "citation": []}
 
@@ -97,10 +113,19 @@ def discover_results(
 
         dataset_name = subdir.name
 
+<<<<<<< HEAD
         # Determine task type from directory name (or use force_type)
         if force_type:
             task_type = force_type
         elif "binary" in dataset_name:
+=======
+        # Apply version filter if specified
+        if version_filter and version_filter not in dataset_name:
+            continue
+
+        # Determine task type from directory name
+        if "binary" in dataset_name:
+>>>>>>> inference_scaling
             task_type = "binary"
         elif "multiclass" in dataset_name:
             task_type = "multiclass"
@@ -111,6 +136,7 @@ def discover_results(
             continue
 
         # Find all jsonl files in this subdir
+<<<<<<< HEAD
         jsonl_files = list(subdir.glob("*.jsonl"))
         for jsonl_file in sorted(jsonl_files):
             run_name = jsonl_file.stem  # "base" or "finetuned2871"
@@ -127,6 +153,12 @@ def discover_results(
                     full_name = f"{dataset_name}_{subsubdir.name}"
                     results[task_type].append((full_name, run_name, jsonl_file))
 
+=======
+        for jsonl_file in sorted(subdir.glob("*.jsonl")):
+            run_name = jsonl_file.stem  # "base" or "finetuned2871"
+            results[task_type].append((dataset_name, run_name, jsonl_file))
+
+>>>>>>> inference_scaling
     return results
 
 
@@ -181,22 +213,34 @@ def compute_binary_metrics(y_true: list, y_pred: list) -> dict:
 
 
 def analyze_binary_results(
+<<<<<<< HEAD
     result_files: list[tuple[str, str, Path]], data_dir: str = "data", is_gemini: bool = False
+=======
+    result_files: list[tuple[str, str, Path]], data_dir: str = "data"
+>>>>>>> inference_scaling
 ) -> pd.DataFrame:
     """Analyze binary classification results."""
     results = []
 
+<<<<<<< HEAD
     # Choose extraction function based on is_gemini flag
     pred_extractor = extract_gemini_answer if is_gemini else extract_boxed_answer
 
+=======
+>>>>>>> inference_scaling
     for dataset_name, run_name, path in result_files:
         if not path.exists():
             print(f"  Warning: {path} not found, skipping")
             continue
 
         df = load_jsonl(str(path))
+<<<<<<< HEAD
         df["label_clean"] = df["label"].apply(extract_boxed_answer)  # Labels always use boxed format
         df["pred_extracted"] = df["predict"].apply(pred_extractor)
+=======
+        df["label_clean"] = df["label"].apply(extract_boxed_answer)
+        df["pred_extracted"] = df["predict"].apply(extract_boxed_answer)
+>>>>>>> inference_scaling
 
         # Normalize to accepted/rejected
         df["label_clean"] = df["label_clean"].apply(
@@ -213,14 +257,20 @@ def analyze_binary_results(
 
         test_size = len(df)
 
+<<<<<<< HEAD
         # Get train size (dataset_name doesn't have _test suffix, so append _train)
         train_dataset_name = f"{dataset_name}_train"
+=======
+        # Get train size
+        train_dataset_name = dataset_name.replace("_test", "_train")
+>>>>>>> inference_scaling
         train_size = get_dataset_size(train_dataset_name, data_dir)
 
         if len(df_valid) > 0:
             y_true = df_valid["label_clean"].tolist()
             y_pred = df_valid["pred_extracted"].tolist()
             metrics = compute_binary_metrics(y_true, y_pred)
+<<<<<<< HEAD
 
             # Calculate ground-truth acceptance rate and majority reject accuracy
             num_accepts = sum(1 for y in y_true if y == "accepted")
@@ -228,6 +278,8 @@ def analyze_binary_results(
             total = num_accepts + num_rejects
             acceptance_rate = num_accepts / total if total > 0 else None
             majority_reject_acc = 1 - acceptance_rate if acceptance_rate is not None else None
+=======
+>>>>>>> inference_scaling
         else:
             metrics = {
                 "accuracy": None,
@@ -242,8 +294,11 @@ def analyze_binary_results(
                 "num_fns": None,
                 "num_tns": None,
             }
+<<<<<<< HEAD
             acceptance_rate = None
             majority_reject_acc = None
+=======
+>>>>>>> inference_scaling
 
         results.append(
             {
@@ -252,8 +307,11 @@ def analyze_binary_results(
                 **metrics,
                 "train_size": train_size,
                 "test_size": test_size,
+<<<<<<< HEAD
                 "acceptance_rate": acceptance_rate,
                 "majority_reject_acc": majority_reject_acc,
+=======
+>>>>>>> inference_scaling
             }
         )
 
@@ -298,8 +356,13 @@ def analyze_multiclass_results(
 
         test_size = len(df)
 
+<<<<<<< HEAD
         # Get train size (dataset_name doesn't have _test suffix, so append _train)
         train_dataset_name = f"{dataset_name}_train"
+=======
+        # Get train size
+        train_dataset_name = dataset_name.replace("_test", "_train")
+>>>>>>> inference_scaling
         train_size = get_dataset_size(train_dataset_name, data_dir)
 
         if len(df_valid) > 0:
@@ -312,6 +375,7 @@ def analyze_multiclass_results(
             y_true_binary = [multiclass_to_binary(y) for y in y_true_multi]
             y_pred_binary = [multiclass_to_binary(y) for y in y_pred_multi]
             metrics = compute_binary_metrics(y_true_binary, y_pred_binary)
+<<<<<<< HEAD
 
             # Calculate ground-truth acceptance rate and majority reject accuracy
             num_accepts = sum(1 for y in y_true_binary if y == "accepted")
@@ -319,6 +383,8 @@ def analyze_multiclass_results(
             total = num_accepts + num_rejects
             acceptance_rate = num_accepts / total if total > 0 else None
             majority_reject_acc = 1 - acceptance_rate if acceptance_rate is not None else None
+=======
+>>>>>>> inference_scaling
         else:
             accuracy_4class = None
             metrics = {
@@ -334,8 +400,11 @@ def analyze_multiclass_results(
                 "num_fns": None,
                 "num_tns": None,
             }
+<<<<<<< HEAD
             acceptance_rate = None
             majority_reject_acc = None
+=======
+>>>>>>> inference_scaling
 
         results.append(
             {
@@ -345,8 +414,11 @@ def analyze_multiclass_results(
                 **metrics,
                 "train_size": train_size,
                 "test_size": test_size,
+<<<<<<< HEAD
                 "acceptance_rate": acceptance_rate,
                 "majority_reject_acc": majority_reject_acc,
+=======
+>>>>>>> inference_scaling
             }
         )
 
@@ -389,8 +461,13 @@ def analyze_citation_results(
 
         test_size = len(df)
 
+<<<<<<< HEAD
         # Get train size (dataset_name doesn't have _test suffix, so append _train)
         train_dataset_name = f"{dataset_name}_train"
+=======
+        # Get train size
+        train_dataset_name = dataset_name.replace("_test", "_train")
+>>>>>>> inference_scaling
         train_size = get_dataset_size(train_dataset_name, data_dir)
 
         if len(df_valid) > 0:
@@ -470,6 +547,7 @@ def main():
         help="Save results as CSV files in results/{dir}/"
     )
     parser.add_argument(
+<<<<<<< HEAD
         "--force-result-type", type=str, default=None,
         choices=["binary", "multiclass", "citation"],
         help="Force all results to be treated as this type (binary, multiclass, or citation)"
@@ -477,6 +555,10 @@ def main():
     parser.add_argument(
         "--is-gemini", action="store_true",
         help="Use Gemini-style parsing (simple accept/reject string matching instead of \\boxed{})"
+=======
+        "--version", type=str, default=None,
+        help="Only include paths containing this string (e.g., _v5)"
+>>>>>>> inference_scaling
     )
     args = parser.parse_args()
 
@@ -489,13 +571,21 @@ def main():
         indicators = ["binary", "multiclass", "citation"]
 
     # Discover all results
+<<<<<<< HEAD
     force_type = getattr(args, 'force_result_type', None)
     discovered = discover_results(results_dir, force_type=force_type)
+=======
+    discovered = discover_results(results_dir, version_filter=args.version)
+>>>>>>> inference_scaling
 
     all_results = {}
 
     if "binary" in indicators and discovered["binary"]:
+<<<<<<< HEAD
         binary_df = analyze_binary_results(discovered["binary"], args.data_dir, is_gemini=args.is_gemini)
+=======
+        binary_df = analyze_binary_results(discovered["binary"], args.data_dir)
+>>>>>>> inference_scaling
         binary_df = sort_results(binary_df)
         print_results(binary_df, "BINARY CLASSIFICATION RESULTS")
         all_results["binary"] = binary_df
@@ -524,7 +614,11 @@ def main():
             citation_df.to_csv(csv_path, index=False)
             print(f"Saved: {csv_path}")
 
+<<<<<<< HEAD
     if not any(not df.empty for df in all_results.values()):
+=======
+    if not any(all_results.values()):
+>>>>>>> inference_scaling
         print(f"No results found in {results_dir}")
 
     return all_results

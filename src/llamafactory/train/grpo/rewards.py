@@ -69,15 +69,24 @@ def get_reward_funcs(names: str, weights: Optional[str] = None) -> tuple[list[Ca
     return reward_funcs, reward_weights
 
 
+<<<<<<< HEAD
 def extract_boxed_answer(text) -> Optional[str]:
     r"""Extract answer from \boxed{...} format.
 
     Args:
         text: The text to extract from (string or list of message dicts)
+=======
+def extract_boxed_answer(text: str) -> Optional[str]:
+    r"""Extract answer from \boxed{...} format.
+
+    Args:
+        text: The text to extract from
+>>>>>>> inference_scaling
 
     Returns:
         The extracted answer or None if not found
     """
+<<<<<<< HEAD
     # Handle case where TRL passes a list of message dicts
     # e.g., [{'role': 'assistant', 'content': '...'}]
     if isinstance(text, list):
@@ -91,6 +100,8 @@ def extract_boxed_answer(text) -> Optional[str]:
     if not isinstance(text, str):
         text = str(text)
 
+=======
+>>>>>>> inference_scaling
     match = re.search(r"\\boxed\{([^}]+)\}", text)
     return match.group(1).strip() if match else None
 

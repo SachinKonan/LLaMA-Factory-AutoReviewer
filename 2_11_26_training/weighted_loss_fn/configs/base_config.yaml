@@ -1,0 +1,48 @@
+### model
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+trust_remote_code: true
+flash_attn: fa2
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+gradient_checkpointing: true
+gradient_checkpointing_kwargs: {"use_reentrant": false}
+
+### dataset
+# Will be overridden per experiment
+template: qwen
+cutoff_len: 4096
+overwrite_cache: true
+preprocessing_num_workers: 16
+dataloader_num_workers: 4
+
+### output
+# Will be overridden per experiment
+logging_steps: 10
+save_steps: 1000
+plot_loss: true
+overwrite_output_dir: true
+save_only_model: false
+report_to: none
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 4
+learning_rate: 1.0e-5
+num_train_epochs: 1.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+ddp_timeout: 180000000
+
+### evaluation
+val_size: 0.0
+per_device_eval_batch_size: 1
+eval_strategy: no
+
+### weighted loss (will be overridden)
+use_weighted_loss: false
+weighted_loss_variant: accept
+weighted_loss_gamma: 1.0

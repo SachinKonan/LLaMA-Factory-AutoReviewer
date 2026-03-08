@@ -13,12 +13,20 @@
 
 set -e  # Exit on error
 
+<<<<<<< HEAD
 cd /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer
 source .venv/bin/activate
 
 export TRANSFORMERS_OFFLINE=1
 # Set HuggingFace cache
 #export HF_HOME="/n/fs/vision-mix/sk7524/caches/.hf"
+=======
+cd /n/fs/vision-mix/sk7524/LLaMA-Factory
+source .venv/bin/activate
+
+# Set HuggingFace cache
+export HF_HOME="/n/fs/vision-mix/sk7524/caches/.hf"
+>>>>>>> inference_scaling
 
 echo "Job ID: $SLURM_JOB_ID"
 echo "Running on host: $(hostname)"

@@ -1,0 +1,68 @@
+{
+  "clean": {
+    "calibrated_high": {
+      "total": 6,
+      "correct": 6,
+      "accuracy": 1.0,
+      "accept_rate": 1.0,
+      "accept_recall": 1.0,
+      "reject_recall": 0,
+      "threshold": 6,
+      "description": "Threshold 6 -> 100.0% accept rate"
+    },
+    "calibrated_low": {
+      "total": 6,
+      "correct": 2,
+      "accuracy": 0.3333333333333333,
+      "accept_rate": 0.3333333333333333,
+      "accept_recall": 0.3333333333333333,
+      "reject_recall": 0,
+      "threshold": 8,
+      "description": "Threshold 8 -> 33.3% accept rate"
+    }
+  },
+  "clean_images": {
+    "calibrated_high": {
+      "total": 1892,
+      "correct": 944,
+      "accuracy": 0.4989429175475687,
+      "accept_rate": 0.9947145877378436,
+      "accept_recall": 0.9947033898305084,
+      "reject_recall": 0.005274261603375527,
+      "threshold": 7,
+      "description": "Threshold 7 -> 99.5% accept rate"
+    },
+    "calibrated_low": {
+      "total": 1892,
+      "correct": 944,
+      "accuracy": 0.4989429175475687,
+      "accept_rate": 0.03382663847780127,
+      "accept_recall": 0.03177966101694915,
+      "reject_recall": 0.9641350210970464,
+      "threshold": 8,
+      "description": "Threshold 8 -> 3.4% accept rate"
+    }
+  },
+  "vision": {
+    "calibrated_high": {
+      "total": 1979,
+      "correct": 993,
+      "accuracy": 0.5017685699848409,
+      "accept_rate": 0.989388580090955,
+      "accept_recall": 0.9929006085192698,
+      "reject_recall": 0.014098690835850957,
+      "threshold": 7,
+      "description": "Threshold 7 -> 98.9% accept rate"
+    },
+    "calibrated_low": {
+      "total": 1979,
+      "correct": 992,
+      "accuracy": 0.5012632642748863,
+      "accept_rate": 0.004547751389590703,
+      "accept_recall": 0.004056795131845842,
+      "reject_recall": 0.9949647532729103,
+      "threshold": 8,
+      "description": "Threshold 8 -> 0.5% accept rate"
+    }
+  }
+}

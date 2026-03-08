@@ -1,0 +1,52 @@
+### model
+model_name_or_path: Qwen/Qwen2.5-VL-3B-Instruct
+trust_remote_code: true
+flash_attn: fa2
+enable_liger_kernel: True
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+deepspeed: examples/deepspeed/ds_z3_config.json
+
+### dataset
+# Placeholder - will be overridden by command line or script
+dataset: iclr_2020_2025_85_5_10_split6_original_vision_binary_noreviews_counterfactual_reject_v6_train
+media_dir: .
+template: qwen2_vl
+cutoff_len: 16384
+max_samples: 10000000 # Large number to include all
+overwrite_cache: true
+preprocessing_num_workers: 16
+dataloader_num_workers: 4
+
+### output
+# Placeholder - will be overridden
+output_dir: ablations/checkpoints/test_run
+logging_steps: 10
+save_steps: 200
+plot_loss: true
+overwrite_output_dir: true
+save_only_model: false
+report_to: none
+
+### train
+image_max_pixels: 250880
+image_min_pixels: 196
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 16
+learning_rate: 1.0e-5
+num_train_epochs: 3.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+ddp_timeout: 180000000
+gradient_checkpointing: true
+gradient_checkpointing_kwargs: {"use_reentrant": false}
+
+### eval
+# val_size: 0.1
+# per_device_eval_batch_size: 1
+# eval_strategy: steps
+# eval_steps: 500
