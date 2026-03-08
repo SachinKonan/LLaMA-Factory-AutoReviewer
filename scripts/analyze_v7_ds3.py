@@ -97,6 +97,35 @@ def _optim_2020_2025_origin_dataset(variant_name: str) -> str:
     return "iclr_2020_2025_85_5_10_balanced_original_vision_corrected_v7_filtered"
 
 
+def _extras_dataset(variant_name: str) -> str:
+    """Dataset for optim_search_2026_with_extras variants.
+
+    Maps variant+modality to the correct extras-appended dataset.
+    Parent dir name encodes the extras type (paper_stats/qwen_reviews/gemini_reviews).
+    """
+    suffix_map = {
+        "paper_stats": "paperstats",
+        "qwen_reviews": "qwenreviews",
+        "gemini_reviews": "geminireviews",
+    }
+    # This resolver is called per-variant inside a subdir like
+    # optim_search_2026_with_extras/paper_stats/bz32_lr1e-6_text
+    # The variant_name is "bz32_lr1e-6_text", but we need the extras type
+    # from the parent. Since SUBDIR_CONFIGS uses the full subdir path,
+    # we handle all three suffixes via separate config entries.
+    # The actual suffix is injected by the lambda in SUBDIR_CONFIGS.
+    raise NotImplementedError("Use _extras_dataset_factory instead")
+
+
+def _extras_dataset_factory(extras_suffix: str):
+    """Return a resolver for extras datasets with the given suffix."""
+    def resolver(variant_name: str) -> str:
+        if variant_name.endswith("_text"):
+            return f"iclr_2020_2023_2025_2026_85_5_10_balanced_original_text_labelfix_v7_filtered_{extras_suffix}"
+        return f"iclr_2020_2023_2025_2026_85_5_10_balanced_original_vision_labelfix_v7_filtered_filtered24480_{extras_suffix}"
+    return resolver
+
+
 def _trainagreeing_dataset(variant_name: str) -> str:
     """Dataset for trainagreeing variants (2026 labelfix vs no-2026)."""
     has_2026 = "2026" in variant_name and "no2026" not in variant_name
@@ -125,6 +154,11 @@ SUBDIR_CONFIGS = [
     ("optim_search_2026", _optim_2026_labelfix_dataset),
     ("optim_2020_2025_origin", _optim_2020_2025_origin_dataset),
     ("trainagreeing", _trainagreeing_dataset),
+    ("optim_search_2026_with_extras/paper_stats", _extras_dataset_factory("paperstats")),
+    ("optim_search_2026_with_extras/qwen_reviews", _extras_dataset_factory("qwenreviews")),
+    ("optim_search_2026_with_extras/gemini_reviews", _extras_dataset_factory("geminireviews")),
+    ("optim_search_2026_with_extras/qwen_reviews_x2", _extras_dataset_factory("qwenreviews_x2")),
+    ("optim_search_2026_with_extras/gemini_reviews_x2", _extras_dataset_factory("geminireviews_x2")),
 ]
 
 DATA_DIR = Path("data")
@@ -422,11 +456,29 @@ def print_combined_overall_table(all_year_stats: list[dict], ckpt_names: list[st
 
         print(f"{'N:':<20}{all_metrics_no2026[0]['n']}")
 
+    # Compute metrics for only 2025 and 2026
+    has_2026 = any(2026 in ys for ys in all_year_stats)
+    if has_2026:
+        all_metrics_2025_2026 = []
+        for year_stats in all_year_stats:
+            stats_2025_2026 = aggregate_stats(year_stats, [2025, 2026])
+            all_metrics_2025_2026.append(calc_metrics(stats_2025_2026))
 
-def analyze_directory(result_dir: Path, data_root: Path, dataset_name: Optional[str] = None) -> list[dict]:
+        print("\n--- Overall Metrics (only 2025 and 2026) ---")
+        values = [m["accuracy"] for m in all_metrics_2025_2026]
+        print(f"{'Accuracy (%):':<20}{format_combined_value(values)}")
+        values = [m["accept_recall"] for m in all_metrics_2025_2026]
+        print(f"{'Accept Recall (%):':<20}{format_combined_value(values)}")
+        values = [m["reject_recall"] for m in all_metrics_2025_2026]
+        print(f"{'Reject Recall (%):':<20}{format_combined_value(values)}")
+        print(f"{'N:':<20}{all_metrics_2025_2026[0]['n']}")
+
+
+def analyze_directory(result_dir: Path, data_root: Path, dataset_name: Optional[str] = None) -> tuple[list[dict], Optional[dict]]:
     """Analyze all checkpoints in a result directory with combined tables.
 
-    Returns list of CSV row dicts for --csv output.
+    Returns (csv_rows, best_2025_2026_info) where best_2025_2026_info is None
+    when no 2026 data exists, or {"variant": str, "ckpt": str, "accuracy": float}.
     """
     short_name = result_dir.name
     csv_rows = []
@@ -440,27 +492,27 @@ def analyze_directory(result_dir: Path, data_root: Path, dataset_name: Optional[
 
     if not ckpt_files:
         print(f"No checkpoint files found in {result_dir}")
-        return csv_rows
+        return csv_rows, None
 
     # Resolve dataset name: explicit override > DATASET_MAPPINGS lookup
     if dataset_name is None:
         if short_name not in DATASET_MAPPINGS:
             print(f"Error: Unknown dataset '{short_name}'")
             print(f"  Extracted short_name: {short_name}")
-            return csv_rows
+            return csv_rows, None
         dataset_name = DATASET_MAPPINGS[short_name]
     data_dir = data_root / f"{dataset_name}_test"
 
     if not data_dir.exists():
         print(f"Error: Test data directory not found: {data_dir}")
-        return csv_rows
+        return csv_rows, None
 
     # Load test data once
     try:
         test_data = load_test_dataset(dataset_name)
     except Exception as e:
         print(f"Error loading test data: {e}")
-        return csv_rows
+        return csv_rows, None
 
     # Load and compute stats for all checkpoints
     all_year_stats = []
@@ -477,7 +529,7 @@ def analyze_directory(result_dir: Path, data_root: Path, dataset_name: Optional[
 
     if not all_year_stats:
         print(f"No valid checkpoints found in {result_dir}")
-        return csv_rows
+        return csv_rows, None
 
     # Print header
     print("=" * 80)
@@ -505,7 +557,18 @@ def analyze_directory(result_dir: Path, data_root: Path, dataset_name: Optional[
                 "n": metrics["n"],
             })
 
-    return csv_rows
+    # Compute best 2025+2026 accuracy across checkpoints
+    best_2025_2026 = None
+    has_2026 = any(2026 in ys for ys in all_year_stats)
+    if has_2026:
+        for year_stats, ckpt_name in zip(all_year_stats, ckpt_names):
+            stats = aggregate_stats(year_stats, [2025, 2026])
+            m = calc_metrics(stats)
+            if m["accuracy"] is not None:
+                if best_2025_2026 is None or m["accuracy"] > best_2025_2026["accuracy"]:
+                    best_2025_2026 = {"variant": short_name, "ckpt": ckpt_name, "accuracy": m["accuracy"]}
+
+    return csv_rows, best_2025_2026
 
 
 def write_csv(rows: list[dict], output_path: Path):
@@ -533,10 +596,19 @@ def analyze_all(data_root: Path, csv_dir: Optional[Path] = None):
 
     # Analyze top-level short_name dirs (dataset sweep variants)
     toplevel_rows = []
+    toplevel_best_infos = []
     for short_name in sorted(DATASET_MAPPINGS.keys()):
         result_dir = results_dir / short_name
         if result_dir.exists():
-            toplevel_rows.extend(analyze_directory(result_dir, data_root))
+            rows, best_info = analyze_directory(result_dir, data_root)
+            toplevel_rows.extend(rows)
+            if best_info is not None:
+                toplevel_best_infos.append(best_info)
+
+    if toplevel_best_infos:
+        overall_best = max(toplevel_best_infos, key=lambda x: x["accuracy"])
+        print(f"\n--- Overall Metrics (only 2025 and 2026) --- <--------- MAX: "
+              f"{overall_best['variant']} ckpt-{overall_best['ckpt']} = {overall_best['accuracy']:.1f}%")
 
     if csv_dir and toplevel_rows:
         write_csv(toplevel_rows, csv_dir / "dataset_sweep_metrics.csv")
@@ -555,9 +627,18 @@ def analyze_all(data_root: Path, csv_dir: Optional[Path] = None):
             continue
         print(f"\nScanning: {subdir}")
         subdir_rows = []
+        subdir_best_infos = []
         for variant_dir in variant_dirs:
             ds_name = dataset_resolver(variant_dir.name)
-            subdir_rows.extend(analyze_directory(variant_dir, data_root, dataset_name=ds_name))
+            rows, best_info = analyze_directory(variant_dir, data_root, dataset_name=ds_name)
+            subdir_rows.extend(rows)
+            if best_info is not None:
+                subdir_best_infos.append(best_info)
+
+        if subdir_best_infos:
+            overall_best = max(subdir_best_infos, key=lambda x: x["accuracy"])
+            print(f"\n--- Overall Metrics (only 2025 and 2026) --- <--------- MAX: "
+                  f"{overall_best['variant']} ckpt-{overall_best['ckpt']} = {overall_best['accuracy']:.1f}%")
 
         if csv_dir and subdir_rows:
             write_csv(subdir_rows, csv_dir / f"{subdir_name}_metrics.csv")
@@ -590,12 +671,15 @@ def main():
             if p.is_dir():
                 # Try to infer dataset from parent directory via SUBDIR_CONFIGS
                 ds_name = None
-                parent_name = p.parent.name
                 for subdir_name, resolver in SUBDIR_CONFIGS:
-                    if parent_name == subdir_name:
+                    # Handle both flat (wd_sweep) and nested (optim_.../paper_stats) subdirs
+                    subdir_parts = Path(subdir_name).parts
+                    parent_parts = p.parent.parts
+                    if len(parent_parts) >= len(subdir_parts) and parent_parts[-len(subdir_parts):] == subdir_parts:
                         ds_name = resolver(p.name)
                         break
-                all_rows.extend(analyze_directory(p, args.data_root, dataset_name=ds_name))
+                rows, _ = analyze_directory(p, args.data_root, dataset_name=ds_name)
+                all_rows.extend(rows)
             else:
                 print(f"Error: {p} is not a directory")
         if args.csv and all_rows:
