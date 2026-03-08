@@ -13,9 +13,9 @@ per_device_eval_batch_size: 1
 
 ### Dataset
 dataset_dir: /scratch/gpfs/ZHUANGL/jl0796/shared/data
-eval_dataset: iclr_2020_2023_2025_85_5_10_balanced_original_text_v7_filtered_test
+eval_dataset: iclr_2020_2023_2025_2026_85_5_10_balanced_original_text_labelfix_v7_filtered_test_500
 template: qwen
-cutoff_len: 20000
+cutoff_len: 24480
 max_samples: 500
 
 ### Output

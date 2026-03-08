@@ -20,6 +20,7 @@ import json
 import os
 import gc
 import functools
+import csv
 from types import MethodType
 from typing import TYPE_CHECKING, Any, Optional, Union
 
@@ -133,6 +134,7 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
 
         # Counter for sequential sample IDs in attention visualization
         self._attn_viz_sample_idx = 0
+        self._attn_viz_confidence_results = []
 
         # Initialize train accuracy tracker if enabled
         self._train_accuracy_tracker = None
@@ -875,571 +877,645 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
         logger.info_rank0(f"Using spatial_merge: {spatial_merge}")
 
         for i in range(batch_size):
-            # Extract single sample inputs
-            sample_inputs = {}
-            for k, v in inputs.items():
-                if isinstance(v, torch.Tensor):
-                    if v.dim() > 0 and v.size(0) == batch_size:
-                        sample_inputs[k] = v[i : i + 1]
-                    else:
-                        sample_inputs[k] = v
-                else:
-                    sample_inputs[k] = v
-
-            # Fix 4: Truncate input_ids/attention_mask to prompt-only.
-            # Only needed in causal-LM format where input_ids contains the full sequence
-            # (prompt+response) and labels has IGNORE_INDEX for prompt tokens.
-            # In Seq2Seq/predict_with_generate mode, input_ids is already prompt-only
-            # and labels contains only the response tokens (different length) — skip truncation.
-            labels_batch = inputs.get("labels")
-            if labels_batch is not None and labels_batch.dim() == 2:
-                labels_i = labels_batch[i]
-                input_len = sample_inputs["input_ids"].shape[1]
-                labels_len = labels_i.shape[0]
-                if labels_len == input_len:
-                    # Causal-LM format: same length, IGNORE_INDEX marks prompt
-                    response_starts = (labels_i != IGNORE_INDEX).nonzero(as_tuple=True)[0]
-                    if len(response_starts) > 0:
-                        prompt_end = response_starts[0].item()
-                        if prompt_end > 0:
-                            sample_inputs["input_ids"] = sample_inputs["input_ids"][:, :prompt_end]
-                            if "attention_mask" in sample_inputs and sample_inputs["attention_mask"].dim() == 2:
-                                sample_inputs["attention_mask"] = sample_inputs["attention_mask"][:, :prompt_end]
-                            logger.info_rank0(f"Truncated to prompt-only: {labels_len} → {prompt_end} tokens")
-                else:
-                    # Seq2Seq format: input_ids is already prompt-only, labels is response-only
-                    logger.info_rank0(f"Seq2Seq format detected: input_ids={input_len}, labels={labels_len} — no truncation needed")
-
-            if i == 0:
+            try:
+                # Extract single sample inputs
+                sample_inputs = {}
                 for k, v in inputs.items():
                     if isinstance(v, torch.Tensor):
-                        logger.info_rank0(f"Input {k} shape: {v.shape}")
+                        if v.dim() > 0 and v.size(0) == batch_size:
+                            sample_inputs[k] = v[i : i + 1]
+                        else:
+                            sample_inputs[k] = v
                     else:
-                        logger.info_rank0(f"Input {k} type: {type(v)}")
+                        sample_inputs[k] = v
+    
+                # Fix 4: Truncate input_ids/attention_mask to prompt-only.
+                # Only needed in causal-LM format where input_ids contains the full sequence
+                # (prompt+response) and labels has IGNORE_INDEX for prompt tokens.
+                # In Seq2Seq/predict_with_generate mode, input_ids is already prompt-only
+                # and labels contains only the response tokens (different length) — skip truncation.
+                labels_batch = inputs.get("labels")
+                gt = "unknown"
+                if labels_batch is not None and labels_batch.dim() == 2:
+                    labels_i = labels_batch[i]
+                    non_ignored = labels_i[labels_i != IGNORE_INDEX]
+                    if len(non_ignored) > 0:
+                        gt_token_id = non_ignored[0].item()
+                        gt_text = self.processing_class.decode([gt_token_id]).strip().lower()
+                        if "accept" in gt_text: gt = "accept"
+                        elif "reject" in gt_text: gt = "reject"
+                        else: gt = gt_text
 
-            # Debug inputs and metadata
-            logger.info_rank0(f"prediction_step keys: {list(inputs.keys())}")
-            if "_metadata" in inputs:
-                logger.info_rank0(f"Found _metadata: {inputs['_metadata']}")
+                    input_len = sample_inputs["input_ids"].shape[1]
+                    labels_len = labels_i.shape[0]
+                    if labels_len == input_len:
+                        # Causal-LM format: same length, IGNORE_INDEX marks prompt
+                        response_starts = (labels_i != IGNORE_INDEX).nonzero(as_tuple=True)[0]
+                        if len(response_starts) > 0:
+                            prompt_end = response_starts[0].item()
+                            if prompt_end > 0:
+                                sample_inputs["input_ids"] = sample_inputs["input_ids"][:, :prompt_end]
+                                if "attention_mask" in sample_inputs and sample_inputs["attention_mask"].dim() == 2:
+                                    sample_inputs["attention_mask"] = sample_inputs["attention_mask"][:, :prompt_end]
+                                logger.info_rank0(f"Truncated to prompt-only: {labels_len} → {prompt_end} tokens")
+                    else:
+                        # Seq2Seq format: input_ids is already prompt-only, labels is response-only
+                        logger.info_rank0(f"Seq2Seq format detected: input_ids={input_len}, labels={labels_len} — no truncation needed")
+    
+                if i == 0:
+                    for k, v in inputs.items():
+                        if isinstance(v, torch.Tensor):
+                            logger.info_rank0(f"Input {k} shape: {v.shape}")
+                        else:
+                            logger.info_rank0(f"Input {k} type: {type(v)}")
+    
+                # Debug inputs and metadata
+                logger.info_rank0(f"prediction_step keys: {list(inputs.keys())}")
+                if "_metadata" in inputs:
+                    logger.info_rank0(f"Found _metadata: {inputs['_metadata']}")
+    
+                # Metadata extraction
+                paper_id = None
+                pct_rating = 0.0
+                citation_normalized_by_year = 0.0
 
-            # Metadata extraction
-            paper_id = None
-            metadata = inputs.get("_metadata", [])
-            if metadata and i < len(metadata) and metadata[i] is not None:
-                if isinstance(metadata[i], dict):
-                    paper_id = metadata[i].get("paper_id") or metadata[i].get("submission_id")
-                elif isinstance(metadata[i], str):
+                metadata = inputs.get("_metadata", [])
+                m_obj = None
+                if metadata and i < len(metadata) and metadata[i] is not None:
+                    if isinstance(metadata[i], dict):
+                        m_obj = metadata[i]
+                    elif isinstance(metadata[i], str):
+                        try:
+                            m_obj = json.loads(metadata[i])
+                        except:
+                            pass
+                
+                if m_obj:
+                    paper_id = m_obj.get("paper_id") or m_obj.get("submission_id")
+                    pct_rating = m_obj.get("pct_rating", 0.0)
+                    citation_normalized_by_year = m_obj.get("citation_normalized_by_year", 0.0)
+    
+                if paper_id is None:
+                    for k in ["submission_id", "paper_id", "id"]:
+                        if k in inputs:
+                            val = inputs[k][i]
+                            paper_id = val if isinstance(val, str) else str(val)
+                            break
+    
+                # Robust fallback: lookup directly from eval_dataset or data.json
+                if paper_id is None:
+                    eval_ids = self._get_eval_paper_ids()
+                    if 0 <= self._attn_viz_sample_idx < len(eval_ids):
+                        paper_id = eval_ids[self._attn_viz_sample_idx]
+    
+                if paper_id is None and hasattr(self, "eval_dataset"):
                     try:
-                        m_json = json.loads(metadata[i])
-                        paper_id = m_json.get("paper_id") or m_json.get("submission_id")
+                        sample = self.eval_dataset[self._attn_viz_sample_idx]
+                        m = sample.get("_metadata")
+                        if m:
+                            paper_id = m.get("submission_id") or m.get("paper_id")
                     except:
                         pass
-
-            if paper_id is None:
-                for k in ["submission_id", "paper_id", "id"]:
-                    if k in inputs:
-                        val = inputs[k][i]
-                        paper_id = val if isinstance(val, str) else str(val)
-                        break
-
-            # Robust fallback: lookup directly from eval_dataset or data.json
-            if paper_id is None:
-                eval_ids = self._get_eval_paper_ids()
-                if 0 <= self._attn_viz_sample_idx < len(eval_ids):
-                    paper_id = eval_ids[self._attn_viz_sample_idx]
-
-            if paper_id is None and hasattr(self, "eval_dataset"):
+    
+                image_paths = []
+                if "image_paths" in inputs:
+                    image_paths = inputs["image_paths"][i]
+                elif "images" in inputs and isinstance(inputs["images"][i], (list, tuple)) and isinstance(inputs["images"][i][0], str):
+                    image_paths = inputs["images"][i]
+    
+                if not image_paths and hasattr(self, "eval_dataset"):
+                    try:
+                        sample = self.eval_dataset[self._attn_viz_sample_idx]
+                        image_paths = sample.get("images") or sample.get("image_paths") or []
+                    except:
+                        pass
+    
+                if not image_paths and metadata and i < len(metadata) and metadata[i] is not None:
+                    if isinstance(metadata[i], dict):
+                        image_paths = metadata[i].get("images") or metadata[i].get("image_paths") or []
+    
+                # If still no paper_id, try to extract from image_paths
+                if paper_id is None and image_paths:
+                    for p in image_paths:
+                        parts = p.split("/")
+                        if "images" in parts:
+                            idx = parts.index("images")
+                            if idx + 1 < len(parts):
+                                paper_id = parts[idx+1]
+                                break
+    
+                if paper_id is None:
+                    logger.info_rank0(f"No submission_id in metadata; using sequential ID")
+                    paper_id = f"sample_{self._attn_viz_sample_idx:05d}"
+    
+                # Prepare image grid information
+                prompt_ids = sample_inputs["input_ids"][0]
+                image_positions = []
+                if image_token_id is not None:
+                    image_positions = (prompt_ids == image_token_id).nonzero(as_tuple=True)[0].cpu().numpy()
+                
+                logger.info_rank0(f"Found {len(image_positions)} image tokens at positions: {image_positions}")
+    
+                grid_thw = sample_inputs.get("image_grid_thw")
+                image_sizes_merged = []
+                if grid_thw is not None:
+                    actual_grid_thw = grid_thw[0] if grid_thw.dim() == 3 else grid_thw
+                    logger.info_rank0(f"Image grid thw rows: {actual_grid_thw.size(0)}")
+                    for j in range(actual_grid_thw.size(0)):
+                        h = actual_grid_thw[j, 1].item() // spatial_merge
+                        w = actual_grid_thw[j, 2].item() // spatial_merge
+                        image_sizes_merged.append((h, w))
+                
+                logger.info_rank0(f"Image sizes merged: {image_sizes_merged}")
+    
+                # Load images for OpenCV
+                standardized_bgr = []
+                if image_paths:
+                    cv2_imgs = []
+                    for p in image_paths:
+                        if not os.path.isabs(p):
+                            actual_rel = p.replace("data/images/", "")
+                            p = os.path.join(self.finetuning_args.attention_viz_image_root, actual_rel)
+                        if os.path.exists(p):
+                            img = cv2.imread(p)
+                            if img is not None:
+                                cv2_imgs.append(img)
+                        else:
+                            logger.warning_rank0(f"Image path {p} not found for visualization.")
+    
+                    if cv2_imgs:
+                        max_w = max(img.shape[1] for img in cv2_imgs)
+                        for img in cv2_imgs:
+                            if img.shape[1] != max_w:
+                                h_new = int(img.shape[0] * max_w / img.shape[1])
+                                img = cv2.resize(img, (max_w, h_new), interpolation=cv2.INTER_AREA)
+                            standardized_bgr.append(img)
+    
+                # ── Attention capture via Q/K hooks on the last layer only ──────────
+                # Strategy: run the full forward with flash attention (no output_attentions).
+                # For the last transformer layer, capture Q (from q_proj, before RoPE) and
+                # position_embeddings (cos, sin) via hooks.  After each forward, apply RoPE
+                # to Q ourselves, read K for image positions from past_key_values, and compute
+                # softmax(Q_last @ K_image.T * scaling) averaged over heads.  This never
+                # materialises the full [seq, seq] attention matrix.
+                last_layer = layers[num_layers - 1]
+                last_attn = last_layer.self_attn
+    
+                q_cap: dict = {}   # filled by hooks each forward call
+    
+                def _q_proj_hook(module, input, output):
+                    # output: [1, seq_len, num_heads * head_dim]
+                    q_cap["q_raw"] = output.detach()
+    
+                def _self_attn_pre_hook(module, args, kwargs):
+                    # position_embeddings=(cos, sin) is passed as a kwarg by the model
+                    pe = kwargs.get("position_embeddings")
+                    if pe is not None:
+                        q_cap["cos"] = pe[0].detach()
+                        q_cap["sin"] = pe[1].detach()
+    
+                h_qproj = last_attn.q_proj.register_forward_hook(_q_proj_hook)
+                h_pre   = last_attn.register_forward_pre_hook(_self_attn_pre_hook, with_kwargs=True)
+    
+                # Generation parameters
+                max_new_tokens = self.finetuning_args.attention_viz_max_new_tokens
+                generated_ids = []
+                paper_dir = os.path.join(output_root, paper_id)
+                os.makedirs(paper_dir, exist_ok=True)
+    
+                # Token IDs for decision logging
                 try:
-                    sample = self.eval_dataset[self._attn_viz_sample_idx]
-                    m = sample.get("_metadata")
-                    if m:
-                        paper_id = m.get("submission_id") or m.get("paper_id")
+                    accept_id = self.processing_class.encode("accept", add_special_tokens=False)[0]
+                    reject_id = self.processing_class.encode("reject", add_special_tokens=False)[0]
                 except:
-                    pass
-
-            image_paths = []
-            if "image_paths" in inputs:
-                image_paths = inputs["image_paths"][i]
-            elif "images" in inputs and isinstance(inputs["images"][i], (list, tuple)) and isinstance(inputs["images"][i][0], str):
-                image_paths = inputs["images"][i]
-
-            if not image_paths and hasattr(self, "eval_dataset"):
-                try:
-                    sample = self.eval_dataset[self._attn_viz_sample_idx]
-                    image_paths = sample.get("images") or sample.get("image_paths") or []
-                except:
-                    pass
-
-            if not image_paths and metadata and i < len(metadata) and metadata[i] is not None:
-                if isinstance(metadata[i], dict):
-                    image_paths = metadata[i].get("images") or metadata[i].get("image_paths") or []
-
-            # If still no paper_id, try to extract from image_paths
-            if paper_id is None and image_paths:
-                for p in image_paths:
-                    parts = p.split("/")
-                    if "images" in parts:
-                        idx = parts.index("images")
-                        if idx + 1 < len(parts):
-                            paper_id = parts[idx+1]
-                            break
-
-            if paper_id is None:
-                logger.info_rank0(f"No submission_id in metadata; using sequential ID")
-                paper_id = f"sample_{self._attn_viz_sample_idx:05d}"
-
-            # Prepare image grid information
-            prompt_ids = sample_inputs["input_ids"][0]
-            image_positions = []
-            if image_token_id is not None:
-                image_positions = (prompt_ids == image_token_id).nonzero(as_tuple=True)[0].cpu().numpy()
-            
-            logger.info_rank0(f"Found {len(image_positions)} image tokens at positions: {image_positions}")
-
-            grid_thw = sample_inputs.get("image_grid_thw")
-            image_sizes_merged = []
-            if grid_thw is not None:
-                actual_grid_thw = grid_thw[0] if grid_thw.dim() == 3 else grid_thw
-                logger.info_rank0(f"Image grid thw rows: {actual_grid_thw.size(0)}")
-                for j in range(actual_grid_thw.size(0)):
-                    h = actual_grid_thw[j, 1].item() // spatial_merge
-                    w = actual_grid_thw[j, 2].item() // spatial_merge
-                    image_sizes_merged.append((h, w))
-            
-            logger.info_rank0(f"Image sizes merged: {image_sizes_merged}")
-
-            # Load images for OpenCV
-            standardized_bgr = []
-            if image_paths:
-                cv2_imgs = []
-                for p in image_paths:
-                    if not os.path.isabs(p):
-                        actual_rel = p.replace("data/images/", "")
-                        p = os.path.join(self.finetuning_args.attention_viz_image_root, actual_rel)
-                    if os.path.exists(p):
-                        img = cv2.imread(p)
-                        if img is not None:
-                            cv2_imgs.append(img)
-                    else:
-                        logger.warning_rank0(f"Image path {p} not found for visualization.")
-
-                if cv2_imgs:
-                    max_w = max(img.shape[1] for img in cv2_imgs)
-                    for img in cv2_imgs:
-                        if img.shape[1] != max_w:
-                            h_new = int(img.shape[0] * max_w / img.shape[1])
-                            img = cv2.resize(img, (max_w, h_new), interpolation=cv2.INTER_AREA)
-                        standardized_bgr.append(img)
-
-            # ── Attention capture via Q/K hooks on the last layer only ──────────
-            # Strategy: run the full forward with flash attention (no output_attentions).
-            # For the last transformer layer, capture Q (from q_proj, before RoPE) and
-            # position_embeddings (cos, sin) via hooks.  After each forward, apply RoPE
-            # to Q ourselves, read K for image positions from past_key_values, and compute
-            # softmax(Q_last @ K_image.T * scaling) averaged over heads.  This never
-            # materialises the full [seq, seq] attention matrix.
-            last_layer = layers[num_layers - 1]
-            last_attn = last_layer.self_attn
-
-            q_cap: dict = {}   # filled by hooks each forward call
-
-            def _q_proj_hook(module, input, output):
-                # output: [1, seq_len, num_heads * head_dim]
-                q_cap["q_raw"] = output.detach()
-
-            def _self_attn_pre_hook(module, args, kwargs):
-                # position_embeddings=(cos, sin) is passed as a kwarg by the model
-                pe = kwargs.get("position_embeddings")
-                if pe is not None:
-                    q_cap["cos"] = pe[0].detach()
-                    q_cap["sin"] = pe[1].detach()
-
-            h_qproj = last_attn.q_proj.register_forward_hook(_q_proj_hook)
-            h_pre   = last_attn.register_forward_pre_hook(_self_attn_pre_hook, with_kwargs=True)
-
-            # Generation parameters
-            max_new_tokens = self.finetuning_args.attention_viz_max_new_tokens
-            generated_ids = []
-            paper_dir = os.path.join(output_root, paper_id)
-            os.makedirs(paper_dir, exist_ok=True)
+                    accept_id, reject_id = -1, -1
+                recorded_decision = False
 
             # Read generation config from model (temperature, repetition_penalty, do_sample)
-            gen_cfg = getattr(model, "generation_config", None)
-            gen_temperature = float(getattr(gen_cfg, "temperature", 1.0)) if gen_cfg is not None else 1.0
-            gen_rep_penalty = float(getattr(gen_cfg, "repetition_penalty", 1.0)) if gen_cfg is not None else 1.0
-            gen_do_sample = bool(getattr(gen_cfg, "do_sample", False)) if gen_cfg is not None else False
-            logger.info_rank0(
-                f"Generation config: temperature={gen_temperature}, "
-                f"repetition_penalty={gen_rep_penalty}, do_sample={gen_do_sample}"
-            )
-
-            def _sample_next_token(logits_last: "torch.Tensor", prev_ids: list[int]) -> int:
-                """Apply repetition penalty + temperature, then greedy or sample."""
-                logits = logits_last.float().clone()  # [1, vocab]
-                if gen_rep_penalty != 1.0 and prev_ids:
-                    for tid in set(prev_ids):
-                        if logits[0, tid] > 0:
-                            logits[0, tid] /= gen_rep_penalty
-                        else:
-                            logits[0, tid] *= gen_rep_penalty
-                if gen_temperature > 0 and gen_temperature != 1.0:
-                    logits = logits / gen_temperature
-                if gen_do_sample and gen_temperature > 0:
-                    probs = torch.softmax(logits, dim=-1)
-                    return torch.multinomial(probs, num_samples=1).item()
-                return torch.argmax(logits, dim=-1).item()
-
-            def _compute_a_img(past_key_values) -> Optional[torch.Tensor]:
-                """After a forward pass, compute last-layer attention from the last query
-                token to all image positions using captured Q and K from the KV cache.
-                Uses full softmax over all tokens and returns [num_heads, n_img] tensor.
-                """
-                if not q_cap or "q_raw" not in q_cap or "cos" not in q_cap:
-                    return None
-                if len(image_positions) == 0:
-                    return None
-                try:
-                    from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import apply_multimodal_rotary_pos_emb
-                    q_raw = q_cap["q_raw"]  # [1, q_len, num_heads * head_dim]
-                    cos   = q_cap["cos"]
-                    sin   = q_cap["sin"]
-                    bsz, q_len, _ = q_raw.shape
-                    num_heads  = last_attn.num_heads
-                    head_dim   = last_attn.head_dim
-                    num_kv_heads = last_attn.num_key_value_heads
-                    scaling    = last_attn.scaling
-
-                    # Reshape Q: [1, num_heads, q_len, head_dim]
-                    q = q_raw.view(bsz, q_len, num_heads, head_dim).transpose(1, 2)
-
-                    # Apply multimodal RoPE (same call as inside self_attn.forward)
-                    mrope_section = last_attn.rope_scaling["mrope_section"]
-                    q_rot, _ = apply_multimodal_rotary_pos_emb(q, q, cos, sin, mrope_section)
-                    q_last = q_rot[:, :, -1:, :]                         # [1, num_heads, 1, head_dim]
-
-                    # Full K from KV cache of the last layer
-                    k_full = past_key_values[num_layers - 1][0]          # [1, kv_heads, kv_len, head_dim]
-                    groups = num_heads // num_kv_heads
-                    k_exp = k_full.repeat_interleave(groups, dim=1)      # [1, num_heads, kv_len, head_dim]
-
-                    # Full attention for last query token: [1, num_heads, 1, kv_len]
-                    attn_scores = torch.matmul(q_last, k_exp.transpose(-1, -2)) * scaling
-                    # Full softmax to get true attention weights
-                    attn_weights_full = torch.softmax(attn_scores.float(), dim=-1).to(q_last.dtype) # [1, num_heads, 1, kv_len]
-
-                    # Slice out image positions
-                    img_pos_t = torch.from_numpy(image_positions).long()
-                    a_img_heads = attn_weights_full[0, :, 0, img_pos_t]   # [num_heads, n_img]
-                    return a_img_heads
-                except Exception as exc:
-                    import traceback
-                    logger.warning_rank0(f"_compute_a_img failed: {traceback.format_exc()}")
-                    return None
-
-            def _save_step(step_idx: int, token_safe: str, a_img_np: np.ndarray, is_smoothed: bool = False) -> None:
-                """Render and save heatmap overlays for a single generation step."""
-                if a_img is None or not standardized_bgr:
-                    return
-                # Normalize the ENTIRE sequence globally first so all pages share the same colormap scale
-                normed_global = sum_normalise(a_img)
-                suffix = "_smoothed" if is_smoothed else ""
-                
-                def _save_variant(normed_arr, variant_name):
-                    overlaid = []
-                    offset = 0
-                    for img_bgr, (hm, wm) in zip(standardized_bgr, image_sizes_merged):
-                        num_t = hm * wm
-                        if offset + num_t <= len(normed_arr):
-                            # Extract the globally-normalized patch scores for this specific image page
-                            mask_2d = normed_arr[offset : offset + num_t].reshape(hm, wm)
-                            res = gen_cam(np.float32(img_bgr) / 255.0, mask_2d)
-                            overlaid.append(draw_patch_grid(res, hm, wm))
-                            offset += num_t
-                    if overlaid:
-                        n_pages = len(overlaid)
-                        half_n = (n_pages + 1) // 2
-                        
-                        top_row = overlaid[:half_n]
-                        bottom_row = overlaid[half_n:]
-                        
-                        # Pad the bottom row if the number of pages is odd to match widths
-                        if len(bottom_row) < half_n:
-                            h, w, c = top_row[-1].shape
-                            blank_img = np.zeros((h, w, c), dtype=np.uint8)
-                            bottom_row.append(blank_img)
-                            
-                        top_stitched = cv2.hconcat(top_row)
-                        bottom_stitched = cv2.hconcat(bottom_row)
-                        stitched = cv2.vconcat([top_stitched, bottom_stitched])
-                        
-                        # Save to both "last/" (last-layer) and "average/" (same here — single layer)
-                        for subdir in ("last", "average"):
-                            out_dir = os.path.join(paper_dir, subdir, f"images{variant_name}")
-                            os.makedirs(out_dir, exist_ok=True)
-                            cv2.imwrite(os.path.join(out_dir, f"step_{step_idx:03d}_{token_safe}.jpg"), stitched)
-
-                _save_variant(normed_global, f"{suffix}")
-                for k in [5, 10, 25]:
-                    threshold = np.percentile(normed_global, 100 - k)
-                    filtered = np.where(normed_global >= threshold, normed_global, 0.0)
-                    _save_variant(sum_normalise(filtered), f"_top{k}{suffix}")
-
-            sample_inputs.pop("labels", None)
-            logger.info_rank0(f"Visualizing attention for {paper_id}...")
-
-            # ── Prefill ───────────────────────────────────────────────────────────
-            # Setup for generation loop
-            past_key_values = None
-            cache_position = torch.arange(sample_inputs["input_ids"].shape[1], device=device)
-
-            # ── Prefill ───────────────────────────────────────────────────────────
-            with torch.no_grad():
-                with self.compute_loss_context_manager():
-                    model_dtype = next(model.parameters()).dtype
-                    for k, v in sample_inputs.items():
-                        if isinstance(v, torch.Tensor) and torch.is_floating_point(v):
-                            sample_inputs[k] = v.to(model_dtype)
-
-                    inputs_for_gen = model.prepare_inputs_for_generation(
-                        **sample_inputs,
-                        past_key_values=past_key_values,
-                        use_cache=True,
-                        cache_position=cache_position,
-                    )
-                    
-                    outputs = model(**inputs_for_gen)
-                    next_token_id = _sample_next_token(outputs.logits[:, -1, :], generated_ids)
-                    generated_ids.append(next_token_id)
-                    past_key_values = outputs.past_key_values
-
-            # Maintain attention mask for generation loop manually
-            attention_mask = sample_inputs.get("attention_mask")
-            if attention_mask is None:
-                attention_mask = torch.ones_like(sample_inputs["input_ids"])
-
-            attention_img_all: list[np.ndarray] = []
-            decision_img_all: list[tuple[int, str, np.ndarray]] = []
-
-            # ── Token-by-token decode ─────────────────────────────────────────────
-            for step_idx in range(max_new_tokens):
-                cur_token_id = generated_ids[-1]
-                token_text = self.processing_class.decode([cur_token_id]).strip() or f"token_{cur_token_id}"
-                token_safe = "".join(c for c in token_text if c.isalnum() or c in ("_", "-")).strip() or f"token_{cur_token_id}"
-
-                # Compute and save attention heatmap for this step's token
-                a_img_heads = _compute_a_img(past_key_values)
-                a_img = None
-                if a_img_heads is not None:
-                    print(f"a_img_heads shape: {a_img_heads.shape}")
-                    a_img = a_img_heads.mean(dim=0).float().cpu().numpy()
-                    print(f"a_img (averaged across heads) shape: {a_img.shape}")
-                    a_img_sum = a_img_heads.sum().item() / last_attn.num_heads
-                    print(f"a_img_sum: {a_img_sum}")
-                    # Smoothing: average over each horizontal row of tokens
-                    a_img_smoothed = np.zeros_like(a_img)
-                    offset = 0
-                    for hm, wm in image_sizes_merged:
-                        num_t = hm * wm
-                        if offset + num_t <= len(a_img):
-                            patch_scores = a_img[offset : offset + num_t].reshape(hm, wm)
-                            row_means = patch_scores.mean(axis=1, keepdims=True)
-                            a_img_smoothed[offset : offset + num_t] = np.repeat(row_means, wm, axis=1).flatten()
-                            offset += num_t
-                    
-                    _save_step(step_idx, token_safe, a_img)
-                    _save_step(step_idx, token_safe, a_img_smoothed, is_smoothed=True)
-
-                    attention_img_all.append(a_img.copy())
-                    if "accept" in token_text.lower() or "reject" in token_text.lower():
-                        decision_img_all.append((step_idx, token_text, a_img.copy()))
-                # Compute logits using a_img (image-only attended contribution) and compare with model logits.
-                if a_img is not None and len(image_positions) > 0:
+                gen_cfg = getattr(model, "generation_config", None)
+                gen_temperature = float(getattr(gen_cfg, "temperature", 1.0)) if gen_cfg is not None else 1.0
+                gen_rep_penalty = float(getattr(gen_cfg, "repetition_penalty", 1.0)) if gen_cfg is not None else 1.0
+                gen_do_sample = bool(getattr(gen_cfg, "do_sample", False)) if gen_cfg is not None else False
+                logger.info_rank0(
+                    f"Generation config: temperature={gen_temperature}, "
+                    f"repetition_penalty={gen_rep_penalty}, do_sample={gen_do_sample}"
+                )
+    
+                def _sample_next_token(logits_last: "torch.Tensor", prev_ids: list[int]) -> int:
+                    """Apply repetition penalty + temperature, then greedy or sample."""
+                    logits = logits_last.float().clone()  # [1, vocab]
+                    if gen_rep_penalty != 1.0 and prev_ids:
+                        for tid in set(prev_ids):
+                            if logits[0, tid] > 0:
+                                logits[0, tid] /= gen_rep_penalty
+                            else:
+                                logits[0, tid] *= gen_rep_penalty
+                    if gen_temperature > 0 and gen_temperature != 1.0:
+                        logits = logits / gen_temperature
+                    if gen_do_sample and gen_temperature > 0:
+                        probs = torch.softmax(logits, dim=-1)
+                        return torch.multinomial(probs, num_samples=1).item()
+                    return torch.argmax(logits, dim=-1).item()
+    
+                def _compute_a_img(past_key_values) -> Optional[torch.Tensor]:
+                    """After a forward pass, compute last-layer attention from the last query
+                    token to all image positions using captured Q and K from the KV cache.
+                    Uses full softmax over all tokens and returns [num_heads, n_img] tensor.
+                    """
+                    if not q_cap or "q_raw" not in q_cap or "cos" not in q_cap:
+                        return None
+                    if len(image_positions) == 0:
+                        return None
                     try:
-                        # -- Part A: reconstruct image-only logits from a_img + V_img --
-                        img_pos_t = torch.from_numpy(image_positions).long().to(device)
-                        v_last = past_key_values[num_layers - 1][1]           # [1, kv_heads, kv_len, head_dim]
-                        model_dtype = v_last.dtype
-                        v_img = v_last[:, :, img_pos_t, :]                    # [1, kv_heads, n_img, head_dim]
-                        groups = last_attn.num_heads // last_attn.num_key_value_heads
-                        v_img_exp = v_img.repeat_interleave(groups, dim=1)    # [1, num_heads, n_img, head_dim]
-                        
-                        # Use headwise attention weights for reconstruction
-                        # a_img_heads: [num_heads, n_img]
-                        # V_img_exp[0]: [num_heads, n_img, head_dim]
-                        attended_img = (a_img_heads[:, :, None] * v_img_exp[0]).sum(dim=1)  # [num_heads, head_dim]
-                        attended_img = attended_img.reshape(1, 1, -1).to(model_dtype)         # [1, 1, hidden_dim]
-                        with torch.no_grad():
-                            with self.compute_loss_context_manager():
-                                h_img = last_attn.o_proj(attended_img)        # [1, 1, hidden_dim]
-                                if hasattr(model.model, "language_model"):
-                                    norm_layer = model.model.language_model.norm
-                                else:
-                                    norm_layer = model.model.norm
-                                norm_dtype = next(norm_layer.parameters()).dtype
-                                head_dtype = next(model.lm_head.parameters()).dtype
-                                h_norm = norm_layer(h_img.to(norm_dtype))
-                                logits_from_a_img = model.lm_head(h_norm.to(head_dtype))[:, -1, :]  # [1, vocab]
-
-                        # -- Part B: run forward with output_attentions=True to get model's actual logits --
-                        _cache_pos_chk = torch.tensor(
-                            [sample_inputs["input_ids"].shape[1] + step_idx], device=device
-                        )
-                        _attn_mask_chk = torch.cat(
-                            [attention_mask, torch.ones((1, 1), dtype=attention_mask.dtype, device=device)],
-                            dim=-1,
-                        )
-                        with torch.no_grad():
-                            with self.compute_loss_context_manager():
-                                _inputs_chk = model.prepare_inputs_for_generation(
-                                    input_ids=torch.tensor([[cur_token_id]], device=device),
-                                    past_key_values=past_key_values,
-                                    attention_mask=_attn_mask_chk,
-                                    use_cache=True,
-                                    cache_position=_cache_pos_chk,
-                                    pixel_values=sample_inputs.get("pixel_values"),
-                                    image_grid_thw=sample_inputs.get("image_grid_thw"),
-                                    pixel_values_videos=sample_inputs.get("pixel_values_videos"),
-                                    video_grid_thw=sample_inputs.get("video_grid_thw"),
-                                )
-                                _out_chk = model(**_inputs_chk, output_attentions=True)
-                        model_logits = _out_chk.logits[:, -1, :].float()
-
-                        # -- Part C: extract model's image attention and compare with a_img --
-                        if _out_chk.attentions is not None and _out_chk.attentions[-1] is not None:
-                            _model_attn_last = _out_chk.attentions[-1]            # [1, heads, 1, kv_len]
-                            _raw_img = _model_attn_last[0, :, -1, img_pos_t].mean(dim=0).float().cpu().numpy()
-                            attn_max_diff = float(np.abs(a_img - _raw_img).max())
-                            attn_corr = float(np.corrcoef(a_img, _raw_img)[0, 1]) if len(a_img) > 1 else float("nan")
-                            attn_stats_str = f"max_diff={attn_max_diff:.4f} corr={attn_corr:.4f}"
-                        else:
-                            attn_stats_str = "max_diff=N/A corr=N/A"
-
-                        top5_model = model_logits[0].topk(5).indices.tolist()
-                        top5_a_img = logits_from_a_img[0].float().topk(5).indices.tolist()
-                        top1_match = top5_model[0] == top5_a_img[0]
-                        logger.info_rank0(
-                            f"[attn_viz log] step={step_idx} "
-                            f"a_img_vs_model_attn: {attn_stats_str} total_mass={a_img_sum:.4f} | "
-                            f"logits top-1 match={top1_match} "
-                            f"(model={self.processing_class.decode([top5_model[0]])!r} vs "
-                            f"a_img={self.processing_class.decode([top5_a_img[0]])!r})"
-                        )
-                    except Exception as _exc:
+                        from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import apply_multimodal_rotary_pos_emb
+                        q_raw = q_cap["q_raw"]  # [1, q_len, num_heads * head_dim]
+                        cos   = q_cap["cos"]
+                        sin   = q_cap["sin"]
+                        bsz, q_len, _ = q_raw.shape
+                        num_heads  = last_attn.num_heads
+                        head_dim   = last_attn.head_dim
+                        num_kv_heads = last_attn.num_key_value_heads
+                        scaling    = last_attn.scaling
+    
+                        # Reshape Q: [1, num_heads, q_len, head_dim]
+                        q = q_raw.view(bsz, q_len, num_heads, head_dim).transpose(1, 2)
+    
+                        # Apply multimodal RoPE (same call as inside self_attn.forward)
+                        mrope_section = last_attn.rope_scaling["mrope_section"]
+                        q_rot, _ = apply_multimodal_rotary_pos_emb(q, q, cos, sin, mrope_section)
+                        q_last = q_rot[:, :, -1:, :]                         # [1, num_heads, 1, head_dim]
+    
+                        # Full K from KV cache of the last layer
+                        k_full = past_key_values[num_layers - 1][0]          # [1, kv_heads, kv_len, head_dim]
+                        groups = num_heads // num_kv_heads
+                        k_exp = k_full.repeat_interleave(groups, dim=1)      # [1, num_heads, kv_len, head_dim]
+    
+                        # Full attention for last query token: [1, num_heads, 1, kv_len]
+                        attn_scores = torch.matmul(q_last, k_exp.transpose(-1, -2)) * scaling
+                        # Full softmax to get true attention weights
+                        attn_weights_full = torch.softmax(attn_scores.float(), dim=-1).to(q_last.dtype) # [1, num_heads, 1, kv_len]
+    
+                        # Slice out image positions
+                        img_pos_t = torch.from_numpy(image_positions).long()
+                        a_img_heads = attn_weights_full[0, :, 0, img_pos_t]   # [num_heads, n_img]
+                        return a_img_heads
+                    except Exception as exc:
                         import traceback
-                        logger.warning_rank0(f"[attn_viz assert] step={step_idx} skipped: {traceback.format_exc()}")
-
-                _save_step(step_idx, token_safe, a_img)
-
-                if cur_token_id == self.processing_class.eos_token_id or "im_end" in token_text:
-                    break
-
-                # Update for next token
-                cache_position = torch.tensor([sample_inputs["input_ids"].shape[1] + step_idx], device=device)
-                attention_mask = torch.cat([attention_mask, torch.ones((1, 1), dtype=attention_mask.dtype, device=device)], dim=-1)
-
-                # Forward for next token (flash attention, no output_attentions)
+                        logger.warning_rank0(f"_compute_a_img failed: {traceback.format_exc()}")
+                        return None
+    
+                def _save_step(step_idx: int, token_safe: str, a_img_np: np.ndarray, is_smoothed: bool = False) -> None:
+                    """Render and save heatmap overlays for a single generation step."""
+                    if a_img is None or not standardized_bgr:
+                        return
+                    # Normalize the ENTIRE sequence globally first so all pages share the same colormap scale
+                    normed_global = sum_normalise(a_img)
+                    suffix = "_smoothed" if is_smoothed else ""
+                    
+                    def _save_variant(normed_arr, variant_name):
+                        overlaid = []
+                        offset = 0
+                        for img_bgr, (hm, wm) in zip(standardized_bgr, image_sizes_merged):
+                            num_t = hm * wm
+                            if offset + num_t <= len(normed_arr):
+                                # Extract the globally-normalized patch scores for this specific image page
+                                mask_2d = normed_arr[offset : offset + num_t].reshape(hm, wm)
+                                res = gen_cam(np.float32(img_bgr) / 255.0, mask_2d)
+                                overlaid.append(draw_patch_grid(res, hm, wm))
+                                offset += num_t
+                        if overlaid:
+                            n_pages = len(overlaid)
+                            half_n = (n_pages + 1) // 2
+                            
+                            top_row = overlaid[:half_n]
+                            bottom_row = overlaid[half_n:]
+                            
+                            # Pad the bottom row if the number of pages is odd to match widths
+                            if len(bottom_row) < half_n:
+                                h, w, c = top_row[-1].shape
+                                blank_img = np.zeros((h, w, c), dtype=np.uint8)
+                                bottom_row.append(blank_img)
+                                
+                            top_stitched = cv2.hconcat(top_row)
+                            bottom_stitched = cv2.hconcat(bottom_row)
+                            stitched = cv2.vconcat([top_stitched, bottom_stitched])
+                            
+                            # Save to both "last/" (last-layer) and "average/" (same here — single layer)
+                            for subdir in ("last", "average"):
+                                out_dir = os.path.join(paper_dir, subdir, f"images{variant_name}")
+                                os.makedirs(out_dir, exist_ok=True)
+                                cv2.imwrite(os.path.join(out_dir, f"step_{step_idx:03d}_{token_safe}.jpg"), stitched)
+    
+                    _save_variant(normed_global, f"{suffix}")
+                    for k in [5, 10, 25]:
+                        threshold = np.percentile(normed_global, 100 - k)
+                        filtered = np.where(normed_global >= threshold, normed_global, 0.0)
+                        _save_variant(sum_normalise(filtered), f"_top{k}{suffix}")
+    
+                sample_inputs.pop("labels", None)
+                logger.info_rank0(f"Visualizing attention for {paper_id}...")
+    
+                # ── Prefill ───────────────────────────────────────────────────────────
+                # Setup for generation loop
+                past_key_values = None
+                cache_position = torch.arange(sample_inputs["input_ids"].shape[1], device=device)
+    
+                # ── Prefill ───────────────────────────────────────────────────────────
                 with torch.no_grad():
                     with self.compute_loss_context_manager():
+                        model_dtype = next(model.parameters()).dtype
+                        for k, v in sample_inputs.items():
+                            if isinstance(v, torch.Tensor) and torch.is_floating_point(v):
+                                sample_inputs[k] = v.to(model_dtype)
+    
                         inputs_for_gen = model.prepare_inputs_for_generation(
-                            input_ids=torch.tensor([[cur_token_id]], device=device),
+                            **sample_inputs,
                             past_key_values=past_key_values,
-                            attention_mask=attention_mask,
                             use_cache=True,
                             cache_position=cache_position,
-                            pixel_values=sample_inputs.get("pixel_values"),
-                            image_grid_thw=sample_inputs.get("image_grid_thw"),
-                            pixel_values_videos=sample_inputs.get("pixel_values_videos"),
-                            video_grid_thw=sample_inputs.get("video_grid_thw"),
                         )
+                        
                         outputs = model(**inputs_for_gen)
-                        next_token_id = _sample_next_token(outputs.logits[:, -1, :], generated_ids)
+                        last_logits = outputs.logits[:, -1, :].float()
+                        next_token_id = _sample_next_token(last_logits, generated_ids)
                         generated_ids.append(next_token_id)
                         past_key_values = outputs.past_key_values
-
-            # Save summary numpy arrays and 2-D heatmap for image attention
-            if attention_img_all:
-                summary_img_dir = os.path.join(paper_dir, "summary_image")
-                os.makedirs(summary_img_dir, exist_ok=True)
-                
-                # Section-wise attention stats
-                blocks = self._get_block_metadata(paper_id)
-                if blocks and decision_img_all:
-                    sections = self._get_sections_from_blocks(blocks)
-                    section_viz_data = []
-                    for step_idx, token_text, a_img in decision_img_all:
-                        weights = self._compute_section_weights_vision(a_img, image_sizes_merged, sections)
-                        if weights:
-                            section_viz_data.append({"step": step_idx, "token": token_text, "weights": weights})
-                    
-                    if section_viz_data:
-                        with open(os.path.join(summary_img_dir, "section_attn.json"), "w") as f:
-                            json.dump(section_viz_data, f, indent=2)
+    
+                # Maintain attention mask for generation loop manually
+                attention_mask = sample_inputs.get("attention_mask")
+                if attention_mask is None:
+                    attention_mask = torch.ones_like(sample_inputs["input_ids"])
+    
+                attention_img_all: list[np.ndarray] = []
+                decision_img_all: list[tuple[int, str, np.ndarray]] = []
+    
+                # ── Token-by-token decode ─────────────────────────────────────────────
+                for step_idx in range(max_new_tokens):
+                    cur_token_id = generated_ids[-1]
+                    token_text = self.processing_class.decode([cur_token_id]).strip() or f"token_{cur_token_id}"
+                    token_safe = "".join(c for c in token_text if c.isalnum() or c in ("_", "-")).strip() or f"token_{cur_token_id}"
+    
+                    # Compute and save attention heatmap for this step's token
+                    a_img_heads = _compute_a_img(past_key_values)
+                    a_img = None
+                    if a_img_heads is not None:
+                        print(f"a_img_heads shape: {a_img_heads.shape}")
+                        a_img = a_img_heads.mean(dim=0).float().cpu().numpy()
+                        print(f"a_img (averaged across heads) shape: {a_img.shape}")
+                        a_img_sum = a_img_heads.sum().item() / last_attn.num_heads
+                        print(f"a_img_sum: {a_img_sum}")
+                        # Smoothing: average over each horizontal row of tokens
+                        a_img_smoothed = np.zeros_like(a_img)
+                        offset = 0
+                        for hm, wm in image_sizes_merged:
+                            num_t = hm * wm
+                            if offset + num_t <= len(a_img):
+                                patch_scores = a_img[offset : offset + num_t].reshape(hm, wm)
+                                row_means = patch_scores.mean(axis=1, keepdims=True)
+                                a_img_smoothed[offset : offset + num_t] = np.repeat(row_means, wm, axis=1).flatten()
+                                offset += num_t
                         
-                        # Plot the last decision token's section weights
-                        last_data = section_viz_data[-1]
-                        last_weights = last_data["weights"]
-                        plt.figure(figsize=(10, 6))
-                        names = list(last_weights.keys())
-                        vals = list(last_weights.values())
-                        plt.barh(names, vals)
-                        plt.xlabel("Average Attention Weight")
-                        plt.title(f"Section-wise Attention ({last_data['token']})")
-                        plt.tight_layout()
-                        plt.savefig(os.path.join(summary_img_dir, "section_attn_last.png"))
+                        _save_step(step_idx, token_safe, a_img)
+                        _save_step(step_idx, token_safe, a_img_smoothed, is_smoothed=True)
+    
+                        attention_img_all.append(a_img.copy())
+                        if "accept" in token_text.lower() or "reject" in token_text.lower():
+                            decision_img_all.append((step_idx, token_text, a_img.copy()))
+                            # Confidence logging
+                            if not recorded_decision and cur_token_id in [accept_id, reject_id]:
+                                probs = torch.softmax(last_logits, dim=-1)
+                                conf = probs[0, cur_token_id].item()
+                                total_prob = (probs[0, accept_id] + probs[0, reject_id]).item()
+                                decision = "accept" if cur_token_id == accept_id else "reject"
+                                self._attn_viz_confidence_results.append({
+                                    "paper_id": paper_id,
+                                    "decision": decision,
+                                    "confidence": conf,
+                                    "total_prob": total_prob,
+                                    "ground_truth": gt,
+                                    "pct_rating": pct_rating,
+                                    "citation_normalized_by_year": citation_normalized_by_year
+                                })
+                                recorded_decision = True
+                                self._save_confidence_csv(output_root)
+                    # Compute logits using a_img (image-only attended contribution) and compare with model logits.
+                    if a_img is not None and len(image_positions) > 0:
+                        try:
+                            # -- Part A: reconstruct image-only logits from a_img + V_img --
+                            img_pos_t = torch.from_numpy(image_positions).long().to(device)
+                            v_last = past_key_values[num_layers - 1][1]           # [1, kv_heads, kv_len, head_dim]
+                            model_dtype = v_last.dtype
+                            v_img = v_last[:, :, img_pos_t, :]                    # [1, kv_heads, n_img, head_dim]
+                            groups = last_attn.num_heads // last_attn.num_key_value_heads
+                            v_img_exp = v_img.repeat_interleave(groups, dim=1)    # [1, num_heads, n_img, head_dim]
+                            
+                            # Use headwise attention weights for reconstruction
+                            # a_img_heads: [num_heads, n_img]
+                            # V_img_exp[0]: [num_heads, n_img, head_dim]
+                            attended_img = (a_img_heads[:, :, None] * v_img_exp[0]).sum(dim=1)  # [num_heads, head_dim]
+                            attended_img = attended_img.reshape(1, 1, -1).to(model_dtype)         # [1, 1, hidden_dim]
+                            with torch.no_grad():
+                                with self.compute_loss_context_manager():
+                                    h_img = last_attn.o_proj(attended_img)        # [1, 1, hidden_dim]
+                                    if hasattr(model.model, "language_model"):
+                                        norm_layer = model.model.language_model.norm
+                                    else:
+                                        norm_layer = model.model.norm
+                                    norm_dtype = next(norm_layer.parameters()).dtype
+                                    head_dtype = next(model.lm_head.parameters()).dtype
+                                    h_norm = norm_layer(h_img.to(norm_dtype))
+                                    logits_from_a_img = model.lm_head(h_norm.to(head_dtype))[:, -1, :]  # [1, vocab]
+    
+                            # -- Part B: run forward with output_attentions=True to get model's actual logits --
+                            _cache_pos_chk = torch.tensor(
+                                [sample_inputs["input_ids"].shape[1] + step_idx], device=device
+                            )
+                            _attn_mask_chk = torch.cat(
+                                [attention_mask, torch.ones((1, 1), dtype=attention_mask.dtype, device=device)],
+                                dim=-1,
+                            )
+                            with torch.no_grad():
+                                with self.compute_loss_context_manager():
+                                    _inputs_chk = model.prepare_inputs_for_generation(
+                                        input_ids=torch.tensor([[cur_token_id]], device=device),
+                                        past_key_values=past_key_values,
+                                        attention_mask=_attn_mask_chk,
+                                        use_cache=True,
+                                        cache_position=_cache_pos_chk,
+                                        pixel_values=sample_inputs.get("pixel_values"),
+                                        image_grid_thw=sample_inputs.get("image_grid_thw"),
+                                        pixel_values_videos=sample_inputs.get("pixel_values_videos"),
+                                        video_grid_thw=sample_inputs.get("video_grid_thw"),
+                                    )
+                                    _out_chk = model(**_inputs_chk, output_attentions=True)
+                            model_logits = _out_chk.logits[:, -1, :].float()
+    
+                            # -- Part C: extract model's image attention and compare with a_img --
+                            if _out_chk.attentions is not None and _out_chk.attentions[-1] is not None:
+                                _model_attn_last = _out_chk.attentions[-1]            # [1, heads, 1, kv_len]
+                                _raw_img = _model_attn_last[0, :, -1, img_pos_t].mean(dim=0).float().cpu().numpy()
+                                attn_max_diff = float(np.abs(a_img - _raw_img).max())
+                                attn_corr = float(np.corrcoef(a_img, _raw_img)[0, 1]) if len(a_img) > 1 else float("nan")
+                                attn_stats_str = f"max_diff={attn_max_diff:.4f} corr={attn_corr:.4f}"
+                            else:
+                                attn_stats_str = "max_diff=N/A corr=N/A"
+    
+                            top5_model = model_logits[0].topk(5).indices.tolist()
+                            top5_a_img = logits_from_a_img[0].float().topk(5).indices.tolist()
+                            top1_match = top5_model[0] == top5_a_img[0]
+                            logger.info_rank0(
+                                f"[attn_viz log] step={step_idx} "
+                                f"a_img_vs_model_attn: {attn_stats_str} total_mass={a_img_sum:.4f} | "
+                                f"logits top-1 match={top1_match} "
+                                f"(model={self.processing_class.decode([top5_model[0]])!r} vs "
+                                f"a_img={self.processing_class.decode([top5_a_img[0]])!r})"
+                            )
+                        except Exception as _exc:
+                            import traceback
+                            logger.warning_rank0(f"[attn_viz assert] step={step_idx} skipped: {traceback.format_exc()}")
+    
+                    _save_step(step_idx, token_safe, a_img)
+    
+                    if cur_token_id == self.processing_class.eos_token_id or "im_end" in token_text:
+                        break
+    
+                    # Update for next token
+                    cache_position = torch.tensor([sample_inputs["input_ids"].shape[1] + step_idx], device=device)
+                    attention_mask = torch.cat([attention_mask, torch.ones((1, 1), dtype=attention_mask.dtype, device=device)], dim=-1)
+    
+                    # Forward for next token (flash attention, no output_attentions)
+                    with torch.no_grad():
+                        with self.compute_loss_context_manager():
+                            inputs_for_gen = model.prepare_inputs_for_generation(
+                                input_ids=torch.tensor([[cur_token_id]], device=device),
+                                past_key_values=past_key_values,
+                                attention_mask=attention_mask,
+                                use_cache=True,
+                                cache_position=cache_position,
+                                pixel_values=sample_inputs.get("pixel_values"),
+                                image_grid_thw=sample_inputs.get("image_grid_thw"),
+                                pixel_values_videos=sample_inputs.get("pixel_values_videos"),
+                                video_grid_thw=sample_inputs.get("video_grid_thw"),
+                            )
+                            outputs = model(**inputs_for_gen)
+                            last_logits = outputs.logits[:, -1, :].float()
+                            next_token_id = _sample_next_token(last_logits, generated_ids)
+                            generated_ids.append(next_token_id)
+                            past_key_values = outputs.past_key_values
+    
+                # Save summary numpy arrays and 2-D heatmap for image attention
+                if attention_img_all:
+                    summary_img_dir = os.path.join(paper_dir, "summary_image")
+                    os.makedirs(summary_img_dir, exist_ok=True)
+                    
+                    # Section-wise attention stats
+                    blocks = self._get_block_metadata(paper_id)
+                    if blocks and decision_img_all:
+                        sections = self._get_sections_from_blocks(blocks)
+                        section_viz_data = []
+                        for step_idx, token_text, a_img in decision_img_all:
+                            weights = self._compute_section_weights_vision(a_img, image_sizes_merged, sections)
+                            if weights:
+                                section_viz_data.append({"step": step_idx, "token": token_text, "weights": weights})
+                        
+                        if section_viz_data:
+                            with open(os.path.join(summary_img_dir, "section_attn.json"), "w") as f:
+                                json.dump(section_viz_data, f, indent=2)
+                            
+                            # Plot the last decision token's section weights
+                            last_data = section_viz_data[-1]
+                            last_weights = last_data["weights"]
+                            plt.figure(figsize=(10, 6))
+                            names = list(last_weights.keys())
+                            vals = list(last_weights.values())
+                            plt.barh(names, vals)
+                            plt.xlabel("Average Attention Weight")
+                            plt.title(f"Section-wise Attention ({last_data['token']})")
+                            try:
+                                plt.tight_layout()
+                                plt.savefig(os.path.join(summary_img_dir, "section_attn_last.png"))
+                            except Exception as e:
+                                logger.warning_rank0(f"Failed to save section_attn_last.png for {paper_id}: {e}")
+                            plt.close()
+                            
+                            # Semantic Heatmap: color the original PDF boxes
+                            self._save_semantic_heatmaps(paper_id, last_weights, sections, image_paths, summary_img_dir)
+    
+    
+                    attn_img_2d = np.stack(attention_img_all)  # [steps, n_img_tokens]
+                    np.save(os.path.join(summary_img_dir, "attention_image_avg.npy"), attn_img_2d)
+    
+                    # Save plots for decision tokens
+                    for (d_step, d_tok, d_a) in decision_img_all:
+                        safe_d_tok = "".join(c for c in d_tok if c.isalnum() or c in ("_", "-")).strip() or "token"
+                        try:
+                            plt.figure(figsize=(12, 4))
+                            plt.plot(d_a)
+                            plt.title("Mean Attention Distribution Across Image Patches")
+                            plt.xlabel("Image Patch Index")
+                            plt.ylabel("Mean Attention Score")
+                            plt.tight_layout()
+                            plt.savefig(os.path.join(summary_img_dir, f"attention_distribution_line_step{d_step}_{safe_d_tok}.png"), dpi=150)
+                        except Exception as e:
+                            logger.warning_rank0(f"Failed to save attention_distribution_line for {paper_id}: {e}")
                         plt.close()
                         
-                        # Semantic Heatmap: color the original PDF boxes
-                        self._save_semantic_heatmaps(paper_id, last_weights, sections, image_paths, summary_img_dir)
+                        try:
+                            plt.figure(figsize=(8, 4))
+                            plt.hist(d_a, bins=500, color='red', alpha=0.7)
+                            plt.title(f"Histogram of Attention Scores for Decision Token '{d_tok}'")
+                            plt.xlabel("Attention Score")
+                            plt.ylabel("Frequency")
+                            plt.xscale('log')
+                            plt.yscale('log')
+                            plt.tight_layout()
+                            plt.savefig(os.path.join(summary_img_dir, f"attention_distribution_hist_step{d_step}_{safe_d_tok}.png"), dpi=150)
+                        except Exception as e:
+                            logger.warning_rank0(f"Failed to save attention_distribution_hist for {paper_id}: {e}")
+                        plt.close()
+    
+                    # 2-D heatmap for image attention
+                    row_min = attn_img_2d.min(axis=1, keepdims=True)
+                    row_max = attn_img_2d.max(axis=1, keepdims=True)
+                    normed_2d_img = (attn_img_2d - row_min) / (row_max - row_min + 1e-8)
+                    SUMMARY_W = 1024
+                    SUMMARY_H = max(attn_img_2d.shape[0] * 8, 64)
+                    heatmap_2d_img = cv2.applyColorMap(
+                        cv2.resize(np.uint8(255 * normed_2d_img), (SUMMARY_W, SUMMARY_H), interpolation=cv2.INTER_NEAREST),
+                        cv2.COLORMAP_JET,
+                    )
+                    cv2.imwrite(os.path.join(summary_img_dir, "attention_image_avg_2d.jpg"), heatmap_2d_img)
+    
+    
+                    if not recorded_decision:
+                        self._attn_viz_confidence_results.append({
+                            "paper_id": paper_id,
+                            "decision": "none",
+                            "confidence": 0.0,
+                            "total_prob": 0.0,
+                            "ground_truth": gt,
+                            "pct_rating": pct_rating,
+                            "citation_normalized_by_year": citation_normalized_by_year
+                        })
+                        self._save_confidence_csv(output_root)
 
-
-                attn_img_2d = np.stack(attention_img_all)  # [steps, n_img_tokens]
-                np.save(os.path.join(summary_img_dir, "attention_image_avg.npy"), attn_img_2d)
-
-                # Save plots for decision tokens
-                for (d_step, d_tok, d_a) in decision_img_all:
-                    safe_d_tok = "".join(c for c in d_tok if c.isalnum() or c in ("_", "-")).strip() or "token"
-                    plt.figure(figsize=(12, 4))
-                    plt.plot(d_a)
-                    plt.title("Mean Attention Distribution Across Image Patches")
-                    plt.xlabel("Image Patch Index")
-                    plt.ylabel("Mean Attention Score")
-                    plt.tight_layout()
-                    plt.savefig(os.path.join(summary_img_dir, f"attention_distribution_line_step{d_step}_{safe_d_tok}.png"), dpi=150)
-                    plt.close()
-                    
-                    plt.figure(figsize=(8, 4))
-                    plt.hist(d_a, bins=500, color='red', alpha=0.7)
-                    plt.title(f"Histogram of Attention Scores for Decision Token '{d_tok}'")
-                    plt.xlabel("Attention Score")
-                    plt.ylabel("Frequency")
-                    plt.xscale('log')
-                    plt.yscale('log')
-                    plt.tight_layout()
-                    plt.savefig(os.path.join(summary_img_dir, f"attention_distribution_hist_step{d_step}_{safe_d_tok}.png"), dpi=150)
-                    plt.close()
-
-                # 2-D heatmap for image attention
-                row_min = attn_img_2d.min(axis=1, keepdims=True)
-                row_max = attn_img_2d.max(axis=1, keepdims=True)
-                normed_2d_img = (attn_img_2d - row_min) / (row_max - row_min + 1e-8)
-                SUMMARY_W = 1024
-                SUMMARY_H = max(attn_img_2d.shape[0] * 8, 64)
-                heatmap_2d_img = cv2.applyColorMap(
-                    cv2.resize(np.uint8(255 * normed_2d_img), (SUMMARY_W, SUMMARY_H), interpolation=cv2.INTER_NEAREST),
-                    cv2.COLORMAP_JET,
-                )
-                cv2.imwrite(os.path.join(summary_img_dir, "attention_image_avg_2d.jpg"), heatmap_2d_img)
-
-
-            # Cleanup
-            h_qproj.remove()
-            h_pre.remove()
-            q_cap.clear()
-            all_generated_ids.append(list(generated_ids))
-            del past_key_values, outputs, generated_ids
-            torch.cuda.empty_cache()
-            gc.collect()
-            self._attn_viz_sample_idx += 1
+                    # Cleanup
+                h_qproj.remove()
+                h_pre.remove()
+                q_cap.clear()
+                all_generated_ids.append(list(generated_ids))
+                del past_key_values, outputs, generated_ids
+                torch.cuda.empty_cache()
+                gc.collect()
+                self._attn_viz_sample_idx += 1
+            except torch.cuda.OutOfMemoryError:
+                logger.warning_rank0(f"OutOfMemoryError for sample {i} (paper_id={paper_id if 'paper_id' in locals() else 'unknown'}). Skipping.")
+                if 'h_qproj' in locals(): h_qproj.remove()
+                if 'h_pre' in locals(): h_pre.remove()
+                torch.cuda.empty_cache()
+                gc.collect()
+                self._attn_viz_sample_idx += 1
+                continue
 
         # Pad generated sequences to the same length and return as a tensor so that
         # save_predictions (which calls len(preds)) does not crash.
@@ -1536,510 +1612,591 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
         paper_start_marker = self.finetuning_args.attention_viz_text_paper_start_marker
 
         for i in range(batch_size):
-            # Extract single-sample inputs
-            sample_inputs = {}
-            for k, v in inputs.items():
-                if isinstance(v, torch.Tensor):
-                    if v.dim() > 0 and v.size(0) == batch_size:
-                        sample_inputs[k] = v[i : i + 1]
+            try:
+                # Extract single-sample inputs
+                sample_inputs = {}
+                for k, v in inputs.items():
+                    if isinstance(v, torch.Tensor):
+                        if v.dim() > 0 and v.size(0) == batch_size:
+                            sample_inputs[k] = v[i : i + 1]
+                        else:
+                            sample_inputs[k] = v
                     else:
                         sample_inputs[k] = v
-                else:
-                    sample_inputs[k] = v
+    
+                # Truncate to prompt-only
+                labels_batch = inputs.get("labels")
+                gt = "unknown"
+                if labels_batch is not None and labels_batch.dim() == 2:
+                    labels_i = labels_batch[i]
+                    non_ignored = labels_i[labels_i != IGNORE_INDEX]
+                    if len(non_ignored) > 0:
+                        gt_token_id = non_ignored[0].item()
+                        gt_text = self.processing_class.decode([gt_token_id]).strip().lower()
+                        if "accept" in gt_text: gt = "accept"
+                        elif "reject" in gt_text: gt = "reject"
+                        else: gt = gt_text
 
-            # Truncate to prompt-only
-            labels_batch = inputs.get("labels")
-            if labels_batch is not None and labels_batch.dim() == 2:
-                labels_i = labels_batch[i]
-                response_starts = (labels_i != IGNORE_INDEX).nonzero(as_tuple=True)[0]
-                if len(response_starts) > 0:
-                    prompt_end = response_starts[0].item()
-                    if prompt_end > 0:
-                        sample_inputs["input_ids"] = sample_inputs["input_ids"][:, :prompt_end]
-                        if "attention_mask" in sample_inputs and sample_inputs["attention_mask"].dim() == 2:
-                            sample_inputs["attention_mask"] = sample_inputs["attention_mask"][:, :prompt_end]
-                        logger.info_rank0(f"[text-viz] Truncated to prompt-only: {labels_i.shape[0]} → {prompt_end} tokens")
+                    response_starts = (labels_i != IGNORE_INDEX).nonzero(as_tuple=True)[0]
+                    if len(response_starts) > 0:
+                        prompt_end = response_starts[0].item()
+                        if prompt_end > 0:
+                            sample_inputs["input_ids"] = sample_inputs["input_ids"][:, :prompt_end]
+                            if "attention_mask" in sample_inputs and sample_inputs["attention_mask"].dim() == 2:
+                                sample_inputs["attention_mask"] = sample_inputs["attention_mask"][:, :prompt_end]
+                            logger.info_rank0(f"[text-viz] Truncated to prompt-only: {labels_i.shape[0]} → {prompt_end} tokens")
+    
+                # Debug inputs and metadata
+                logger.info_rank0(f"[text-viz] prediction_step keys: {list(inputs.keys())}")
+                if "_metadata" in inputs:
+                    logger.info_rank0(f"[text-viz] Found _metadata: {inputs['_metadata']}")
+    
+                # Metadata extraction
+                paper_id = None
+                pct_rating = 0.0
+                citation_normalized_by_year = 0.0
 
-            # Debug inputs and metadata
-            logger.info_rank0(f"[text-viz] prediction_step keys: {list(inputs.keys())}")
-            if "_metadata" in inputs:
-                logger.info_rank0(f"[text-viz] Found _metadata: {inputs['_metadata']}")
-
-            # Metadata extraction
-            paper_id = None
-            metadata = inputs.get("_metadata", [])
-            if metadata and i < len(metadata) and metadata[i] is not None:
-                if isinstance(metadata[i], dict):
-                    paper_id = metadata[i].get("paper_id") or metadata[i].get("submission_id")
-                elif isinstance(metadata[i], str):
+                metadata = inputs.get("_metadata", [])
+                m_obj = None
+                if metadata and i < len(metadata) and metadata[i] is not None:
+                    if isinstance(metadata[i], dict):
+                        m_obj = metadata[i]
+                    elif isinstance(metadata[i], str):
+                        try:
+                            m_obj = json.loads(metadata[i])
+                        except:
+                            pass
+                
+                if m_obj:
+                    paper_id = m_obj.get("paper_id") or m_obj.get("submission_id")
+                    pct_rating = m_obj.get("pct_rating", 0.0)
+                    citation_normalized_by_year = m_obj.get("citation_normalized_by_year", 0.0)
+    
+                if paper_id is None:
+                    for k in ["submission_id", "paper_id", "id"]:
+                        if k in inputs:
+                            val = inputs[k][i]
+                            paper_id = val if isinstance(val, str) else str(val)
+                            break
+    
+                # Robust fallback: lookup directly from eval_dataset or data.json
+                if paper_id is None:
+                    eval_ids = self._get_eval_paper_ids()
+                    if 0 <= self._attn_viz_sample_idx < len(eval_ids):
+                        paper_id = eval_ids[self._attn_viz_sample_idx]
+    
+                if paper_id is None and hasattr(self, "eval_dataset"):
                     try:
-                        m_json = json.loads(metadata[i])
-                        paper_id = m_json.get("paper_id") or m_json.get("submission_id")
+                        sample = self.eval_dataset[self._attn_viz_sample_idx]
+                        m = sample.get("_metadata")
+                        if m:
+                            paper_id = m.get("submission_id") or m.get("paper_id")
                     except:
                         pass
-
-            if paper_id is None:
-                for k in ["submission_id", "paper_id", "id"]:
-                    if k in inputs:
-                        val = inputs[k][i]
-                        paper_id = val if isinstance(val, str) else str(val)
-                        break
-
-            # Robust fallback: lookup directly from eval_dataset or data.json
-            if paper_id is None:
-                eval_ids = self._get_eval_paper_ids()
-                if 0 <= self._attn_viz_sample_idx < len(eval_ids):
-                    paper_id = eval_ids[self._attn_viz_sample_idx]
-
-            if paper_id is None and hasattr(self, "eval_dataset"):
-                try:
-                    sample = self.eval_dataset[self._attn_viz_sample_idx]
-                    m = sample.get("_metadata")
-                    if m:
-                        paper_id = m.get("submission_id") or m.get("paper_id")
-                except:
-                    pass
-
-            if paper_id is None:
-                logger.info_rank0(
-                    f"[text-viz] No submission_id in metadata; using sequential ID"
-                )
-                paper_id = f"sample_{self._attn_viz_sample_idx:05d}"
-
-            image_paths = []
-            if "image_paths" in inputs:
-                image_paths = inputs["image_paths"][i]
-            elif "images" in inputs and isinstance(inputs["images"][i], (list, tuple)) and isinstance(inputs["images"][i][0], str):
-                image_paths = inputs["images"][i]
-
-            if not image_paths and hasattr(self, "eval_dataset"):
-                try:
-                    sample = self.eval_dataset[self._attn_viz_sample_idx]
-                    image_paths = sample.get("images") or sample.get("image_paths") or []
-                except:
-                    pass
-
-            if not image_paths and metadata and i < len(metadata) and metadata[i] is not None:
-                if isinstance(metadata[i], dict):
-                    image_paths = metadata[i].get("images") or metadata[i].get("image_paths") or []
-
-            # Find paper token range
-            prompt_ids = sample_inputs["input_ids"][0]
-            paper_start_token, paper_end_token = self._find_paper_token_range(prompt_ids, paper_start_marker)
-            num_paper_tokens = paper_end_token - paper_start_token
-            logger.info_rank0(
-                f"[text-viz] {paper_id}: paper tokens [{paper_start_token}, {paper_end_token}) = {num_paper_tokens} tokens"
-            )
-
-            if num_paper_tokens <= 0:
-                logger.warning_rank0(f"[text-viz] No paper tokens found for {paper_id}, skipping.")
-                self._attn_viz_sample_idx += 1
-                continue
-
-            # Save paper token reference file
-            paper_dir = os.path.join(output_root, paper_id)
-            os.makedirs(paper_dir, exist_ok=True)
-            paper_token_ids = prompt_ids[paper_start_token:paper_end_token].tolist()
-            with open(os.path.join(paper_dir, "paper_tokens.txt"), "w", encoding="utf-8") as f:
-                for offset, tok_id in enumerate(paper_token_ids):
-                    tok_text = self.processing_class.decode([tok_id], skip_special_tokens=True)
-                    f.write(f"{paper_start_token + offset}\t{repr(tok_text)}\n")
-
-            # Hook setup — only the last layer; no full attention matrix materialised
-            last_layer = layers[num_layers - 1]
-            last_attn  = last_layer.self_attn
-            q_cap: dict = {}
-
-            def _q_proj_hook(module, input, output):
-                q_cap["q_raw"] = output.detach()
-
-            def _self_attn_pre_hook(module, args, kwargs):
-                pe = kwargs.get("position_embeddings")
-                if pe is not None:
-                    q_cap["cos"] = pe[0].detach()
-                    q_cap["sin"] = pe[1].detach()
-
-            h_qproj = last_attn.q_proj.register_forward_hook(_q_proj_hook)
-            h_pre   = last_attn.register_forward_pre_hook(_self_attn_pre_hook, with_kwargs=True)
-
-            paper_positions = np.arange(paper_start_token, paper_end_token)  # [num_paper_tokens]
-
-            def _compute_a_text(past_key_values) -> Optional[np.ndarray]:
-                if not q_cap or "q_raw" not in q_cap or "cos" not in q_cap:
-                    return None
-                if len(paper_positions) == 0:
-                    return None
-                try:
-                    q_raw = q_cap["q_raw"]; cos = q_cap["cos"]; sin = q_cap["sin"]
-                    bsz, q_len, _ = q_raw.shape
-                    # Read head params from model config (works for both Qwen2 and Qwen2-VL)
-                    cfg = model.config
-                    num_heads   = getattr(cfg, "num_attention_heads", None) or getattr(last_attn, "num_heads", None)
-                    num_kv_heads = getattr(cfg, "num_key_value_heads", None) or getattr(last_attn, "num_key_value_heads", num_heads)
-                    head_dim    = getattr(cfg, "hidden_size", num_heads * 128) // num_heads
-                    scaling     = head_dim ** -0.5
-                    q = q_raw.view(bsz, q_len, num_heads, head_dim).transpose(1, 2)
-                    # Use multimodal RoPE for VL models, standard RoPE for text models
-                    mrope_section = None
-                    rope_scaling = getattr(last_attn, "rope_scaling", None) or getattr(cfg, "rope_scaling", None)
-                    if isinstance(rope_scaling, dict):
-                        mrope_section = rope_scaling.get("mrope_section", None)
-                    if mrope_section is not None:
-                        from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import apply_multimodal_rotary_pos_emb
-                        q_rot, _ = apply_multimodal_rotary_pos_emb(q, q, cos, sin, mrope_section)
-                    else:
-                        from transformers.models.qwen2.modeling_qwen2 import apply_rotary_pos_emb
-                        q_rot, _ = apply_rotary_pos_emb(q, q, cos, sin)
-                    k_full = past_key_values[num_layers - 1][0]          # [1, kv_heads, kv_len, head_dim]
-                    paper_pos_t = torch.from_numpy(paper_positions).long().to(k_full.device)
-                    k_paper = k_full[:, :, paper_pos_t, :]               # [1, kv_heads, n_paper, head_dim]
-                    groups = num_heads // num_kv_heads
-                    k_paper = k_paper.repeat_interleave(groups, dim=1)   # [1, num_heads, n_paper, head_dim]
-                    q_last = q_rot[:, :, -1:, :]                         # [1, num_heads, 1, head_dim]
-                    attn_scores = torch.matmul(q_last, k_paper.transpose(-1, -2)) * scaling
-                    attn_weights = torch.softmax(attn_scores.float(), dim=-1)
-                    return attn_weights[0, :, 0, :].mean(dim=0).cpu().numpy()
-                except Exception as exc:
-                    logger.warning_rank0(f"_compute_a_text failed: {exc}")
-                    return None
-
-            # Prefill
-            max_new_tokens = self.finetuning_args.attention_viz_max_new_tokens
-            sample_inputs.pop("labels", None)
-            logger.info_rank0(f"[text-viz] Visualizing text attention for {paper_id}...")
-
-            # Read generation config (temperature, repetition_penalty, do_sample)
-            gen_cfg = getattr(model, "generation_config", None)
-            gen_temperature = float(getattr(gen_cfg, "temperature", 1.0)) if gen_cfg is not None else 1.0
-            gen_rep_penalty = float(getattr(gen_cfg, "repetition_penalty", 1.0)) if gen_cfg is not None else 1.0
-            gen_do_sample = bool(getattr(gen_cfg, "do_sample", False)) if gen_cfg is not None else False
-
-            def _sample_next_token(logits_last: "torch.Tensor", prev_ids: list[int]) -> int:
-                """Apply repetition penalty + temperature, then greedy or sample."""
-                logits = logits_last.float().clone()  # [1, vocab]
-                if gen_rep_penalty != 1.0 and prev_ids:
-                    for tid in set(prev_ids):
-                        if logits[0, tid] > 0:
-                            logits[0, tid] /= gen_rep_penalty
-                        else:
-                            logits[0, tid] *= gen_rep_penalty
-                if gen_temperature > 0 and gen_temperature != 1.0:
-                    logits = logits / gen_temperature
-                if gen_do_sample and gen_temperature > 0:
-                    probs = torch.softmax(logits, dim=-1)
-                    return torch.multinomial(probs, num_samples=1).item()
-                return torch.argmax(logits, dim=-1).item()
-
-            # Maintain attention mask for generation loop manually
-            generated_ids: list[int] = []
-            attention_mask = sample_inputs.get("attention_mask")
-            if attention_mask is None:
-                attention_mask = torch.ones_like(sample_inputs["input_ids"])
-            
-            past_key_values = None
-            cache_position = torch.arange(sample_inputs["input_ids"].shape[1], device=device)
-
-            with torch.no_grad():
-                with self.compute_loss_context_manager():
-                    model_dtype = next(model.parameters()).dtype
-                    for k, v in sample_inputs.items():
-                        if isinstance(v, torch.Tensor) and torch.is_floating_point(v):
-                            sample_inputs[k] = v.to(model_dtype)
-                    
-                    inputs_for_gen = model.prepare_inputs_for_generation(
-                        **sample_inputs,
-                        past_key_values=past_key_values,
-                        use_cache=True,
-                        cache_position=cache_position,
+    
+                if paper_id is None:
+                    logger.info_rank0(
+                        f"[text-viz] No submission_id in metadata; using sequential ID"
                     )
-
-                    outputs = model(**inputs_for_gen)
-                    next_token_id = _sample_next_token(outputs.logits[:, -1, :], generated_ids)
-                    generated_ids.append(next_token_id)
-                    past_key_values = outputs.past_key_values
-
-            # Accumulators for the 2-D summary
-            attention_avg_all: list[np.ndarray] = []   # per step: avg across layers
-            attention_last_all: list[np.ndarray] = []  # per step: last layer only
-            decision_text_all: list[tuple[int, str, np.ndarray]] = []
-
-            # Precompute output dirs to avoid repeated joins
-            def _get_out_dirs(variant=""):
-                avg_d = os.path.join(paper_dir, "average", f"images{variant}")
-                last_d = os.path.join(paper_dir, "last", f"images{variant}")
-                os.makedirs(avg_d, exist_ok=True)
-                os.makedirs(last_d, exist_ok=True)
-                return avg_d, last_d
-
-            dirs_map = {
-                "": _get_out_dirs(""),
-                "_top5": _get_out_dirs("_top5"),
-                "_top10": _get_out_dirs("_top10"),
-                "_top25": _get_out_dirs("_top25"),
-                "_smoothed": _get_out_dirs("_smoothed"),
-                "_top5_smoothed": _get_out_dirs("_top5_smoothed"),
-                "_top10_smoothed": _get_out_dirs("_top10_smoothed"),
-                "_top25_smoothed": _get_out_dirs("_top25_smoothed"),
-            }
-            HEATMAP_W = min(num_paper_tokens, 1024)
-
-            # Token-by-token generation
-            for step_idx in range(max_new_tokens):
-                cur_token_id = generated_ids[-1]
-                token_text = self.processing_class.decode([cur_token_id]).strip() or f"token_{cur_token_id}"
-                token_safe = (
-                    "".join(c for c in token_text if c.isalnum() or c in ("_", "-")).strip()
-                    or f"token_{cur_token_id}"
+                    paper_id = f"sample_{self._attn_viz_sample_idx:05d}"
+    
+                image_paths = []
+                if "image_paths" in inputs:
+                    image_paths = inputs["image_paths"][i]
+                elif "images" in inputs and isinstance(inputs["images"][i], (list, tuple)) and isinstance(inputs["images"][i][0], str):
+                    image_paths = inputs["images"][i]
+    
+                if not image_paths and hasattr(self, "eval_dataset"):
+                    try:
+                        sample = self.eval_dataset[self._attn_viz_sample_idx]
+                        image_paths = sample.get("images") or sample.get("image_paths") or []
+                    except:
+                        pass
+    
+                if not image_paths and metadata and i < len(metadata) and metadata[i] is not None:
+                    if isinstance(metadata[i], dict):
+                        image_paths = metadata[i].get("images") or metadata[i].get("image_paths") or []
+    
+                # Find paper token range
+                prompt_ids = sample_inputs["input_ids"][0]
+                paper_start_token, paper_end_token = self._find_paper_token_range(prompt_ids, paper_start_marker)
+                num_paper_tokens = paper_end_token - paper_start_token
+                logger.info_rank0(
+                    f"[text-viz] {paper_id}: paper tokens [{paper_start_token}, {paper_end_token}) = {num_paper_tokens} tokens"
                 )
+    
+                if num_paper_tokens <= 0:
+                    logger.warning_rank0(f"[text-viz] No paper tokens found for {paper_id}, skipping.")
+                    self._attn_viz_sample_idx += 1
+                    continue
+    
+                # Save paper token reference file
+                paper_dir = os.path.join(output_root, paper_id)
+                os.makedirs(paper_dir, exist_ok=True)
+                paper_token_ids = prompt_ids[paper_start_token:paper_end_token].tolist()
+                with open(os.path.join(paper_dir, "paper_tokens.txt"), "w", encoding="utf-8") as f:
+                    for offset, tok_id in enumerate(paper_token_ids):
+                        tok_text = self.processing_class.decode([tok_id], skip_special_tokens=True)
+                        f.write(f"{paper_start_token + offset}\t{repr(tok_text)}\n")
+    
+                # Hook setup — only the last layer; no full attention matrix materialised
+                last_layer = layers[num_layers - 1]
+                last_attn  = last_layer.self_attn
+                q_cap: dict = {}
+    
+                def _q_proj_hook(module, input, output):
+                    q_cap["q_raw"] = output.detach()
+    
+                def _self_attn_pre_hook(module, args, kwargs):
+                    pe = kwargs.get("position_embeddings")
+                    if pe is not None:
+                        q_cap["cos"] = pe[0].detach()
+                        q_cap["sin"] = pe[1].detach()
+    
+                h_qproj = last_attn.q_proj.register_forward_hook(_q_proj_hook)
+                h_pre   = last_attn.register_forward_pre_hook(_self_attn_pre_hook, with_kwargs=True)
+    
+                paper_positions = np.arange(paper_start_token, paper_end_token)  # [num_paper_tokens]
+    
+                def _compute_a_text(past_key_values) -> Optional[np.ndarray]:
+                    if not q_cap or "q_raw" not in q_cap or "cos" not in q_cap:
+                        return None
+                    if len(paper_positions) == 0:
+                        return None
+                    try:
+                        q_raw = q_cap["q_raw"]; cos = q_cap["cos"]; sin = q_cap["sin"]
+                        bsz, q_len, _ = q_raw.shape
+                        # Read head params from model config (works for both Qwen2 and Qwen2-VL)
+                        cfg = model.config
+                        num_heads   = getattr(cfg, "num_attention_heads", None) or getattr(last_attn, "num_heads", None)
+                        num_kv_heads = getattr(cfg, "num_key_value_heads", None) or getattr(last_attn, "num_key_value_heads", num_heads)
+                        head_dim    = getattr(cfg, "hidden_size", num_heads * 128) // num_heads
+                        scaling     = head_dim ** -0.5
+                        q = q_raw.view(bsz, q_len, num_heads, head_dim).transpose(1, 2)
+                        # Use multimodal RoPE for VL models, standard RoPE for text models
+                        mrope_section = None
+                        rope_scaling = getattr(last_attn, "rope_scaling", None) or getattr(cfg, "rope_scaling", None)
+                        if isinstance(rope_scaling, dict):
+                            mrope_section = rope_scaling.get("mrope_section", None)
+                        if mrope_section is not None:
+                            from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import apply_multimodal_rotary_pos_emb
+                            q_rot, _ = apply_multimodal_rotary_pos_emb(q, q, cos, sin, mrope_section)
+                        else:
+                            from transformers.models.qwen2.modeling_qwen2 import apply_rotary_pos_emb
+                            q_rot, _ = apply_rotary_pos_emb(q, q, cos, sin)
+                        k_full = past_key_values[num_layers - 1][0]          # [1, kv_heads, kv_len, head_dim]
+                        paper_pos_t = torch.from_numpy(paper_positions).long().to(k_full.device)
+                        k_paper = k_full[:, :, paper_pos_t, :]               # [1, kv_heads, n_paper, head_dim]
+                        groups = num_heads // num_kv_heads
+                        k_paper = k_paper.repeat_interleave(groups, dim=1)   # [1, num_heads, n_paper, head_dim]
+                        q_last = q_rot[:, :, -1:, :]                         # [1, num_heads, 1, head_dim]
+                        attn_scores = torch.matmul(q_last, k_paper.transpose(-1, -2)) * scaling
+                        attn_weights = torch.softmax(attn_scores.float(), dim=-1)
+                        return attn_weights[0, :, 0, :].mean(dim=0).cpu().numpy()
+                    except Exception as exc:
+                        logger.warning_rank0(f"_compute_a_text failed: {exc}")
+                        return None
+    
+                # Prefill
+                max_new_tokens = self.finetuning_args.attention_viz_max_new_tokens
+                sample_inputs.pop("labels", None)
+                logger.info_rank0(f"[text-viz] Visualizing text attention for {paper_id}...")
+    
+                # Read generation config (temperature, repetition_penalty, do_sample)
+                gen_cfg = getattr(model, "generation_config", None)
+                gen_temperature = float(getattr(gen_cfg, "temperature", 1.0)) if gen_cfg is not None else 1.0
+                gen_rep_penalty = float(getattr(gen_cfg, "repetition_penalty", 1.0)) if gen_cfg is not None else 1.0
+                gen_do_sample = bool(getattr(gen_cfg, "do_sample", False)) if gen_cfg is not None else False
+    
+                # Generation parameters
+                try:
+                    accept_id = self.processing_class.encode("accept", add_special_tokens=False)[0]
+                    reject_id = self.processing_class.encode("reject", add_special_tokens=False)[0]
+                except:
+                    accept_id, reject_id = -1, -1
+                recorded_decision = False
 
-                a_text = _compute_a_text(past_key_values)
+                def _sample_next_token(logits_last: "torch.Tensor", prev_ids: list[int]) -> int:
+                    """Apply repetition penalty + temperature, then greedy or sample."""
+                    logits = logits_last.float().clone()  # [1, vocab]
+                    if gen_rep_penalty != 1.0 and prev_ids:
+                        for tid in set(prev_ids):
+                            if logits[0, tid] > 0:
+                                logits[0, tid] /= gen_rep_penalty
+                            else:
+                                logits[0, tid] *= gen_rep_penalty
+                    if gen_temperature > 0 and gen_temperature != 1.0:
+                        logits = logits / gen_temperature
+                    if gen_do_sample and gen_temperature > 0:
+                        probs = torch.softmax(logits, dim=-1)
+                        return torch.multinomial(probs, num_samples=1).item()
+                    return torch.argmax(logits, dim=-1).item()
+    
+                # Maintain attention mask for generation loop manually
+                generated_ids: list[int] = []
+                attention_mask = sample_inputs.get("attention_mask")
+                if attention_mask is None:
+                    attention_mask = torch.ones_like(sample_inputs["input_ids"])
+                
+                past_key_values = None
+                cache_position = torch.arange(sample_inputs["input_ids"].shape[1], device=device)
 
-                if a_text is not None:
-                    # Smoothing: average over every 200 tokens
-                    a_text_smoothed = np.zeros_like(a_text)
-                    chunk_size = 200
-                    for i in range(0, len(a_text), chunk_size):
-                        a_text_smoothed[i:i+chunk_size] = a_text[i:i+chunk_size].mean()
-                    a_text = a_text_smoothed
+                # Generation parameters
+                try:
+                    accept_id = self.processing_class.encode("accept", add_special_tokens=False)[0]
+                    reject_id = self.processing_class.encode("reject", add_special_tokens=False)[0]
+                except:
+                    accept_id, reject_id = -1, -1
+                recorded_decision = False
 
-                    attention_avg_all.append(a_text.copy())
-                    attention_last_all.append(a_text.copy())   # same — single layer captured
-                    if "accept" in token_text.lower() or "reject" in token_text.lower():
-                        decision_text_all.append((step_idx, token_text, a_text.copy()))
-
-                    normed = sum_normalise(a_text)
-                    
-                    def _save_bar(normed_arr, variant_name):
-                        bar = cv2.applyColorMap(
-                            cv2.resize(np.uint8(255 * normed_arr).reshape(1, -1), (HEATMAP_W, 64),
-                                       interpolation=cv2.INTER_AREA),
-                            cv2.COLORMAP_JET,
-                        )
-                        ad, ld = dirs_map[variant_name]
-                        cv2.imwrite(os.path.join(ad, f"step_{step_idx:03d}_{token_safe}.jpg"), bar)
-                        cv2.imwrite(os.path.join(ld, f"step_{step_idx:03d}_{token_safe}.jpg"), bar)
-
-                    def _save_variants(arr, suffix=""):
-                        n_arr = sum_normalise(arr)
-                        _save_bar(n_arr, f"{suffix}")
-                        for k in [5, 10, 25]:
-                            threshold = np.percentile(n_arr, 100 - k)
-                            filtered = np.where(n_arr >= threshold, n_arr, 0.0)
-                            _save_bar(sum_normalise(filtered), f"_top{k}{suffix}")
-
-                    _save_variants(a_text)
-                    _save_variants(a_text_smoothed, suffix="_smoothed")
-
-                if cur_token_id == self.processing_class.eos_token_id or "im_end" in token_text:
-                    break
-
-                # Update for next token
-                cache_position = torch.tensor([sample_inputs["input_ids"].shape[1] + step_idx], device=device)
-                attention_mask = torch.cat([attention_mask, torch.ones((1, 1), dtype=attention_mask.dtype, device=device)], dim=-1)
-
-                # Forward for next token
                 with torch.no_grad():
                     with self.compute_loss_context_manager():
+                        model_dtype = next(model.parameters()).dtype
+                        for k, v in sample_inputs.items():
+                            if isinstance(v, torch.Tensor) and torch.is_floating_point(v):
+                                sample_inputs[k] = v.to(model_dtype)
+                        
                         inputs_for_gen = model.prepare_inputs_for_generation(
-                            input_ids=torch.tensor([[cur_token_id]], device=device),
+                            **sample_inputs,
                             past_key_values=past_key_values,
-                            attention_mask=attention_mask,
                             use_cache=True,
                             cache_position=cache_position,
-                            pixel_values=sample_inputs.get("pixel_values"),
-                            image_grid_thw=sample_inputs.get("image_grid_thw"),
-                            pixel_values_videos=sample_inputs.get("pixel_values_videos"),
-                            video_grid_thw=sample_inputs.get("video_grid_thw"),
                         )
+    
                         outputs = model(**inputs_for_gen)
-                        next_token_id = _sample_next_token(outputs.logits[:, -1, :], generated_ids)
+                        last_logits = outputs.logits[:, -1, :].float()
+                        next_token_id = _sample_next_token(last_logits, generated_ids)
                         generated_ids.append(next_token_id)
                         past_key_values = outputs.past_key_values
-
-            # Save summary numpy arrays and 2-D heatmap
-            if attention_avg_all:
-                summary_dir = os.path.join(paper_dir, "summary")
-                os.makedirs(summary_dir, exist_ok=True)
-
-                attn_avg_2d = np.stack(attention_avg_all)   # [steps, paper_tokens]
-                np.save(os.path.join(summary_dir, "attention_avg.npy"), attn_avg_2d)
-
-                # Save plots for decision tokens
-                for (d_step, d_tok, d_a) in decision_text_all:
-                    safe_d_tok = "".join(c for c in d_tok if c.isalnum() or c in ("_", "-")).strip() or "token"
-                    plt.figure(figsize=(12, 4))
-                    plt.plot(d_a)
-                    plt.title("Mean Attention Distribution Across Paper Tokens")
-                    plt.xlabel("Paper Token Index")
-                    plt.ylabel("Mean Attention Score")
-                    plt.tight_layout()
-                    plt.savefig(os.path.join(summary_dir, f"attention_distribution_line_step{d_step}_{safe_d_tok}.png"), dpi=150)
-                    plt.close()
-                    
-                    plt.figure(figsize=(8, 4))
-                    plt.hist(d_a, bins=500, color='red', alpha=0.7)
-                    plt.title(f"Histogram of Attention Scores for Decision Token '{d_tok}'")
-                    plt.xscale('log')
-                    plt.yscale('log')
-                    plt.xlabel("Attention Score")
-                    plt.ylabel("Frequency")
-                    plt.tight_layout()
-                    plt.savefig(os.path.join(summary_dir, f"attention_distribution_hist_step{d_step}_{safe_d_tok}.png"), dpi=150)
-                    plt.close()
-                
-                # Section-wise attention stats (Text)
-                blocks = self._get_block_metadata(paper_id)
-                if blocks and decision_text_all:
-                    sections = self._get_sections_from_blocks(blocks)
-                    paper_token_ids = prompt_ids[paper_start_token:paper_end_token].tolist()
-                    section_viz_data_text = []
-                    for d_step, d_tok, d_a in decision_text_all:
-                        weights = self._compute_section_weights_text(d_a, paper_token_ids, sections)
-                        if weights:
-                            section_viz_data_text.append({"step": d_step, "token": d_tok, "weights": weights})
-                    
-                    if section_viz_data_text:
-                        with open(os.path.join(summary_dir, "section_attn.json"), "w") as f:
-                            json.dump(section_viz_data_text, f, indent=2)
+    
+                # Accumulators for the 2-D summary
+                attention_avg_all: list[np.ndarray] = []   # per step: avg across layers
+                attention_last_all: list[np.ndarray] = []  # per step: last layer only
+                decision_text_all: list[tuple[int, str, np.ndarray]] = []
+    
+                # Precompute output dirs to avoid repeated joins
+                def _get_out_dirs(variant=""):
+                    avg_d = os.path.join(paper_dir, "average", f"images{variant}")
+                    last_d = os.path.join(paper_dir, "last", f"images{variant}")
+                    os.makedirs(avg_d, exist_ok=True)
+                    os.makedirs(last_d, exist_ok=True)
+                    return avg_d, last_d
+    
+                dirs_map = {
+                    "": _get_out_dirs(""),
+                    "_top5": _get_out_dirs("_top5"),
+                    "_top10": _get_out_dirs("_top10"),
+                    "_top25": _get_out_dirs("_top25"),
+                    "_smoothed": _get_out_dirs("_smoothed"),
+                    "_top5_smoothed": _get_out_dirs("_top5_smoothed"),
+                    "_top10_smoothed": _get_out_dirs("_top10_smoothed"),
+                    "_top25_smoothed": _get_out_dirs("_top25_smoothed"),
+                }
+                HEATMAP_W = min(num_paper_tokens, 1024)
+    
+                # Token-by-token generation
+                for step_idx in range(max_new_tokens):
+                    cur_token_id = generated_ids[-1]
+                    token_text = self.processing_class.decode([cur_token_id]).strip() or f"token_{cur_token_id}"
+                    token_safe = (
+                        "".join(c for c in token_text if c.isalnum() or c in ("_", "-")).strip()
+                        or f"token_{cur_token_id}"
+                    )
+    
+                    a_text = _compute_a_text(past_key_values)
+    
+                    if a_text is not None:
+                        # Smoothing: average over every 200 tokens
+                        a_text_smoothed = np.zeros_like(a_text)
+                        chunk_size = 200
+                        for i in range(0, len(a_text), chunk_size):
+                            a_text_smoothed[i:i+chunk_size] = a_text[i:i+chunk_size].mean()
+                        a_text = a_text_smoothed
+    
+                        attention_avg_all.append(a_text.copy())
+                        attention_last_all.append(a_text.copy())   # same — single layer captured
+                        if "accept" in token_text.lower() or "reject" in token_text.lower():
+                            decision_text_all.append((step_idx, token_text, a_text.copy()))
+                            # Confidence logging
+                            if not recorded_decision and cur_token_id in [accept_id, reject_id]:
+                                probs = torch.softmax(last_logits, dim=-1)
+                                conf = probs[0, cur_token_id].item()
+                                total_prob = (probs[0, accept_id] + probs[0, reject_id]).item()
+                                decision = "accept" if cur_token_id == accept_id else "reject"
+                                self._attn_viz_confidence_results.append({
+                                    "paper_id": paper_id,
+                                    "decision": decision,
+                                    "confidence": conf,
+                                    "total_prob": total_prob,
+                                    "ground_truth": gt,
+                                    "pct_rating": pct_rating,
+                                    "citation_normalized_by_year": citation_normalized_by_year
+                                })
+                                recorded_decision = True
+                                self._save_confidence_csv(output_root)
+    
+                        normed = sum_normalise(a_text)
                         
-                        # Plot the last decision token's section weights
-                        last_data = section_viz_data_text[-1]
-                        last_weights = last_data["weights"]
-                        plt.figure(figsize=(10, 6))
-                        names = list(last_weights.keys())
-                        vals = list(last_weights.values())
-                        plt.barh(names, vals)
-                        plt.xlabel("Average Attention Weight")
-                        plt.title(f"Section-wise Attention ({last_data['token']})")
-                        plt.tight_layout()
-                        plt.savefig(os.path.join(summary_dir, "section_attn_last.png"))
+                        def _save_bar(normed_arr, variant_name):
+                            bar = cv2.applyColorMap(
+                                cv2.resize(np.uint8(255 * normed_arr).reshape(1, -1), (HEATMAP_W, 64),
+                                           interpolation=cv2.INTER_AREA),
+                                cv2.COLORMAP_JET,
+                            )
+                            ad, ld = dirs_map[variant_name]
+                            cv2.imwrite(os.path.join(ad, f"step_{step_idx:03d}_{token_safe}.jpg"), bar)
+                            cv2.imwrite(os.path.join(ld, f"step_{step_idx:03d}_{token_safe}.jpg"), bar)
+    
+                        def _save_variants(arr, suffix=""):
+                            n_arr = sum_normalise(arr)
+                            _save_bar(n_arr, f"{suffix}")
+                            for k in [5, 10, 25]:
+                                threshold = np.percentile(n_arr, 100 - k)
+                                filtered = np.where(n_arr >= threshold, n_arr, 0.0)
+                                _save_bar(sum_normalise(filtered), f"_top{k}{suffix}")
+    
+                        _save_variants(a_text)
+                        _save_variants(a_text_smoothed, suffix="_smoothed")
+    
+                    if cur_token_id == self.processing_class.eos_token_id or "im_end" in token_text:
+                        break
+    
+                    # Update for next token
+                    cache_position = torch.tensor([sample_inputs["input_ids"].shape[1] + step_idx], device=device)
+                    attention_mask = torch.cat([attention_mask, torch.ones((1, 1), dtype=attention_mask.dtype, device=device)], dim=-1)
+    
+                    # Forward for next token
+                    with torch.no_grad():
+                        with self.compute_loss_context_manager():
+                            inputs_for_gen = model.prepare_inputs_for_generation(
+                                input_ids=torch.tensor([[cur_token_id]], device=device),
+                                past_key_values=past_key_values,
+                                attention_mask=attention_mask,
+                                use_cache=True,
+                                cache_position=cache_position,
+                                pixel_values=sample_inputs.get("pixel_values"),
+                                image_grid_thw=sample_inputs.get("image_grid_thw"),
+                                pixel_values_videos=sample_inputs.get("pixel_values_videos"),
+                                video_grid_thw=sample_inputs.get("video_grid_thw"),
+                            )
+                            outputs = model(**inputs_for_gen)
+                            next_token_id = _sample_next_token(outputs.logits[:, -1, :], generated_ids)
+                            generated_ids.append(next_token_id)
+                            past_key_values = outputs.past_key_values
+    
+                # Save summary numpy arrays and 2-D heatmap
+                if attention_avg_all:
+                    summary_dir = os.path.join(paper_dir, "summary")
+                    os.makedirs(summary_dir, exist_ok=True)
+    
+                    attn_avg_2d = np.stack(attention_avg_all)   # [steps, paper_tokens]
+                    np.save(os.path.join(summary_dir, "attention_avg.npy"), attn_avg_2d)
+    
+                    # Save plots for decision tokens
+                    for (d_step, d_tok, d_a) in decision_text_all:
+                        safe_d_tok = "".join(c for c in d_tok if c.isalnum() or c in ("_", "-")).strip() or "token"
+                        try:
+                            plt.figure(figsize=(12, 4))
+                            plt.plot(d_a)
+                            plt.title("Mean Attention Distribution Across Paper Tokens")
+                            plt.xlabel("Paper Token Index")
+                            plt.ylabel("Mean Attention Score")
+                            plt.tight_layout()
+                            plt.savefig(os.path.join(summary_dir, f"attention_distribution_line_step{d_step}_{safe_d_tok}.png"), dpi=150)
+                        except Exception as e:
+                            logger.warning_rank0(f"Failed to save attention_distribution_line (text) for {paper_id}: {e}")
                         plt.close()
                         
-                        # Semantic Heatmap: color the original PDF boxes
-                        self._save_semantic_heatmaps(paper_id, last_weights, sections, image_paths, summary_dir)
-
-                if attention_last_all:
-                    attn_last_2d = np.stack(attention_last_all)
-                    np.save(os.path.join(summary_dir, "attention_last.npy"), attn_last_2d)
-
-                # 2-D heatmap: row-normalise each step so intra-step distribution is visible
-                row_min = attn_avg_2d.min(axis=1, keepdims=True)
-                row_max = attn_avg_2d.max(axis=1, keepdims=True)
-                normed_2d = (attn_avg_2d - row_min) / (row_max - row_min + 1e-8)
-                SUMMARY_W = 1024
-                SUMMARY_H = max(attn_avg_2d.shape[0] * 8, 64)
-                heatmap_2d = cv2.applyColorMap(
-                    cv2.resize(np.uint8(255 * normed_2d), (SUMMARY_W, SUMMARY_H), interpolation=cv2.INTER_NEAREST),
-                    cv2.COLORMAP_JET,
-                )
-                cv2.imwrite(os.path.join(summary_dir, "attention_avg_2d.jpg"), heatmap_2d)
-
-                # ── Interactive HTML ──────────────────────────────────────────
-                try:
-                    n_steps = attn_avg_2d.shape[0]
-                    # Paper token texts (one per paper position)
-                    _paper_toks = [
-                        self.processing_class.decode(
-                            [prompt_ids[paper_start_token + j].item()],
-                            skip_special_tokens=False,
-                        )
-                        for j in range(num_paper_tokens)
-                    ]
-                    # Generated token texts aligned with attention steps
-                    _gen_toks = [
-                        self.processing_class.decode([generated_ids[j]], skip_special_tokens=False)
-                        for j in range(min(n_steps, len(generated_ids)))
-                    ]
+                        try:
+                            plt.figure(figsize=(8, 4))
+                            plt.hist(d_a, bins=500, color='red', alpha=0.7)
+                            plt.title(f"Histogram of Attention Scores for Decision Token '{d_tok}'")
+                            plt.xscale('log')
+                            plt.yscale('log')
+                            plt.xlabel("Attention Score")
+                            plt.ylabel("Frequency")
+                            plt.tight_layout()
+                            plt.savefig(os.path.join(summary_dir, f"attention_distribution_hist_step{d_step}_{safe_d_tok}.png"), dpi=150)
+                        except Exception as e:
+                            logger.warning_rank0(f"Failed to save attention_distribution_hist (text) for {paper_id}: {e}")
+                        plt.close()
                     
-                    # Section mapping
-                    _section_mapping = ["None"] * num_paper_tokens
-                    if blocks:
-                        _section_mapping = self._get_token_to_section_mapping(paper_token_ids, sections)
-                    
-                    _tok_js  = json.dumps(_paper_toks)
-                    _sec_js  = json.dumps(_section_mapping)
-                    _opts = "\n".join(
-                        '<option value="{}">[{}] {}</option>'.format(
-                            i, i,
-                            t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"),
-                        )
-                        for i, t in enumerate(_gen_toks)
-                    )
-                    
-                    def _write_html(arr_2d, variant=""):
-                        _attn_js = json.dumps(arr_2d.round(4).tolist())
-                        _html = (
-                            "<!DOCTYPE html>\n<html lang=\"en\">\n<head><meta charset=\"UTF-8\">"
-                            "<title>Attention{v}: {pid}</title>\n<style>\n"
-                            "body{{font-family:Georgia,serif;line-height:1.9;padding:20px 40px;"
-                            "max-width:1100px;margin:auto}}\n"
-                            ".ctrl{{position:sticky;top:0;background:#fff;padding:8px 0;"
-                            "border-bottom:2px solid #ddd;margin-bottom:10px;z-index:10}}\n"
-                            "select{{font-size:14px;padding:4px;margin-left:6px}}\n"
-                            ".scale{{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:#444}}\n"
-                            ".scale-bar{{flex:1;height:14px;border-radius:3px;"
-                            "background:linear-gradient(to right,rgba(220,50,30,0),rgba(220,50,30,1));"
-                            "border:1px solid #ccc}}\n"
-                            ".paper{{white-space:pre-wrap;font-size:14px;line-height:2}}\n"
-                            ".sec-info{{font-size:12px;color:#666;margin-top:4px;height:1.2em}}\n"
-                            "</style></head>\n<body>\n"
-                            "<h2>Text Attention{v} &mdash; {pid}</h2>\n"
-                            "<div class=\"ctrl\">"
-                            "<label><b>Generated token:</b>"
-                            "<select id=\"sel\" onchange=\"render(+this.value)\">\n{opts}\n"
-                            "</select></label>\n"
-                            "<div class=\"sec-info\" id=\"sec-info\">Section: -</div>\n"
-                            "<div class=\"scale\">"
-                            "<span id=\"lo-lbl\">0.0000</span>"
-                            "<div class=\"scale-bar\"></div>"
-                            "<span id=\"hi-lbl\">1.0000</span>"
-                            "</div></div>\n"
-                            "<div class=\"paper\" id=\"paper\"></div>\n<script>\n"
-                            "const A={attn};\nconst toks={toks};\nconst secs={secs};\n"
-                            "const uniqueSecs = Array.from(new Set(secs));\n"
-                            "function esc(s){{return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}}\n"
-                            "function render(step){{\n"
-                            "  const a=A[step];\n"
-                            "  let lo=a[0],hi=a[0];\n"
-                            "  for(const v of a){{if(v<lo)lo=v;if(v>hi)hi=v;}}\n"
-                            "  document.getElementById('lo-lbl').textContent=lo.toFixed(5);\n"
-                            "  document.getElementById('hi-lbl').textContent=hi.toFixed(5);\n"
-                            "  const rng=hi-lo+1e-9;\n"
-                            "  document.getElementById('paper').innerHTML=toks.map((t,i)=>{{\n"
-                            "    const norm=(a[i]-lo)/rng;\n"
-                            "    const s=secs[i];\n"
-                            "    const sIdx = uniqueSecs.indexOf(s);\n"
-                            "    const border = (s==='None' || s==='Preamble') ? 'none' : '2px solid hsl('+(sIdx*137 % 360)+',60%,50%)';\n"
-                            "    return '<span style=\"background:rgba(220,50,30,'+norm.toFixed(3)+'); border-bottom:'+border+'\""
-                            " onmouseover=\"document.getElementById(\\'sec-info\\').textContent=\\'Section: \\'+secs[i]\""
-                            " title=\"['+secs[i]+'] '+a[i].toFixed(5)+'\">'+esc(t)+'</span>';\n"
-                            "  }}).join('');\n}}\n"
-                            "render(0);\n</script>\n</body>\n</html>\n"
-                        ).format(pid=paper_id, opts=_opts, attn=_attn_js, toks=_tok_js, secs=_sec_js, v=variant)
-                        html_path = os.path.join(paper_dir, f"attention{variant}.html")
-                        with open(html_path, "w", encoding="utf-8") as _f:
-                            _f.write(_html)
+                    # Section-wise attention stats (Text)
+                    blocks = self._get_block_metadata(paper_id)
+                    if blocks and decision_text_all:
+                        sections = self._get_sections_from_blocks(blocks)
+                        paper_token_ids = prompt_ids[paper_start_token:paper_end_token].tolist()
+                        section_viz_data_text = []
+                        for d_step, d_tok, d_a in decision_text_all:
+                            weights = self._compute_section_weights_text(d_a, paper_token_ids, sections)
+                            if weights:
+                                section_viz_data_text.append({"step": d_step, "token": d_tok, "weights": weights})
                         
-                    _write_html(attn_avg_2d, "")
-                    for k in [5, 10, 25]:
-                        th = np.percentile(attn_avg_2d, 100 - k, axis=1, keepdims=True)
-                        filtered_2d = np.where(attn_avg_2d >= th, attn_avg_2d, 0.0)
-                        _write_html(filtered_2d, f"_top{k}")
+                        if section_viz_data_text:
+                            with open(os.path.join(summary_dir, "section_attn.json"), "w") as f:
+                                json.dump(section_viz_data_text, f, indent=2)
+                            
+                            # Plot the last decision token's section weights
+                            last_data = section_viz_data_text[-1]
+                            last_weights = last_data["weights"]
+                            plt.figure(figsize=(10, 6))
+                            names = list(last_weights.keys())
+                            vals = list(last_weights.values())
+                            plt.barh(names, vals)
+                            plt.xlabel("Average Attention Weight")
+                            plt.title(f"Section-wise Attention ({last_data['token']})")
+                            try:
+                                plt.tight_layout()
+                                plt.savefig(os.path.join(summary_dir, "section_attn_last.png"))
+                            except Exception as e:
+                                logger.warning_rank0(f"Failed to save section_attn_last.png (text) for {paper_id}: {e}")
+                            plt.close()
+                            
+                            # Semantic Heatmap: color the original PDF boxes
+                            self._save_semantic_heatmaps(paper_id, last_weights, sections, image_paths, summary_dir)
+    
+                    if attention_last_all:
+                        attn_last_2d = np.stack(attention_last_all)
+                        np.save(os.path.join(summary_dir, "attention_last.npy"), attn_last_2d)
+    
+                    # 2-D heatmap: row-normalise each step so intra-step distribution is visible
+                    row_min = attn_avg_2d.min(axis=1, keepdims=True)
+                    row_max = attn_avg_2d.max(axis=1, keepdims=True)
+                    normed_2d = (attn_avg_2d - row_min) / (row_max - row_min + 1e-8)
+                    SUMMARY_W = 1024
+                    SUMMARY_H = max(attn_avg_2d.shape[0] * 8, 64)
+                    heatmap_2d = cv2.applyColorMap(
+                        cv2.resize(np.uint8(255 * normed_2d), (SUMMARY_W, SUMMARY_H), interpolation=cv2.INTER_NEAREST),
+                        cv2.COLORMAP_JET,
+                    )
+                    cv2.imwrite(os.path.join(summary_dir, "attention_avg_2d.jpg"), heatmap_2d)
+    
+                    # ── Interactive HTML ──────────────────────────────────────────
+                    try:
+                        n_steps = attn_avg_2d.shape[0]
+                        # Paper token texts (one per paper position)
+                        _paper_toks = [
+                            self.processing_class.decode(
+                                [prompt_ids[paper_start_token + j].item()],
+                                skip_special_tokens=False,
+                            )
+                            for j in range(num_paper_tokens)
+                        ]
+                        # Generated token texts aligned with attention steps
+                        _gen_toks = [
+                            self.processing_class.decode([generated_ids[j]], skip_special_tokens=False)
+                            for j in range(min(n_steps, len(generated_ids)))
+                        ]
+                        
+                        # Section mapping
+                        _section_mapping = ["None"] * num_paper_tokens
+                        if blocks:
+                            _section_mapping = self._get_token_to_section_mapping(paper_token_ids, sections)
+                        
+                        _tok_js  = json.dumps(_paper_toks)
+                        _sec_js  = json.dumps(_section_mapping)
+                        _opts = "\n".join(
+                            '<option value="{}">[{}] {}</option>'.format(
+                                i, i,
+                                t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"),
+                            )
+                            for i, t in enumerate(_gen_toks)
+                        )
+                        
+                        def _write_html(arr_2d, variant=""):
+                            _attn_js = json.dumps(arr_2d.round(4).tolist())
+                            _html = (
+                                "<!DOCTYPE html>\n<html lang=\"en\">\n<head><meta charset=\"UTF-8\">"
+                                "<title>Attention{v}: {pid}</title>\n<style>\n"
+                                "body{{font-family:Georgia,serif;line-height:1.9;padding:20px 40px;"
+                                "max-width:1100px;margin:auto}}\n"
+                                ".ctrl{{position:sticky;top:0;background:#fff;padding:8px 0;"
+                                "border-bottom:2px solid #ddd;margin-bottom:10px;z-index:10}}\n"
+                                "select{{font-size:14px;padding:4px;margin-left:6px}}\n"
+                                ".scale{{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:#444}}\n"
+                                ".scale-bar{{flex:1;height:14px;border-radius:3px;"
+                                "background:linear-gradient(to right,rgba(220,50,30,0),rgba(220,50,30,1));"
+                                "border:1px solid #ccc}}\n"
+                                ".paper{{white-space:pre-wrap;font-size:14px;line-height:2}}\n"
+                                ".sec-info{{font-size:12px;color:#666;margin-top:4px;height:1.2em}}\n"
+                                "</style></head>\n<body>\n"
+                                "<h2>Text Attention{v} &mdash; {pid}</h2>\n"
+                                "<div class=\"ctrl\">"
+                                "<label><b>Generated token:</b>"
+                                "<select id=\"sel\" onchange=\"render(+this.value)\">\n{opts}\n"
+                                "</select></label>\n"
+                                "<div class=\"sec-info\" id=\"sec-info\">Section: -</div>\n"
+                                "<div class=\"scale\">"
+                                "<span id=\"lo-lbl\">0.0000</span>"
+                                "<div class=\"scale-bar\"></div>"
+                                "<span id=\"hi-lbl\">1.0000</span>"
+                                "</div></div>\n"
+                                "<div class=\"paper\" id=\"paper\"></div>\n<script>\n"
+                                "const A={attn};\nconst toks={toks};\nconst secs={secs};\n"
+                                "const uniqueSecs = Array.from(new Set(secs));\n"
+                                "function esc(s){{return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}}\n"
+                                "function render(step){{\n"
+                                "  const a=A[step];\n"
+                                "  let lo=a[0],hi=a[0];\n"
+                                "  for(const v of a){{if(v<lo)lo=v;if(v>hi)hi=v;}}\n"
+                                "  document.getElementById('lo-lbl').textContent=lo.toFixed(5);\n"
+                                "  document.getElementById('hi-lbl').textContent=hi.toFixed(5);\n"
+                                "  const rng=hi-lo+1e-9;\n"
+                                "  document.getElementById('paper').innerHTML=toks.map((t,i)=>{{\n"
+                                "    const norm=(a[i]-lo)/rng;\n"
+                                "    const s=secs[i];\n"
+                                "    const sIdx = uniqueSecs.indexOf(s);\n"
+                                "    const border = (s==='None' || s==='Preamble') ? 'none' : '2px solid hsl('+(sIdx*137 % 360)+',60%,50%)';\n"
+                                "    return '<span style=\"background:rgba(220,50,30,'+norm.toFixed(3)+'); border-bottom:'+border+'\""
+                                " onmouseover=\"document.getElementById(\\'sec-info\\').textContent=\\'Section: \\'+secs[i]\""
+                                " title=\"['+secs[i]+'] '+a[i].toFixed(5)+'\">'+esc(t)+'</span>';\n"
+                                "  }}).join('');\n}}\n"
+                                "render(0);\n</script>\n</body>\n</html>\n"
+                            ).format(pid=paper_id, opts=_opts, attn=_attn_js, toks=_tok_js, secs=_sec_js, v=variant)
+                            html_path = os.path.join(paper_dir, f"attention{variant}.html")
+                            with open(html_path, "w", encoding="utf-8") as _f:
+                                _f.write(_html)
+                            
+                        _write_html(attn_avg_2d, "")
+                        for k in [5, 10, 25]:
+                            th = np.percentile(attn_avg_2d, 100 - k, axis=1, keepdims=True)
+                            filtered_2d = np.where(attn_avg_2d >= th, attn_avg_2d, 0.0)
+                            _write_html(filtered_2d, f"_top{k}")
+    
+                        logger.info_rank0(f"[text-viz] Wrote attention HTMLs for {paper_id}")
+                    except Exception as _html_exc:
+                        logger.warning_rank0(f"[text-viz] HTML generation failed: {_html_exc}")
+    
+                    if not recorded_decision:
+                        self._attn_viz_confidence_results.append({
+                            "paper_id": paper_id,
+                            "decision": "none",
+                            "confidence": 0.0,
+                            "total_prob": 0.0,
+                            "ground_truth": gt,
+                            "pct_rating": pct_rating,
+                            "citation_normalized_by_year": citation_normalized_by_year
+                        })
+                        self._save_confidence_csv(output_root)
 
-                    logger.info_rank0(f"[text-viz] Wrote attention HTMLs for {paper_id}")
-                except Exception as _html_exc:
-                    logger.warning_rank0(f"[text-viz] HTML generation failed: {_html_exc}")
-
-            # Cleanup
-            h_qproj.remove()
-            h_pre.remove()
-            q_cap.clear()
-            all_generated_ids.append(list(generated_ids))
-            del past_key_values, outputs, generated_ids
-            torch.cuda.empty_cache()
-            gc.collect()
-            self._attn_viz_sample_idx += 1
-
+                # Cleanup
+                h_qproj.remove()
+                h_pre.remove()
+                q_cap.clear()
+                all_generated_ids.append(list(generated_ids))
+                del past_key_values, outputs, generated_ids
+                torch.cuda.empty_cache()
+                gc.collect()
+                self._attn_viz_sample_idx += 1
+    
+            except torch.cuda.OutOfMemoryError:
+                logger.warning_rank0(f"OutOfMemoryError for sample {i} (paper_id={paper_id if 'paper_id' in locals() else 'unknown'}). Skipping.")
+                if 'h_qproj' in locals(): h_qproj.remove()
+                if 'h_pre' in locals(): h_pre.remove()
+                torch.cuda.empty_cache()
+                gc.collect()
+                self._attn_viz_sample_idx += 1
+                continue
         pad_id = self.processing_class.pad_token_id
         max_gen_len = max((len(g) for g in all_generated_ids), default=1)
         padded = [
@@ -2082,3 +2239,18 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
         with open(output_prediction_file, "w", encoding="utf-8") as f:
             for text, pred, label in zip(decoded_inputs, decoded_preds, decoded_labels):
                 f.write(json.dumps({"prompt": text, "predict": pred, "label": label}, ensure_ascii=False) + "\n")
+
+    def _save_confidence_csv(self, output_root):
+        csv_path = os.path.join(output_root, "confidence_results.csv")
+        if not self._attn_viz_confidence_results:
+            return
+        
+        fieldnames = [
+            "paper_id", "decision", "confidence", "total_prob", "ground_truth",
+            "pct_rating", "citation_normalized_by_year"
+        ]
+        
+        with open(csv_path, "w", newline="") as f:
+            dict_writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
+            dict_writer.writeheader()
+            dict_writer.writerows(self._attn_viz_confidence_results)

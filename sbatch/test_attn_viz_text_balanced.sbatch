@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=attn_viz_text_balanced
-#SBATCH --time=04:00:00
+#SBATCH --time=06:00:00
 #SBATCH --mem=256G
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:1
