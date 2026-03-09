@@ -4,7 +4,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --gres=gpu:1
-#SBATCH --array=2-2
+#SBATCH --array=0-5
 #SBATCH --output=logs/inference_scaling/%A/infer_%A_%a.out
 #SBATCH --error=logs/inference_scaling/%A/infer_%A_%a.err
 
@@ -29,13 +29,13 @@
 set -e
 
 # Configuration
-PROJECT_DIR="/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer"
+PROJECT_DIR="/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer"
 cd "${PROJECT_DIR}"
-source .vllm/bin/activate
-# export TRANSFORMERS_OFFLINE=1
+source .venv_vllm_inf/bin/activate
+export TRANSFORMERS_OFFLINE=1
 
 # Base data directory (original datasets)
-BASE_DATA_DIR="/n/fs/vision-mix/sk7524/LLaMA-Factory/data"
+BASE_DATA_DIR="/scratch/gpfs/ZHUANGL/jl0796/shared/data"
 
 # Generated datasets directory
 GENERATED_DATA_DIR="${PROJECT_DIR}/inference_scaling/data"
@@ -45,9 +45,13 @@ RESULTS_DIR="${PROJECT_DIR}/inference_scaling/results"
 
 # Define modalities and their dataset patterns
 MODALITIES=(
-    "clean"
-    "clean_images"
+    "text"
     "vision"
+)
+
+BASE_DATASETS=(
+    "iclr_2020_2023_2025_2026_85_5_10_balanced_original_text_labelfix_v7_filtered"
+    "iclr_2020_2023_2025_2026_85_5_10_balanced_original_vision_labelfix_v7_filtered_filtered24480"
 )
 
 # Define prompt variants
@@ -62,12 +66,13 @@ MODALITY_IDX=$((SLURM_ARRAY_TASK_ID / 3))
 PROMPT_IDX=$((SLURM_ARRAY_TASK_ID % 3))
 
 MODALITY="${MODALITIES[$MODALITY_IDX]}"
+BASE_DATASET="${BASE_DATASETS[$MODALITY_IDX]}"
 PROMPT_VARIANT="${PROMPT_VARIANTS[$PROMPT_IDX]}"
 
 # Model configuration based on modality
 # - clean (text-only): Qwen2.5-7B-Instruct with YaRN rope scaling for 131k context
 # - clean_images, vision: Qwen2.5-VL-7B-Instruct with qwen2_vl template
-if [ "$MODALITY" == "clean" ]; then
+if [ "$MODALITY" == "text" ]; then
     MODEL="${MODEL:-Qwen/Qwen2.5-7B-Instruct}"
     TEMPLATE="${TEMPLATE:-qwen}"
     MEDIA_DIR=""
@@ -81,7 +86,6 @@ else
 fi
 
 # Construct dataset name
-BASE_DATASET="iclr_2020_2025_85_5_10_split6_balanced_${MODALITY}_binary_noreviews_v6"
 DATASET_NAME="${BASE_DATASET}_test_${PROMPT_VARIANT}"
 
 # Determine n_generations (5 for fewshot ensembling, 1 otherwise)

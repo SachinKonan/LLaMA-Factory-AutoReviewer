@@ -599,8 +599,7 @@ def main():
         "--split",
         type=str,
         default="test",
-        choices=["train", "test"],
-        help="Dataset split (default: test)"
+        help="Dataset split (e.g., test, test_original, test_new)"
     )
     parser.add_argument(
         "--data_dir",

@@ -39,7 +39,7 @@ set -e
 NUM_SHARDS=8
 PROJECT_DIR="/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer"
 cd "${PROJECT_DIR}"
-source .vllm/bin/activate
+source .venv/bin/activate
 
 # Base data directory (original datasets)
 BASE_DATA_DIR="/n/fs/vision-mix/sk7524/LLaMA-Factory/data"

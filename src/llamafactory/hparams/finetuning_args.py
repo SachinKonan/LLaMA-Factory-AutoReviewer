@@ -322,6 +322,7 @@ class GRPOArguments:
     grpo_append_reasoning_explicit: bool = field(
         default=False,
         metadata={"help": "Append reasoning instruction to user prompts."},
+    )
     grpo_vllm_enable_sleep_mode: bool = field(
         default=False,
         metadata={"help": "Offload vLLM weights/cache during optimizer step to save memory."},

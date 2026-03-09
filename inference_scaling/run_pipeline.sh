@@ -25,14 +25,14 @@
 
 set -e
 
-PROJECT_DIR="/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer"
+PROJECT_DIR="/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer"
 cd "${PROJECT_DIR}"
 
 # ============================================================================
 # Configuration: Set LIMIT to control dataset size
 # ============================================================================
 # Set to 2 for testing, or 4000 (larger than all datasets) for full runs
-LIMIT=10  # Change to 2 for testing
+LIMIT=10
 
 # Create necessary directories
 mkdir -p logs/inference_scaling
@@ -50,10 +50,10 @@ generate_datasets() {
     echo "Limit: ${LIMIT} samples per dataset"
     echo "=============================================="
 
-    source .venv_vllm_inf/bin/activate
+    source .venv/bin/activate
 
     python inference_scaling/scripts/generate_datasets.py \
-        --base_data_dir "/n/fs/vision-mix/sk7524/LLaMA-Factory/data" \
+        --base_data_dir "/scratch/gpfs/ZHUANGL/jl0796/shared/data" \
         --output_dir "./inference_scaling/data" \
         --splits test \
         --seed 42 \
@@ -92,7 +92,7 @@ submit_metareview() {
     echo "=============================================="
 
     # Check if inference results exist
-    for modality in clean clean_images vision; do
+    for modality in text vision; do
         pred_file="inference_scaling/results/${modality}/new_fewshot/predictions.jsonl"
         if [ ! -f "${pred_file}" ]; then
             echo "Warning: ${pred_file} not found. Meta-review may fail for ${modality}."
@@ -113,7 +113,7 @@ extract_results_for_dir() {
 
     echo "Processing results in ${DIR_NAME}..."
 
-    for modality in clean clean_images vision; do
+    for modality in text vision; do
         for variant in original new new_fewshot; do
             pred_file="${RESULTS_DIR}/${modality}/${variant}/predictions.jsonl"
 
@@ -180,7 +180,7 @@ extract_results() {
     echo "Step 4: Extracting results"
     echo "=============================================="
 
-    source .venv_vllm_inf/bin/activate
+    source .venv/bin/activate
 
     # Process main results (Qwen)
     extract_results_for_dir "inference_scaling/results" "Qwen results"
@@ -201,12 +201,12 @@ compute_metrics() {
     echo "Step 5: Computing metrics and generating plots"
     echo "=============================================="
 
-    source .venv_vllm_inf/bin/activate
+    source .venv/bin/activate
 
     python inference_scaling/scripts/compute_metrics.py \
         --results_dir "./inference_scaling/results" \
         --output_dir "./inference_scaling/metrics" \
-        --base_data_dir "/n/fs/vision-mix/sk7524/LLaMA-Factory/data"
+        --base_data_dir "/scratch/gpfs/ZHUANGL/jl0796/shared/data"
 
     echo "Metrics computation complete!"
     echo "Results saved to: ./inference_scaling/metrics/"

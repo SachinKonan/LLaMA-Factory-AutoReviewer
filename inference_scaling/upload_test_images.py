@@ -11,13 +11,13 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Set credentials before importing google.cloud
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/u/jl0796/.config/gcloud/application_default_credentials.json"
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/home/jl0796/.config/gcloud/application_default_credentials.json"
 
 from google.cloud import storage
 
 # Configuration
-SOURCE_DIR = Path("/n/fs/vision-mix/sk7524/LLaMA-Factory")
-IMAGE_LIST = Path("/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/inference_scaling/test_images_list.txt")
+SOURCE_DIR = Path("/scratch/gpfs/ZHUANGL/jl0796/shared")
+IMAGE_LIST = Path("/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer/inference_scaling/test_images_list.txt")
 GCS_BUCKET = "jl0796-autoreviewer-staging"
 PROJECT = "hip-gecko-485003-c4"
 MAX_WORKERS = 32  # Parallel uploads

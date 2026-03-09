@@ -7,7 +7,7 @@
 # This uploads only the images needed for the test set (~8.5GB instead of 339GB)
 
 set -e
-cd /n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer
+cd /scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer
 source .venv_vllm_inf/bin/activate
 
 # Use application default credentials
@@ -15,8 +15,8 @@ export GOOGLE_APPLICATION_CREDENTIALS="/u/jl0796/.config/gcloud/application_defa
 export CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="/u/jl0796/.config/gcloud/application_default_credentials.json"
 
 
-SOURCE_DIR="/n/fs/vision-mix/sk7524/LLaMA-Factory"
-IMAGE_LIST="/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer/inference_scaling/test_images_list.txt"
+SOURCE_DIR="/scratch/gpfs/ZHUANGL/jl0796/shared"
+IMAGE_LIST="/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer/inference_scaling/test_images_list.txt"
 GCS_BUCKET="gs://jl0796-autoreviewer-staging"
 
 echo "=============================================="

@@ -354,7 +354,7 @@ def generate_datasets(
 def main():
     parser = argparse.ArgumentParser(description="Generate modified datasets for inference scaling")
     parser.add_argument("--base_data_dir", type=str,
-                        default="/n/fs/vision-mix/sk7524/LLaMA-Factory/data",
+                        default="/scratch/gpfs/ZHUANGL/jl0796/shared/data",
                         help="Base directory containing original datasets")
     parser.add_argument("--output_dir", type=str,
                         default="./inference_scaling/data",
@@ -370,11 +370,10 @@ def main():
 
     args = parser.parse_args()
 
-    # Define the three base dataset names (without split suffix)
+    # Define the base dataset names (without split suffix)
     dataset_names = [
-        "iclr_2020_2025_85_5_10_split6_balanced_clean_binary_noreviews_v6",  # text only
-        "iclr_2020_2025_85_5_10_split6_balanced_clean_images_binary_noreviews_v6",  # text + images
-        "iclr_2020_2025_85_5_10_split6_balanced_vision_binary_noreviews_v6",  # vision
+        "iclr_2020_2023_2025_2026_85_5_10_balanced_original_text_labelfix_v7_filtered",  # text only
+        "iclr_2020_2023_2025_2026_85_5_10_balanced_original_vision_labelfix_v7_filtered_filtered24480",  # vision
     ]
 
     generate_datasets(

@@ -4,7 +4,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=100G
 #SBATCH --gres=gpu:1
-#SBATCH --array=0-2
+#SBATCH --array=0-1
 #SBATCH --output=logs/inference_scaling/metareview_%A_%a.out
 #SBATCH --error=logs/inference_scaling/metareview_%A_%a.err
 
@@ -14,16 +14,16 @@
 # This script runs meta-review inference for ensembled predictions.
 # Should be run AFTER run_inference.sbatch completes for new_fewshot variants.
 #
-# Job Array Configuration (0-2 = 3 jobs):
-#   - 3 modalities: clean, clean_images, vision
+# Job Array Configuration (0-1 = 2 jobs):
+#   - 2 modalities: text, vision
 # ============================================================================
 
 set -e
 
 # Configuration
-PROJECT_DIR="/n/fs/vision-mix/jl0796/LLaMA-Factory-AutoReviewer"
+PROJECT_DIR="/scratch/gpfs/ZHUANGL/jl0796/LLaMA-Factory-AutoReviewer"
 cd "${PROJECT_DIR}"
-source .vllm/bin/activate
+source .venv_vllm_inf/bin/activate
 export TRANSFORMERS_OFFLINE=1
 
 # Results directory
@@ -32,8 +32,7 @@ GENERATED_DATA_DIR="${PROJECT_DIR}/inference_scaling/data"
 
 # Define modalities
 MODALITIES=(
-    "clean"
-    "clean_images"
+    "text"
     "vision"
 )
 
@@ -42,7 +41,7 @@ MODALITY="${MODALITIES[$SLURM_ARRAY_TASK_ID]}"
 # Model configuration based on modality
 # - clean (text-only): Qwen2.5-7B-Instruct with YaRN rope scaling for 131k context
 # - clean_images, vision: Qwen2.5-VL-7B-Instruct with qwen2_vl template
-if [ "$MODALITY" == "clean" ]; then
+if [ "$MODALITY" == "text" ]; then
     MODEL="${MODEL:-Qwen/Qwen2.5-7B-Instruct}"
     TEMPLATE="${TEMPLATE:-qwen}"
     MEDIA_DIR=""
