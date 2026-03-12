@@ -93,10 +93,7 @@ def _training_function(config: dict[str, Any]) -> None:
         from .ppo import run_ppo  # lazy import to avoid TRL API incompatibility with GRPO
         run_ppo(model_args, data_args, training_args, finetuning_args, generating_args, callbacks)
     elif finetuning_args.stage == "grpo":
-<<<<<<< HEAD
         from .grpo import run_grpo  # lazy import to avoid TRL API incompatibility with SFT
-=======
->>>>>>> inference_scaling
         run_grpo(model_args, data_args, training_args, finetuning_args, generating_args, callbacks)
     elif finetuning_args.stage == "dpo":
         run_dpo(model_args, data_args, training_args, finetuning_args, callbacks)
