@@ -1,11 +1,11 @@
 #!/bin/bash
 # ============================================================================
-# Inference Scaling Pipeline
+# Final Inference Scaling Pipeline
 # ============================================================================
 # This script orchestrates the full inference scaling experiment pipeline.
 #
 # Steps:
-# 1. Generate modified datasets (original, new, new_fewshot prompts)
+# 1. Generate modified datasets
 # 2. Run inference on all configurations
 # 3. Run meta-review inference for ensembled predictions
 # 4. Extract results using different strategies
@@ -34,10 +34,16 @@ cd "${PROJECT_DIR}"
 # Set to 2 for testing, or 4000 (larger than all datasets) for full runs
 LIMIT=4000
 
+# Directory paths
+DATA_DIR="./final_inference_scaling/data"
+RESULTS_DIR="./final_inference_scaling/results"
+METRICS_DIR="./final_inference_scaling/metrics"
+LOGS_DIR="./logs/final_inference_scaling"
+
 # Create necessary directories
-mkdir -p logs/inference_scaling
-mkdir -p inference_scaling/results
-mkdir -p inference_scaling/metrics
+mkdir -p ${LOGS_DIR}
+mkdir -p ${RESULTS_DIR}
+mkdir -p ${METRICS_DIR}
 
 STEP="${1:-all}"
 
@@ -52,17 +58,11 @@ generate_datasets() {
 
     source .venv/bin/activate
 
-    python inference_scaling/scripts/generate_datasets.py \
+    python final_inference_scaling/scripts/generate_datasets.py \
         --base_data_dir "/scratch/gpfs/ZHUANGL/jl0796/shared/data" \
-        --output_dir "./inference_scaling/data" \
+        --output_dir "${DATA_DIR}" \
         --splits test \
-        --seed 42 \
         --limit ${LIMIT}
-
-    # Generate dataset_info.json for LlamaFactory
-    python inference_scaling/scripts/generate_dataset_info.py \
-        --data_dir "./inference_scaling/data" \
-        --output "./inference_scaling/data/dataset_info.json"
 
     echo "Dataset generation complete!"
 }
@@ -76,7 +76,7 @@ submit_inference() {
     echo "=============================================="
 
     # Submit main inference job array
-    INFERENCE_JOB=$(sbatch --parsable inference_scaling/sbatch/run_inference.sbatch)
+    INFERENCE_JOB=$(sbatch --parsable final_inference_scaling/sbatch/run_inference.sbatch)
     echo "Submitted inference job array: ${INFERENCE_JOB}"
 
     echo "Monitor with: squeue -u \$USER"
@@ -91,15 +91,10 @@ submit_metareview() {
     echo "Step 3: Submitting meta-review jobs"
     echo "=============================================="
 
-    # Check if inference results exist
-    for modality in text vision; do
-        pred_file="inference_scaling/results/${modality}/new_fewshot/predictions.jsonl"
-        if [ ! -f "${pred_file}" ]; then
-            echo "Warning: ${pred_file} not found. Meta-review may fail for ${modality}."
-        fi
-    done
-
-    METAREVIEW_JOB=$(sbatch --parsable inference_scaling/sbatch/run_metareview.sbatch)
+    echo "WARNING: run_metareview.sbatch needs to be updated to match the final pipeline structure."
+    echo "Please ensure the input/output paths in the sbatch target the 5-generation runs correctly."
+    
+    METAREVIEW_JOB=$(sbatch --parsable final_inference_scaling/sbatch/run_metareview.sbatch)
     echo "Submitted meta-review job array: ${METAREVIEW_JOB}"
 }
 
@@ -107,71 +102,62 @@ submit_metareview() {
 # Step 4: Extract Results
 # ============================================================================
 extract_results_for_dir() {
-    # Process a single results directory (either main or gemini)
-    local RESULTS_DIR="$1"
+    local BASE_RESULTS_DIR="$1"
     local DIR_NAME="$2"
 
     echo "Processing results in ${DIR_NAME}..."
-
-    for modality in text vision; do
-        for variant in original new new_fewshot; do
-            pred_file="${RESULTS_DIR}/${modality}/${variant}/predictions.jsonl"
-
-            if [ ! -f "${pred_file}" ]; then
-                echo "  Skipping ${modality}/${variant}: predictions not found"
-                continue
-            fi
-
-            # Check if predictions are non-empty
-            non_empty=$(python3 -c "
+    
+    # We dynamically find all prediction.jsonl files
+    find "${BASE_RESULTS_DIR}" -name "predictions.jsonl" | while read pred_file; do
+        eval_dir=$(dirname "${pred_file}")
+        
+        # Check if predictions are non-empty
+        non_empty=$(python3 -c "
 import json
 count = 0
 with open('${pred_file}') as f:
     for line in f:
         if line.strip():
-            data = json.loads(line.strip())
-            if data.get('predict', ''):
-                count += 1
-                break
+            count += 1
+            break
 print(count)
 ")
-            if [ "${non_empty}" == "0" ]; then
-                echo "  Skipping ${modality}/${variant}: all predictions are empty"
-                continue
-            fi
+        if [ "${non_empty}" == "0" ]; then
+            echo "  Skipping ${eval_dir}: all predictions are empty"
+            continue
+        fi
 
-            echo "  Processing ${modality}/${variant}..."
+        echo "  Processing ${eval_dir}..."
 
-            # Single strategy (variants 1-3)
-            python inference_scaling/scripts/extract_results.py \
+        # Single strategy
+        python final_inference_scaling/scripts/extract_results.py \
+            --input "${pred_file}" \
+            --output "${eval_dir}/results_single.jsonl" \
+            --strategy single
+
+        # Calibrated strategy (using overall score threshold)
+        python final_inference_scaling/scripts/extract_results.py \
+            --input "${pred_file}" \
+            --output "${eval_dir}/results_calibrated.jsonl" \
+            --strategy single \
+            --use_calibration \
+            --threshold 6
+
+        # Check if this represents a 5-generation run or pdr run
+        if [[ "${eval_dir}" == *"_gen5"* ]] || [[ "${eval_dir}" == *"pdr"* ]]; then
+            python final_inference_scaling/scripts/extract_results.py \
                 --input "${pred_file}" \
-                --output "${RESULTS_DIR}/${modality}/${variant}/results_single.jsonl" \
-                --strategy single
+                --output "${eval_dir}/results_majority.jsonl" \
+                --strategy majority
 
-            # Calibrated strategy (using overall score threshold)
-            python inference_scaling/scripts/extract_results.py \
-                --input "${pred_file}" \
-                --output "${RESULTS_DIR}/${modality}/${variant}/results_calibrated.jsonl" \
-                --strategy single \
-                --use_calibration \
-                --threshold 6
-
-            # Majority strategy (for ensemble predictions)
-            if [ "${variant}" == "new_fewshot" ]; then
-                python inference_scaling/scripts/extract_results.py \
-                    --input "${pred_file}" \
-                    --output "${RESULTS_DIR}/${modality}/${variant}/results_majority.jsonl" \
-                    --strategy majority
-
-                # Meta-review results (if available)
-                meta_pred="${RESULTS_DIR}/${modality}/${variant}/metareview_predictions.jsonl"
-                if [ -f "${meta_pred}" ]; then
-                    python inference_scaling/scripts/run_metareview.py extract \
-                        --input "${meta_pred}" \
-                        --output "${RESULTS_DIR}/${modality}/${variant}/results_metareview.jsonl"
-                fi
+            # Meta-review results (if available)
+            meta_pred="${eval_dir}/metareview_predictions.jsonl"
+            if [ -f "${meta_pred}" ]; then
+                python final_inference_scaling/scripts/run_metareview.py extract \
+                    --input "${meta_pred}" \
+                    --output "${eval_dir}/results_metareview.jsonl"
             fi
-        done
+        fi
     done
 }
 
@@ -182,13 +168,7 @@ extract_results() {
 
     source .venv/bin/activate
 
-    # Process main results (Qwen)
-    extract_results_for_dir "inference_scaling/results" "Qwen results"
-
-    # Process Gemini results if they exist
-    if [ -d "inference_scaling/results/gemini" ]; then
-        extract_results_for_dir "inference_scaling/results/gemini" "Gemini results"
-    fi
+    extract_results_for_dir "${RESULTS_DIR}" "Final Results"
 
     echo "Result extraction complete!"
 }
@@ -203,13 +183,13 @@ compute_metrics() {
 
     source .venv/bin/activate
 
-    python inference_scaling/scripts/compute_metrics.py \
-        --results_dir "./inference_scaling/results" \
-        --output_dir "./inference_scaling/metrics" \
+    python final_inference_scaling/scripts/compute_metrics.py \
+        --results_dir "${RESULTS_DIR}" \
+        --output_dir "${METRICS_DIR}" \
         --base_data_dir "/scratch/gpfs/ZHUANGL/jl0796/shared/data"
 
     echo "Metrics computation complete!"
-    echo "Results saved to: ./inference_scaling/metrics/"
+    echo "Results saved to: ${METRICS_DIR}"
 }
 
 # ============================================================================

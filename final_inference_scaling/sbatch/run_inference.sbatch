@@ -5,26 +5,18 @@
 #SBATCH --mem=150G
 #SBATCH --gres=gpu:2
 #SBATCH --constraint=gpu80
-#SBATCH --array=0-1,3-4
-#SBATCH --output=logs/inference_scaling/%A/infer_%A_%a.out
-#SBATCH --error=logs/inference_scaling/%A/infer_%A_%a.err
+#SBATCH --array=0-25
+#SBATCH --output=logs/final_inference_scaling/%A/infer_%A_%a.out
+#SBATCH --error=logs/final_inference_scaling/%A/infer_%A_%a.err
 
 # ============================================================================
 # Inference Scaling Job Array
 # ============================================================================
 # This script runs inference across all prompt variants and modalities.
 #
-# Job Array Configuration (0-8 = 9 jobs):
-#   - 3 modalities: clean (text), clean_images (text+images), vision (vision-only)
-#   - 3 prompt variants: original, new, new_fewshot
-#
-# Model Selection:
-#   - clean: Qwen2.5-7B-Instruct with YaRN rope scaling (131k context)
-#   - clean_images, vision: Qwen2.5-VL-7B-Instruct (qwen2_vl template)
-#
-# For prompts 3-5 (new_fewshot with ensembling):
-#   - Single run with n_generations=5
-#   - Results used for: single (1st output), majority (5 outputs), meta-review
+# Job Array Configuration (0-25 = 26 jobs):
+#   - 2 modalities: text (clean), vision (clean_images)
+#   - 13 prompt variants (12 single-prompt + 1 rl)
 # ============================================================================
 
 set -e
@@ -35,14 +27,19 @@ cd "${PROJECT_DIR}"
 source .venv_vllm_inf/bin/activate
 export TRANSFORMERS_OFFLINE=1
 
-# Base data directory (original datasets)
-BASE_DATA_DIR="/scratch/gpfs/ZHUANGL/jl0796/shared/data"
-
 # Generated datasets directory
-GENERATED_DATA_DIR="${PROJECT_DIR}/inference_scaling/data"
+GENERATED_DATA_DIR="${PROJECT_DIR}/final_inference_scaling/data"
 
 # Results directory
-RESULTS_DIR="${PROJECT_DIR}/inference_scaling/results"
+RESULTS_DIR="${PROJECT_DIR}/final_inference_scaling/results"
+
+# Models and Context Length Configuration
+MODEL_CLEAN="${MODEL_CLEAN:-Qwen/Qwen2.5-7B-Instruct}"
+MODEL_VISION="${MODEL_VISION:-/scratch/gpfs/ZHUANGL/jl0796/.hf_home/hub/models--Qwen--qwen2.5-VL-7B-instruct/snapshots/cc594898137f460bfe9f0759e9844b3ce807cfb5}"
+
+CTX_LEN_NOFEWSHOT="${CTX_LEN_NOFEWSHOT:-24480}"
+CTX_LEN_FEWSHOT="${CTX_LEN_FEWSHOT:-60000}"
+N_GENERATIONS="${N_GENERATIONS:-1}" # Can be changed to 5 for PDR experiments
 
 # Define modalities and their dataset patterns
 MODALITIES=(
@@ -57,67 +54,69 @@ BASE_DATASETS=(
 
 # Define prompt variants
 PROMPT_VARIANTS=(
-    "original"
-    "new"
-    "new_fewshot"
+    "standard_nofewshot_boxed"
+    "standard_nofewshot_json"
+    "standard_fewshot_1-1_boxed"
+    "standard_fewshot_1-1_json"
+    "standard_fewshot_0-2_boxed"
+    "standard_fewshot_0-2_json"
+    "critical_nofewshot_boxed"
+    "critical_nofewshot_json"
+    "critical_fewshot_1-1_boxed"
+    "critical_fewshot_1-1_json"
+    "critical_fewshot_0-2_boxed"
+    "critical_fewshot_0-2_json"
+    "pdr_boxed"
 )
 
 # Calculate indices
-MODALITY_IDX=$((SLURM_ARRAY_TASK_ID / 3))
-PROMPT_IDX=$((SLURM_ARRAY_TASK_ID % 3))
+MODALITY_IDX=$((SLURM_ARRAY_TASK_ID / 13))
+PROMPT_IDX=$((SLURM_ARRAY_TASK_ID % 13))
 
 MODALITY="${MODALITIES[$MODALITY_IDX]}"
 BASE_DATASET="${BASE_DATASETS[$MODALITY_IDX]}"
 PROMPT_VARIANT="${PROMPT_VARIANTS[$PROMPT_IDX]}"
 
-# Model configuration based on modality
-# - clean (text-only): Qwen2.5-7B-Instruct with YaRN rope scaling for 131k context
-# - clean_images, vision: Qwen2.5-VL-7B-Instruct with qwen2_vl template
+# Determine if this variant uses fewshot to set context length
+if [[ "$PROMPT_VARIANT" == *"fewshot"* ]] && [[ "$PROMPT_VARIANT" != *"nofewshot"* ]]; then
+    CUTOFF_LEN=$CTX_LEN_FEWSHOT
+else
+    CUTOFF_LEN=$CTX_LEN_NOFEWSHOT
+fi
+
 if [ "$MODALITY" == "text" ]; then
-    MODEL="${MODEL:-Qwen/Qwen2.5-7B-Instruct}"
+    MODEL="${MODEL_CLEAN}"
     TEMPLATE="${TEMPLATE:-qwen}"
     MEDIA_DIR=""
     # YaRN rope scaling: 32768 * 4 = 131072 context length
     ROPE_SCALING='{"rope_scaling":{"rope_type":"yarn","factor":4.0,"original_max_position_embeddings":32768}}'
 else
-    MODEL="${MODEL_VL:-/scratch/gpfs/ZHUANGL/jl0796/.hf_home/hub/models--Qwen--qwen2.5-VL-7B-instruct/snapshots/cc594898137f460bfe9f0759e9844b3ce807cfb5}"
+    MODEL="${MODEL_VISION}"
     TEMPLATE="${TEMPLATE_VL:-qwen2_vl}"
     MEDIA_DIR="."
     ROPE_SCALING=""
 fi
 
+# Clean model name for the output path
+CLEAN_MODEL_NAME=$(basename "$MODEL")
+
 # Construct dataset name
 DATASET_NAME="${BASE_DATASET}_test_${PROMPT_VARIANT}"
 
-# Determine n_generations (5 for fewshot ensembling, 1 otherwise)
-if [ "$PROMPT_VARIANT" == "new_fewshot" ]; then
-    N_GENERATIONS=5
-else
-    N_GENERATIONS=1
-fi
-
-# Determine cutoff_len based on prompt variant
-# Original: ~20k, New: ~20k, New+Fewshot: ~60k
-if [ "$PROMPT_VARIANT" == "new_fewshot" ]; then
-    CUTOFF_LEN=50000
-else
-    CUTOFF_LEN=20480
-fi
-
-# Output file
-OUTPUT_DIR="${RESULTS_DIR}/${MODALITY}/${PROMPT_VARIANT}"
+# Output file path (Includes model name, context len, and generations to prevent overwrites)
+OUTPUT_DIR="${RESULTS_DIR}/${CLEAN_MODEL_NAME}/${MODALITY}/${PROMPT_VARIANT}_ctx${CUTOFF_LEN}_gen${N_GENERATIONS}"
 OUTPUT_FILE="${OUTPUT_DIR}/predictions.jsonl"
 
 # Create directories
 mkdir -p "${OUTPUT_DIR}"
-mkdir -p "logs/inference_scaling"
+mkdir -p "logs/final_inference_scaling/${SLURM_ARRAY_JOB_ID}"
 
 echo "=============================================="
 echo "Job: $SLURM_JOB_ID, Task: $SLURM_ARRAY_TASK_ID"
 echo "Modality: ${MODALITY}"
 echo "Prompt Variant: ${PROMPT_VARIANT}"
 echo "Dataset: ${DATASET_NAME}"
-echo "Model: ${MODEL}"
+echo "Model: ${MODEL} (Cleaned for path: ${CLEAN_MODEL_NAME})"
 echo "Template: ${TEMPLATE}"
 echo "N Generations: ${N_GENERATIONS}"
 echo "Cutoff Length: ${CUTOFF_LEN}"
@@ -132,7 +131,7 @@ if [ ! -d "${GENERATED_DATA_DIR}/${DATASET_NAME}" ]; then
 fi
 
 # Build inference command
-INFERENCE_CMD="python inference_scaling/scripts/vllm_infer_ensemble.py \
+INFERENCE_CMD="python final_inference_scaling/scripts/vllm_infer_ensemble.py \
     --model_name_or_path ${MODEL} \
     --dataset ${DATASET_NAME} \
     --dataset_dir ${GENERATED_DATA_DIR} \

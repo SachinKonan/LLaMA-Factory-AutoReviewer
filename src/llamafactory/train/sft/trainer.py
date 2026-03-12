@@ -619,8 +619,9 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
             bar_h = 60
 
             sorted_sections = sorted(section_weights.items(), key=lambda x: x[1])
-            min_sec = sorted_sections[0][0]
-            max_sec = sorted_sections[-1][0]
+            def _clean_sec(s): return str(s).replace("$", "").replace("\\", "").replace("_", " ")
+            min_sec = _clean_sec(sorted_sections[0][0])
+            max_sec = _clean_sec(sorted_sections[-1][0])
 
             fig, ax = plt.subplots(figsize=(grid_w / 100, bar_h / 100))
             gradient = np.linspace(0, 1, 256).reshape(1, -1)
@@ -1260,11 +1261,12 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
                     a_img_heads = _compute_a_img(past_key_values)
                     a_img = None
                     if a_img_heads is not None:
-                        print(f"a_img_heads shape: {a_img_heads.shape}")
                         a_img = a_img_heads.mean(dim=0).float().cpu().numpy()
-                        print(f"a_img (averaged across heads) shape: {a_img.shape}")
-                        a_img_sum = a_img_heads.sum().item() / last_attn.num_heads
-                        print(f"a_img_sum: {a_img_sum}")
+                        # Normalize to sum to 1 prior to ensuing processing
+                        s_img = a_img.sum()
+                        if s_img > 1e-12:
+                            a_img = a_img / s_img
+
                         # Smoothing: average over each horizontal row of tokens
                         a_img_smoothed = np.zeros_like(a_img)
                         offset = 0
@@ -1516,6 +1518,10 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
                 torch.cuda.empty_cache()
                 gc.collect()
                 self._attn_viz_sample_idx += 1
+                try:
+                    all_generated_ids.append([self.processing_class.pad_token_id])
+                except Exception:
+                    pass
                 continue
 
         # Pad generated sequences to the same length and return as a tensor so that
@@ -1729,6 +1735,10 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
                 if num_paper_tokens <= 0:
                     logger.warning_rank0(f"[text-viz] No paper tokens found for {paper_id}, skipping.")
                     self._attn_viz_sample_idx += 1
+                    try:
+                        all_generated_ids.append([self.processing_class.pad_token_id])
+                    except Exception:
+                        pass
                     continue
     
                 # Save paper token reference file
@@ -1905,8 +1915,13 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
                     )
     
                     a_text = _compute_a_text(past_key_values)
-    
+
                     if a_text is not None:
+                        # Normalize to sum to 1 prior to ensuing processing
+                        s_text = a_text.sum()
+                        if s_text > 1e-12:
+                            a_text = a_text / s_text
+
                         # Smoothing: average over every 200 tokens
                         a_text_smoothed = np.zeros_like(a_text)
                         chunk_size = 200
@@ -2197,6 +2212,10 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
                 torch.cuda.empty_cache()
                 gc.collect()
                 self._attn_viz_sample_idx += 1
+                try:
+                    all_generated_ids.append([self.processing_class.pad_token_id])
+                except Exception:
+                    pass
                 continue
         pad_id = self.processing_class.pad_token_id
         max_gen_len = max((len(g) for g in all_generated_ids), default=1)
