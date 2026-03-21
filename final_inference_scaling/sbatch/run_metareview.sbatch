@@ -4,10 +4,15 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=150G
 #SBATCH --gres=gpu:1
-#SBATCH --constraint=gpu80
 #SBATCH --array=0-1
-#SBATCH --output=logs/inference_scaling/metareview_%A_%a.out
-#SBATCH --error=logs/inference_scaling/metareview_%A_%a.err
+#SBATCH --output=logs/final_inference_scaling/metareview_%A_%a.out
+#SBATCH --error=logs/final_inference_scaling/metareview_%A_%a.err
+
+# Example Usage:
+#   # 1. Merge shards (if using sharded inference):
+#   # cat final_inference_scaling/results/Qwen2.5-7B-Instruct/text/critical_fewshot_1-1_json_ctx60000_gen5/predictions_shard_*.jsonl > final_inference_scaling/results/Qwen2.5-7B-Instruct/text/critical_fewshot_1-1_json_ctx60000_gen5/predictions.jsonl
+#   # 2. Run meta-review:
+#   # sbatch --export=ALL,PROMPT_VARIANT="critical_fewshot_1-1_json",N_GENERATIONS=5 final_inference_scaling/sbatch/run_metareview.sbatch
 
 # ============================================================================
 # Meta-Review Job Array
@@ -23,6 +28,36 @@
 # at the end of run_inference_sharded.sbatch
 # ============================================================================
 
+
+
+# For meta reruns:
+# 5757439 — critical_fewshot_1-1_boxed, vision (tasks 12-15 still pending, 8-11 OOM'd)                                                     
+#   # Rerun all 8 vision shards fresh:                                                                                                         
+#   sbatch -p ailab --array=8-15 --export=ALL,PROMPT_VARIANT_N_GEN="critical_fewshot_1-1_boxed",N_GENERATIONS=5 final_inference_scaling/sbatch/run_inference_sharded.sbatch                                                                                                             
+                                                                                                                                             
+#   # 5757617 — critical_nofewshot_boxed, vision                                                                                               
+#   sbatch -p ailab --array=8-15 --export=ALL,PROMPT_VARIANT_N_GEN="critical_nofewshot_boxed",N_GENERATIONS=5 final_inference_scaling/sbatch/run_inference_sharded.sbatch                                                           
+                                                                                                                                             
+#   # 5757730 — standard_fewshot_1-1_boxed, text (task 7) + vision (tasks 8-15)                                                                
+#   sbatch -p ailab --array=7-15 --export=ALL,PROMPT_VARIANT_N_GEN="standard_fewshot_1-1_boxed",N_GENERATIONS=5 final_inference_scaling/sbatch/run_inference_sharded.sbatch
+
+# launch metareview:
+#   # critical_fewshot_1-1_boxed — vision only:
+#   sbatch --array=1 --partition=ailab \
+#     --export=ALL,PROMPT_VARIANT="critical_fewshot_1-1_boxed",N_GENERATIONS=5 \
+#     final_inference_scaling/sbatch/run_metareview.sbatch
+#
+#   # critical_nofewshot_boxed — vision only: 5827300
+#   sbatch --array=1 --partition=ailab \
+#     --export=ALL,PROMPT_VARIANT="critical_nofewshot_boxed",N_GENERATIONS=5 \
+#     final_inference_scaling/sbatch/run_metareview.sbatch
+#
+#   # standard_fewshot_1-1_boxed — text + vision:
+#   sbatch --array=0-1 --partition=ailab \
+#     --export=ALL,PROMPT_VARIANT="standard_fewshot_1-1_boxed",N_GENERATIONS=5 \
+#     final_inference_scaling/sbatch/run_metareview.sbatch
+#
+
 set -e
 
 # Configuration
@@ -36,7 +71,7 @@ RESULTS_DIR="${PROJECT_DIR}/final_inference_scaling/results"
 GENERATED_DATA_DIR="${PROJECT_DIR}/final_inference_scaling/data"
 
 # Meta-review source target
-PROMPT_VARIANT="${PROMPT_VARIANT_N_GEN:-critical_fewshot_1-1_json}"
+PROMPT_VARIANT="${PROMPT_VARIANT:-critical_fewshot_1-1_json}"
 N_GENERATIONS="${N_GENERATIONS:-5}"
 
 # Define modalities
@@ -83,11 +118,22 @@ echo "Input: ${PREDICTIONS_FILE}"
 echo "Output: ${METAREVIEW_PREDICTIONS}"
 echo "=============================================="
 
+# Automatically merge shards if merged file is missing
+if [ ! -f "${PREDICTIONS_FILE}" ]; then
+    echo "Checking for shards in ${SOURCE_DIR}..."
+    SHARD_FILES=$(ls ${SOURCE_DIR}/predictions_shard_*.jsonl 2>/dev/null || true)
+    if [ -n "${SHARD_FILES}" ]; then
+        echo "Found shards. Merging into ${PREDICTIONS_FILE}..."
+        cat ${SOURCE_DIR}/predictions_shard_*.jsonl > "${PREDICTIONS_FILE}"
+    else
+        echo "No shards found to merge in ${SOURCE_DIR}"
+    fi
+fi
+
 # Check if input exists
 if [ ! -f "${PREDICTIONS_FILE}" ]; then
     echo "ERROR: Predictions file not found: ${PREDICTIONS_FILE}"
-    echo "Please run run_inference_sharded.sbatch first, AND merge the shards:"
-    echo "  cat ${SOURCE_DIR}/predictions_shard_*.jsonl > ${PREDICTIONS_FILE}"
+    echo "Please ensure the inference job for ${MODALITY}/${PROMPT_VARIANT} completed and shards are merged."
     exit 1
 fi
 
@@ -96,6 +142,26 @@ mkdir -p "${METAREVIEW_DATASET_DIR}"
 python final_inference_scaling/scripts/run_metareview.py create \
     --input "${PREDICTIONS_FILE}" \
     --output "${METAREVIEW_DATASET_DIR}/data.json"
+
+# Register dataset in dataset_info.json if not present
+DATASET_NAME="${MODALITY}_metareview_${PROMPT_VARIANT}"
+DATASET_INFO="${GENERATED_DATA_DIR}/dataset_info.json"
+python -c "
+import json, os
+with open('$DATASET_INFO', 'r') as f:
+    data = json.load(f)
+if '$DATASET_NAME' not in data:
+    data['$DATASET_NAME'] = {
+        'file_name': '$DATASET_NAME/data.json',
+        'formatting': 'sharegpt',
+        'columns': {'messages': 'conversations'}
+    }
+    with open('$DATASET_INFO', 'w') as f:
+        json.dump(data, f, indent=2)
+    print('Registered dataset: $DATASET_NAME')
+else:
+    print('Dataset $DATASET_NAME already registered')
+"
 
 # Build meta-review inference command
 INFERENCE_CMD="python final_inference_scaling/scripts/vllm_infer_ensemble.py \

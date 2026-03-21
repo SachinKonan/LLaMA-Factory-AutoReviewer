@@ -21,6 +21,8 @@ import os
 import gc
 import functools
 import csv
+import sys
+import traceback
 from types import MethodType
 from typing import TYPE_CHECKING, Any, Optional, Union
 
@@ -85,6 +87,667 @@ def gen_cam(image_bgr_float, mask):
 
 class CustomSeq2SeqTrainer(Seq2SeqTrainer):
     r"""Inherits Seq2SeqTrainer to compute generative metrics such as BLEU and ROUGE."""
+
+
+
+    def _robust_decode(self, token_ids, **kwargs):
+        tokenizer = getattr(self.processing_class, "tokenizer", self.processing_class)
+        if hasattr(token_ids, "tolist"):
+            token_ids = token_ids.tolist()
+        return tokenizer.decode(token_ids, **kwargs)
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # Shared helpers for attention visualization (used by both vision & text)
+    # ═══════════════════════════════════════════════════════════════════════
+
+    @staticmethod
+    def _find_transformer_layers(model) -> list:
+        """Find transformer decoder layers in the model architecture."""
+        if hasattr(model, "model") and hasattr(model.model, "language_model") and hasattr(model.model.language_model, "layers"):
+            return model.model.language_model.layers
+        elif hasattr(model, "model") and hasattr(model.model, "layers"):
+            return model.model.layers
+        elif hasattr(model, "language_model") and hasattr(model.language_model, "model") and hasattr(model.language_model.model, "layers"):
+            return model.language_model.model.layers
+        elif hasattr(model, "layers"):
+            return model.layers
+        return []
+
+    @staticmethod
+    def _extract_sample_inputs(inputs: dict, i: int, batch_size: int) -> dict:
+        """Slice a single sample from the batched inputs dict."""
+        sample = {}
+        for k, v in inputs.items():
+            if isinstance(v, torch.Tensor):
+                if v.dim() > 0 and v.size(0) == batch_size:
+                    sample[k] = v[i : i + 1]
+                else:
+                    sample[k] = v
+            else:
+                sample[k] = v
+        return sample
+
+    def _truncate_to_prompt(self, sample_inputs: dict, inputs: dict, i: int) -> tuple[dict, str]:
+        """Truncate input_ids/attention_mask to prompt-only and extract ground truth.
+
+        Returns (modified sample_inputs, gt_string) where gt_string is
+        'accept', 'reject', or 'unknown'.
+        """
+        gt = "unknown"
+        labels_batch = inputs.get("labels")
+        if labels_batch is not None and labels_batch.dim() == 2:
+            labels_i = labels_batch[i]
+            non_ignored = labels_i[labels_i != IGNORE_INDEX]
+            if len(non_ignored) > 0:
+                gt_text = self._robust_decode(non_ignored.tolist()).strip().lower()
+                if "accept" in gt_text:
+                    gt = "accept"
+                elif "reject" in gt_text:
+                    gt = "reject"
+                else:
+                    gt = gt_text
+
+            input_len = sample_inputs["input_ids"].shape[1]
+            labels_len = labels_i.shape[0]
+            if labels_len == input_len:
+                response_starts = (labels_i != IGNORE_INDEX).nonzero(as_tuple=True)[0]
+                if len(response_starts) > 0:
+                    prompt_end = response_starts[0].item()
+                    if prompt_end > 0:
+                        sample_inputs["input_ids"] = sample_inputs["input_ids"][:, :prompt_end]
+                        if "attention_mask" in sample_inputs and sample_inputs["attention_mask"].dim() == 2:
+                            sample_inputs["attention_mask"] = sample_inputs["attention_mask"][:, :prompt_end]
+                        logger.info_rank0(f"Truncated to prompt-only: {labels_len} → {prompt_end} tokens")
+            else:
+                logger.info_rank0(f"Seq2Seq format detected: input_ids={input_len}, labels={labels_len} — no truncation needed")
+
+        return sample_inputs, gt
+
+    def _extract_metadata(self, inputs: dict, i: int) -> tuple[Optional[str], float, float, list[str]]:
+        """Extract paper_id, pct_rating, citation_normalized_by_year, image_paths.
+
+        Uses multiple fallback paths: _metadata dict, direct input fields,
+        eval_dataset lookup, and image_path parsing.
+        """
+        paper_id = None
+        pct_rating = 0.0
+        citation_normalized_by_year = 0.0
+
+        metadata = inputs.get("_metadata", [])
+        m_obj = None
+        if metadata and i < len(metadata) and metadata[i] is not None:
+            if isinstance(metadata[i], dict):
+                m_obj = metadata[i]
+            elif isinstance(metadata[i], str):
+                try:
+                    m_obj = json.loads(metadata[i])
+                except Exception:
+                    pass
+
+        if m_obj:
+            paper_id = m_obj.get("paper_id") or m_obj.get("submission_id")
+            pct_rating = m_obj.get("pct_rating", 0.0)
+            citation_normalized_by_year = m_obj.get("citation_normalized_by_year", 0.0)
+
+        if paper_id is None:
+            for k in ["submission_id", "paper_id", "id"]:
+                if k in inputs:
+                    val = inputs[k][i]
+                    paper_id = val if isinstance(val, str) else str(val)
+                    break
+
+        if paper_id is None:
+            eval_ids = self._get_eval_paper_ids()
+            if 0 <= self._attn_viz_sample_idx < len(eval_ids):
+                paper_id = eval_ids[self._attn_viz_sample_idx]
+
+        if paper_id is None and hasattr(self, "eval_dataset"):
+            try:
+                sample = self.eval_dataset[self._attn_viz_sample_idx]
+                m = sample.get("_metadata")
+                if m:
+                    paper_id = m.get("submission_id") or m.get("paper_id")
+            except Exception:
+                pass
+
+        image_paths: list[str] = []
+        if "image_paths" in inputs:
+            image_paths = inputs["image_paths"][i]
+        elif "images" in inputs and isinstance(inputs["images"][i], (list, tuple)) and isinstance(inputs["images"][i][0], str):
+            image_paths = inputs["images"][i]
+
+        if not image_paths and hasattr(self, "eval_dataset"):
+            try:
+                sample = self.eval_dataset[self._attn_viz_sample_idx]
+                image_paths = sample.get("images") or sample.get("image_paths") or []
+            except Exception:
+                pass
+
+        if not image_paths and metadata and i < len(metadata) and metadata[i] is not None:
+            if isinstance(metadata[i], dict):
+                image_paths = metadata[i].get("images") or metadata[i].get("image_paths") or []
+
+        # Try to extract paper_id from image_paths as last resort
+        if paper_id is None and image_paths:
+            for p in image_paths:
+                parts = p.split("/")
+                if "images" in parts:
+                    idx = parts.index("images")
+                    if idx + 1 < len(parts):
+                        paper_id = parts[idx + 1]
+                        break
+
+        if paper_id is None:
+            logger.info_rank0("No submission_id in metadata; using sequential ID")
+            paper_id = f"sample_{self._attn_viz_sample_idx:05d}"
+
+        return paper_id, pct_rating, citation_normalized_by_year, image_paths
+
+    @staticmethod
+    def _setup_attn_hooks(layers, num_layers: int, use_rollout: bool):
+        """Register Q-proj and self-attn pre-hooks for attention capture.
+
+        Returns (all_hooks, all_q_caps, last_attn, q_cap).
+        """
+        all_q_caps: list[dict] = []
+        all_hooks: list = []
+
+        if use_rollout:
+            all_q_caps = [{} for _ in range(num_layers)]
+
+            def _mk_q_hook(cap):
+                def hook(m, inp, out):
+                    cap["q_raw"] = out[:, -1:, :].detach()
+                return hook
+
+            def _mk_pre_hook(cap):
+                def hook(m, args, kwargs):
+                    pe = kwargs.get("position_embeddings")
+                    if pe is not None:
+                        cap["cos"] = pe[0].detach()
+                        cap["sin"] = pe[1].detach()
+                return hook
+
+            for layer_idx in range(num_layers):
+                cap = all_q_caps[layer_idx]
+                attn_mod = layers[layer_idx].self_attn
+                all_hooks.append(attn_mod.q_proj.register_forward_hook(_mk_q_hook(cap)))
+                all_hooks.append(attn_mod.register_forward_pre_hook(_mk_pre_hook(cap), with_kwargs=True))
+            last_attn = layers[num_layers - 1].self_attn
+            q_cap = all_q_caps[num_layers - 1]
+            logger.info_rank0(f"[attn_viz] Rollout mode: hooked all {num_layers} layers")
+        else:
+            last_attn = layers[num_layers - 1].self_attn
+            q_cap: dict = {}
+
+            def _q_proj_hook(module, input, output):
+                q_cap["q_raw"] = output.detach()
+
+            def _self_attn_pre_hook(module, args, kwargs):
+                pe = kwargs.get("position_embeddings")
+                if pe is not None:
+                    q_cap["cos"] = pe[0].detach()
+                    q_cap["sin"] = pe[1].detach()
+
+            all_hooks.append(last_attn.q_proj.register_forward_hook(_q_proj_hook))
+            all_hooks.append(last_attn.register_forward_pre_hook(_self_attn_pre_hook, with_kwargs=True))
+
+        return all_hooks, all_q_caps, last_attn, q_cap
+
+    @staticmethod
+    def _read_generation_config(model) -> tuple[float, float, bool]:
+        """Read temperature, repetition_penalty, do_sample from model."""
+        gen_cfg = getattr(model, "generation_config", None)
+        temperature = float(getattr(gen_cfg, "temperature", 1.0)) if gen_cfg else 1.0
+        rep_penalty = float(getattr(gen_cfg, "repetition_penalty", 1.0)) if gen_cfg else 1.0
+        do_sample = bool(getattr(gen_cfg, "do_sample", False)) if gen_cfg else False
+        return temperature, rep_penalty, do_sample
+
+    @staticmethod
+    def _sample_next_token_fn(logits_last: "torch.Tensor", prev_ids: list[int],
+                              temperature: float, rep_penalty: float, do_sample: bool) -> int:
+        """Apply repetition penalty + temperature, then greedy or sample."""
+        logits = logits_last.float().clone()
+        if rep_penalty != 1.0 and prev_ids:
+            for tid in set(prev_ids):
+                if logits[0, tid] > 0:
+                    logits[0, tid] /= rep_penalty
+                else:
+                    logits[0, tid] *= rep_penalty
+        if temperature > 0 and temperature != 1.0:
+            logits = logits / temperature
+        if do_sample and temperature > 0:
+            probs = torch.softmax(logits, dim=-1)
+            return torch.multinomial(probs, num_samples=1).item()
+        return torch.argmax(logits, dim=-1).item()
+
+    def _run_prefill(self, model, sample_inputs: dict, device,
+                     temperature: float, rep_penalty: float, do_sample: bool):
+        """Run prefill forward pass.
+
+        Returns (last_logits, generated_ids, past_key_values, attention_mask).
+        """
+        sample_inputs.pop("labels", None)
+        past_key_values = None
+        cache_position = torch.arange(sample_inputs["input_ids"].shape[1], device=device)
+
+        with torch.no_grad():
+            with self.compute_loss_context_manager():
+                model_dtype = next(model.parameters()).dtype
+                for k, v in sample_inputs.items():
+                    if isinstance(v, torch.Tensor) and torch.is_floating_point(v):
+                        sample_inputs[k] = v.to(model_dtype)
+
+                inputs_for_gen = model.prepare_inputs_for_generation(
+                    **sample_inputs,
+                    past_key_values=past_key_values,
+                    use_cache=True,
+                    cache_position=cache_position,
+                )
+
+                outputs = model(**inputs_for_gen)
+                last_logits = outputs.logits[:, -1, :].float()
+                next_token_id = self._sample_next_token_fn(last_logits, [], temperature, rep_penalty, do_sample)
+                past_key_values = outputs.past_key_values
+
+        attention_mask = sample_inputs.get("attention_mask")
+        if attention_mask is None:
+            attention_mask = torch.ones_like(sample_inputs["input_ids"])
+
+        return last_logits, [next_token_id], past_key_values, attention_mask
+
+    def _decode_one_step(self, model, cur_token_id: int, sample_inputs: dict,
+                         past_key_values, attention_mask, step_idx: int, device,
+                         temperature: float, rep_penalty: float, do_sample: bool,
+                         generated_ids: list[int]):
+        """Run one decode step. Returns (last_logits, next_token_id, past_key_values, attention_mask)."""
+        cache_position = torch.tensor([sample_inputs["input_ids"].shape[1] + step_idx], device=device)
+        attention_mask = torch.cat([attention_mask, torch.ones((1, 1), dtype=attention_mask.dtype, device=device)], dim=-1)
+
+        with torch.no_grad():
+            with self.compute_loss_context_manager():
+                inputs_for_gen = model.prepare_inputs_for_generation(
+                    input_ids=torch.tensor([[cur_token_id]], device=device),
+                    past_key_values=past_key_values,
+                    attention_mask=attention_mask,
+                    use_cache=True,
+                    cache_position=cache_position,
+                    pixel_values=sample_inputs.get("pixel_values"),
+                    image_grid_thw=sample_inputs.get("image_grid_thw"),
+                    pixel_values_videos=sample_inputs.get("pixel_values_videos"),
+                    video_grid_thw=sample_inputs.get("video_grid_thw"),
+                )
+                outputs = model(**inputs_for_gen)
+                last_logits = outputs.logits[:, -1, :].float()
+                next_token_id = self._sample_next_token_fn(last_logits, generated_ids, temperature, rep_penalty, do_sample)
+                past_key_values = outputs.past_key_values
+
+        return last_logits, next_token_id, past_key_values, attention_mask
+
+    def _detect_decision_and_log(self, token_text: str, cur_token_id: int,
+                                 last_logits: "torch.Tensor",
+                                 accept_id: int, reject_id: int,
+                                 paper_id: str, gt: str,
+                                 pct_rating: float, citation_normalized_by_year: float,
+                                 output_root: str, recorded_decision: bool) -> tuple[bool, bool]:
+        """Check if token is accept/reject, log confidence if first decision.
+
+        Returns (updated_recorded_decision, is_decision).
+        """
+        token_lower = token_text.lower()
+        is_accept = "accept" in token_lower
+        is_reject = "reject" in token_lower
+        is_decision = is_accept or is_reject
+
+        if is_decision and not recorded_decision:
+            if (is_accept and cur_token_id == accept_id) or (is_reject and cur_token_id == reject_id):
+                tok_id_for_conf = cur_token_id
+            else:
+                tok_id_for_conf = accept_id if is_accept else reject_id
+
+            probs = torch.softmax(last_logits, dim=-1)
+            conf = probs[0, tok_id_for_conf].item()
+            total_prob = (probs[0, accept_id] + probs[0, reject_id]).item()
+            decision = "accept" if is_accept else "reject"
+
+            self._attn_viz_confidence_results.append({
+                "paper_id": paper_id,
+                "decision": decision,
+                "confidence": conf,
+                "total_prob": total_prob,
+                "ground_truth": gt,
+                "pct_rating": pct_rating,
+                "citation_normalized_by_year": citation_normalized_by_year,
+            })
+            recorded_decision = True
+            self._save_confidence_csv(output_root)
+
+        return recorded_decision, is_decision
+
+    def _save_summary_plots(self, decision_list: list[tuple[int, str, "np.ndarray"]],
+                            summary_dir: str, paper_id: str,
+                            x_label: str = "Image Patch Index"):
+        """Save line plot + histogram for each decision token's attention distribution."""
+        for d_step, d_tok, d_a in decision_list:
+            safe_d_tok = "".join(c for c in d_tok if c.isalnum() or c in ("_", "-")).strip() or "token"
+            try:
+                plt.figure(figsize=(12, 4))
+                plt.plot(d_a)
+                plt.title(f"Mean Attention Distribution Across {x_label}")
+                plt.xlabel(x_label)
+                plt.ylabel("Mean Attention Score")
+                plt.tight_layout()
+                plt.savefig(os.path.join(summary_dir, f"attention_distribution_line_step{d_step}_{safe_d_tok}.png"), dpi=150)
+            except Exception as e:
+                logger.warning_rank0(f"Failed to save attention_distribution_line for {paper_id}: {e}")
+            plt.close()
+
+            try:
+                plt.figure(figsize=(8, 4))
+                plt.hist(d_a, bins=500, color='red', alpha=0.7)
+                plt.title(f"Histogram of Attention Scores for Decision Token '{d_tok}'")
+                plt.xlabel("Attention Score")
+                plt.ylabel("Frequency")
+                plt.xscale('log')
+                plt.yscale('log')
+                plt.tight_layout()
+                plt.savefig(os.path.join(summary_dir, f"attention_distribution_hist_step{d_step}_{safe_d_tok}.png"), dpi=150)
+            except Exception as e:
+                logger.warning_rank0(f"Failed to save attention_distribution_hist for {paper_id}: {e}")
+            plt.close()
+
+    @staticmethod
+    def _save_2d_heatmap(attn_2d: "np.ndarray", output_path: str):
+        """Row-normalize and save 2D attention heatmap JPG."""
+        row_min = attn_2d.min(axis=1, keepdims=True)
+        row_max = attn_2d.max(axis=1, keepdims=True)
+        normed_2d = (attn_2d - row_min) / (row_max - row_min + 1e-8)
+        SUMMARY_W = 1024
+        SUMMARY_H = max(attn_2d.shape[0] * 8, 64)
+        heatmap_2d = cv2.applyColorMap(
+            cv2.resize(np.uint8(255 * normed_2d), (SUMMARY_W, SUMMARY_H), interpolation=cv2.INTER_NEAREST),
+            cv2.COLORMAP_JET,
+        )
+        cv2.imwrite(output_path, heatmap_2d)
+
+    @staticmethod
+    def _cleanup_hooks(all_hooks: list, all_q_caps: list[dict], q_cap: dict, use_rollout: bool):
+        """Remove all hooks and clear capture dicts."""
+        for h in all_hooks:
+            h.remove()
+        all_hooks.clear()
+        if use_rollout:
+            for cap in all_q_caps:
+                cap.clear()
+        else:
+            q_cap.clear()
+
+    def _pad_and_return(self, all_generated_ids: list[list[int]], device, inputs: dict):
+        """Pad generated sequences and return the standard prediction triple."""
+        pad_id = self.processing_class.pad_token_id
+        max_gen_len = max((len(g) for g in all_generated_ids), default=1)
+        padded = [g + [pad_id] * (max_gen_len - len(g)) for g in all_generated_ids]
+        generated_tokens = torch.tensor(padded, dtype=torch.long, device=device)
+        return None, generated_tokens, inputs.get("labels")
+
+    def _get_decision_token_ids(self) -> tuple[int, int]:
+        """Return (accept_token_id, reject_token_id)."""
+        try:
+            accept_id = self.processing_class.encode("accept", add_special_tokens=False)[0]
+            reject_id = self.processing_class.encode("reject", add_special_tokens=False)[0]
+        except Exception:
+            accept_id, reject_id = -1, -1
+        return accept_id, reject_id
+
+    def _decode_token_text(self, token_id: int) -> tuple[str, str]:
+        """Decode a token ID to (token_text, token_safe) for file naming."""
+        token_text = self._robust_decode([token_id]).strip() or f"token_{token_id}"
+        token_safe = "".join(c for c in token_text if c.isalnum() or c in ("_", "-")).strip() or f"token_{token_id}"
+        return token_text, token_safe
+
+    def _log_no_decision(self, paper_id: str, gt: str, pct_rating: float,
+                         citation_normalized_by_year: float, output_root: str):
+        """Log a no-decision entry to confidence results."""
+        self._attn_viz_confidence_results.append({
+            "paper_id": paper_id,
+            "decision": "none",
+            "confidence": 0.0,
+            "total_prob": 0.0,
+            "ground_truth": gt,
+            "pct_rating": pct_rating,
+            "citation_normalized_by_year": citation_normalized_by_year,
+        })
+        self._save_confidence_csv(output_root)
+
+    @staticmethod
+    def _setup_attn_hooks_matmul(model, layers, num_layers):
+        """Setup hooks for proper matrix-multiplication attention rollout.
+
+        Sets ``model.config.output_attentions = True`` so each self-attn layer
+        returns attention weights.  During **prefill** the hooks compute the
+        rollout matrix R = A^(L-1) @ … @ A^(0) incrementally.  During
+        **decode** only the last layer's attention is captured.
+
+        Returns (all_hooks, rollout_state).
+        """
+        model.config.output_attentions = True
+
+        rollout_state: dict = {
+            "R": None,              # accumulated rollout [N, N]  (prefill only)
+            "R_for_decode": None,   # R through layers 0..(L-2)  (prefill only)
+            "R_paper": None,        # R_for_decode[:, paper_positions]  (set after prefill)
+            "last_layer_attn": None,  # [seq+t] — attention at last layer
+            "phase": "prefill",
+            "prompt_len": 0,
+        }
+        all_hooks: list = []
+
+        for layer_idx in range(num_layers):
+            def _make_hook(lidx):
+                def hook(module, input, output):
+                    attn_w = output[1] if isinstance(output, tuple) and len(output) > 1 else None
+                    if attn_w is None:
+                        return
+
+                    if rollout_state["phase"] == "prefill":
+                        # Full attention: [batch, heads, seq, seq] → head-avg [seq, seq]
+                        A = attn_w.mean(dim=1)[0].float()
+                        if rollout_state["R"] is None:
+                            rollout_state["R"] = A
+                        else:
+                            rollout_state["R"] = A @ rollout_state["R"]
+                        # Save R through layers 0..(L-2) for decode
+                        if lidx == num_layers - 2:
+                            rollout_state["R_for_decode"] = rollout_state["R"].clone()
+                        # Capture last-layer attention (last row) for step 0
+                        if lidx == num_layers - 1:
+                            rollout_state["last_layer_attn"] = A[-1, :].clone()
+                            rollout_state["prompt_len"] = A.shape[0]
+
+                    elif rollout_state["phase"] == "decode" and lidx == num_layers - 1:
+                        # Decode: [batch, heads, 1, seq+t] → [seq+t]
+                        rollout_state["last_layer_attn"] = attn_w.mean(dim=1)[0, 0].float()
+
+                    # Replace attn_weights with None to prevent model from
+                    # accumulating all layers' weights in memory.
+                    if isinstance(output, tuple) and len(output) >= 2:
+                        return output[:1] + (None,) + output[2:]
+                return hook
+
+            all_hooks.append(
+                layers[layer_idx].self_attn.register_forward_hook(_make_hook(layer_idx))
+            )
+
+        return all_hooks, rollout_state
+
+    @staticmethod
+    def _resolve_rollout_method(finetuning_args) -> str:
+        """Return the effective rollout method string."""
+        method = getattr(finetuning_args, "attention_viz_rollout_method", "none")
+        if method != "none":
+            return method
+        if getattr(finetuning_args, "attention_viz_rollout", False):
+            return "residual_mix"
+        return "none"
+
+    @staticmethod
+    def _finalize_matmul_rollout(rollout_state, paper_positions_np):
+        """After prefill, project R to paper positions and switch to decode phase."""
+        device = rollout_state["R_for_decode"].device
+        paper_pos_t = torch.from_numpy(paper_positions_np).long().to(device)
+        rollout_state["R_paper"] = rollout_state["R_for_decode"][:, paper_pos_t].clone()
+        rollout_state["phase"] = "decode"
+        # Free large matrices
+        del rollout_state["R"], rollout_state["R_for_decode"]
+        torch.cuda.empty_cache()
+
+    @staticmethod
+    def _compute_matmul_rollout(rollout_state) -> Optional[np.ndarray]:
+        """Compute paper-position attention via matrix-multiply rollout."""
+        a = rollout_state.get("last_layer_attn")
+        R_paper = rollout_state.get("R_paper")
+        if a is None or R_paper is None:
+            return None
+        try:
+            prompt_len = rollout_state["prompt_len"]
+            r = a[:prompt_len].float() @ R_paper[:prompt_len].float()
+            s = r.sum()
+            if s > 1e-12:
+                r = r / s
+            return r.cpu().numpy()
+        except Exception as exc:
+            logger.warning_rank0(f"_compute_matmul_rollout failed: {exc}")
+            return None
+
+    @staticmethod
+    def _cleanup_matmul_hooks(model, all_hooks, rollout_state):
+        """Remove matmul rollout hooks and restore model config."""
+        for h in all_hooks:
+            h.remove()
+        all_hooks.clear()
+        model.config.output_attentions = False
+        rollout_state.clear()
+
+    # ── AttnLRP helpers ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _setup_attn_lrp(model):
+        """Apply lxt monkey_patch to the model's module for AttnLRP.
+
+        Patches the appropriate modeling module (qwen2 for text, qwen2_vl for
+        vision) so that backward passes compute LRP relevance instead of
+        standard gradients.  Also freezes all parameters (grads disabled) to
+        save memory — only ``inputs_embeds`` will have ``requires_grad``.
+
+        Returns ``True`` if patching succeeded, ``False`` otherwise (caller
+        should fall back to another method).
+        """
+        try:
+            from lxt.efficient import monkey_patch
+            from functools import partial
+            from torch.nn import Dropout
+            from lxt.efficient.patches import (
+                patch_method, patch_attention,
+                rms_norm_forward, gated_mlp_forward, dropout_forward,
+            )
+
+            # Determine which module the model comes from
+            model_class_module = type(model).__module__  # e.g. "transformers.models.qwen2_vl.modeling_qwen2_vl"
+
+            if "qwen2_vl" in model_class_module:
+                from transformers.models.qwen2_vl import modeling_qwen2_vl
+                from transformers.models.qwen2.modeling_qwen2 import Qwen2RMSNorm
+                patch_map = {
+                    modeling_qwen2_vl.Qwen2MLP: partial(patch_method, gated_mlp_forward),
+                    Qwen2RMSNorm: partial(patch_method, rms_norm_forward),
+                    Dropout: partial(patch_method, dropout_forward),
+                    modeling_qwen2_vl: patch_attention,
+                }
+                monkey_patch(modeling_qwen2_vl, patch_map=patch_map, verbose=False)
+            elif "qwen2" in model_class_module:
+                from transformers.models.qwen2 import modeling_qwen2
+                monkey_patch(modeling_qwen2, verbose=False)
+            else:
+                logger.warning_rank0(
+                    f"[attn_lrp] Unsupported model module {model_class_module}. "
+                    "AttnLRP requires qwen2 or qwen2_vl."
+                )
+                return False
+
+            for param in model.parameters():
+                param.requires_grad = False
+
+            logger.info_rank0("[attn_lrp] Model patched for AttnLRP successfully.")
+            return True
+        except ImportError as e:
+            logger.warning_rank0(f"[attn_lrp] lxt not installed: {e}. Falling back to last-layer attention.")
+            return False
+        except Exception as e:
+            logger.warning_rank0(f"[attn_lrp] Patching failed: {e}. Falling back to last-layer attention.")
+            return False
+
+    @staticmethod
+    def _compute_attn_lrp(model, full_input_ids, device, positions_np,
+                          pixel_values=None, image_grid_thw=None,
+                          attention_mask=None) -> Optional[np.ndarray]:
+        """Run a single forward + backward to get AttnLRP relevance.
+
+        Args:
+            model: The patched model.
+            full_input_ids: [1, seq_len] — prompt + generated tokens so far.
+            device: torch device.
+            positions_np: numpy array of token positions to extract relevance for
+                          (image positions or paper token range).
+            pixel_values: optional pixel values for VL models.
+            image_grid_thw: optional image grid for VL models.
+            attention_mask: optional attention mask.
+
+        Returns:
+            Normalized relevance at ``positions_np`` as a numpy array summing to 1,
+            or None on failure.
+        """
+        if len(positions_np) == 0:
+            return None
+        try:
+            input_embeds = model.get_input_embeddings()(full_input_ids)
+
+            kwargs = {
+                "inputs_embeds": input_embeds.requires_grad_(),
+                "use_cache": False,
+            }
+            if pixel_values is not None:
+                kwargs["pixel_values"] = pixel_values
+            if image_grid_thw is not None:
+                kwargs["image_grid_thw"] = image_grid_thw
+            if attention_mask is not None:
+                kwargs["attention_mask"] = attention_mask
+
+            with torch.enable_grad():
+                output = model(**kwargs)
+                logits_last = output.logits[0, -1, :]
+                max_logit = logits_last.max()
+                max_logit.backward()
+
+            # Relevance = gradient * input summed over embedding dim
+            relevance = (input_embeds.grad * input_embeds).float().sum(-1).detach().cpu()[0]
+
+            # Extract relevance at paper/image positions
+            r = relevance[positions_np]
+            # Clamp negatives (LRP can produce small negatives; we want a distribution)
+            r = torch.clamp(r, min=0.0)
+            s = r.sum()
+            if s > 1e-12:
+                r = r / s
+            return r.numpy()
+        except Exception as exc:
+            logger.warning_rank0(f"[attn_lrp] _compute_attn_lrp failed: {exc}")
+            return None
+        finally:
+            # Clean up gradients to free memory
+            if input_embeds.grad is not None:
+                input_embeds.grad = None
+            model.zero_grad(set_to_none=True)
+            torch.cuda.empty_cache()
 
     def __init__(
         self,
@@ -360,7 +1023,8 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
                             section_weights[header]["count"] += block_slice.size
             offset += num_t
             
-        return {h: float(d["sum"]/d["count"]) for h, d in section_weights.items() if d["count"] > 0}
+        # Use sum (not mean) so section weights add to 1 when a_img sums to 1
+        return {h: float(d["sum"]) for h, d in section_weights.items() if d["count"] > 0}
 
     def _compute_section_weights_text(self, a_text, paper_token_ids, sections):
         """Aggregate text attention into semantic sections using string matching."""
@@ -410,7 +1074,8 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
             
             if s_tokens:
                 sub_a = a_norm[s_tokens]
-                results[s.get("header")] = float(sub_a.mean())
+                # Use sum (not mean) so section weights add to 1 when a_text sums to 1
+                results[s.get("header")] = float(sub_a.sum())
                 
         return results
 
@@ -846,17 +1511,7 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
         device = inputs["input_ids"].device
         all_generated_ids: list[list[int]] = []  # collect per-sample for return value
 
-        # Find layers (Llama, Qwen, etc.)
-        layers = []
-        if hasattr(model, "model") and hasattr(model.model, "language_model") and hasattr(model.model.language_model, "layers"):
-            layers = model.model.language_model.layers
-        elif hasattr(model, "model") and hasattr(model.model, "layers"):
-            layers = model.model.layers
-        elif hasattr(model, "language_model") and hasattr(model.language_model, "model") and hasattr(model.language_model.model, "layers"):
-            layers = model.language_model.model.layers
-        elif hasattr(model, "layers"):
-            layers = model.layers
-
+        layers = self._find_transformer_layers(model)
         if not layers:
             logger.warning_rank0("Could not find layers for attention visualization. Skipping.")
             return super().prediction_step(model, inputs, prediction_loss_only, ignore_keys, **gen_kwargs)
@@ -880,135 +1535,9 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
 
         for i in range(batch_size):
             try:
-                # Extract single sample inputs
-                sample_inputs = {}
-                for k, v in inputs.items():
-                    if isinstance(v, torch.Tensor):
-                        if v.dim() > 0 and v.size(0) == batch_size:
-                            sample_inputs[k] = v[i : i + 1]
-                        else:
-                            sample_inputs[k] = v
-                    else:
-                        sample_inputs[k] = v
-    
-                # Fix 4: Truncate input_ids/attention_mask to prompt-only.
-                # Only needed in causal-LM format where input_ids contains the full sequence
-                # (prompt+response) and labels has IGNORE_INDEX for prompt tokens.
-                # In Seq2Seq/predict_with_generate mode, input_ids is already prompt-only
-                # and labels contains only the response tokens (different length) — skip truncation.
-                labels_batch = inputs.get("labels")
-                gt = "unknown"
-                if labels_batch is not None and labels_batch.dim() == 2:
-                    labels_i = labels_batch[i]
-                    non_ignored = labels_i[labels_i != IGNORE_INDEX]
-                    if len(non_ignored) > 0:
-                        gt_token_id = non_ignored[0].item()
-                        gt_text = self.processing_class.decode([gt_token_id]).strip().lower()
-                        if "accept" in gt_text: gt = "accept"
-                        elif "reject" in gt_text: gt = "reject"
-                        else: gt = gt_text
-
-                    input_len = sample_inputs["input_ids"].shape[1]
-                    labels_len = labels_i.shape[0]
-                    if labels_len == input_len:
-                        # Causal-LM format: same length, IGNORE_INDEX marks prompt
-                        response_starts = (labels_i != IGNORE_INDEX).nonzero(as_tuple=True)[0]
-                        if len(response_starts) > 0:
-                            prompt_end = response_starts[0].item()
-                            if prompt_end > 0:
-                                sample_inputs["input_ids"] = sample_inputs["input_ids"][:, :prompt_end]
-                                if "attention_mask" in sample_inputs and sample_inputs["attention_mask"].dim() == 2:
-                                    sample_inputs["attention_mask"] = sample_inputs["attention_mask"][:, :prompt_end]
-                                logger.info_rank0(f"Truncated to prompt-only: {labels_len} → {prompt_end} tokens")
-                    else:
-                        # Seq2Seq format: input_ids is already prompt-only, labels is response-only
-                        logger.info_rank0(f"Seq2Seq format detected: input_ids={input_len}, labels={labels_len} — no truncation needed")
-    
-                if i == 0:
-                    for k, v in inputs.items():
-                        if isinstance(v, torch.Tensor):
-                            logger.info_rank0(f"Input {k} shape: {v.shape}")
-                        else:
-                            logger.info_rank0(f"Input {k} type: {type(v)}")
-    
-                # Debug inputs and metadata
-                logger.info_rank0(f"prediction_step keys: {list(inputs.keys())}")
-                if "_metadata" in inputs:
-                    logger.info_rank0(f"Found _metadata: {inputs['_metadata']}")
-    
-                # Metadata extraction
-                paper_id = None
-                pct_rating = 0.0
-                citation_normalized_by_year = 0.0
-
-                metadata = inputs.get("_metadata", [])
-                m_obj = None
-                if metadata and i < len(metadata) and metadata[i] is not None:
-                    if isinstance(metadata[i], dict):
-                        m_obj = metadata[i]
-                    elif isinstance(metadata[i], str):
-                        try:
-                            m_obj = json.loads(metadata[i])
-                        except:
-                            pass
-                
-                if m_obj:
-                    paper_id = m_obj.get("paper_id") or m_obj.get("submission_id")
-                    pct_rating = m_obj.get("pct_rating", 0.0)
-                    citation_normalized_by_year = m_obj.get("citation_normalized_by_year", 0.0)
-    
-                if paper_id is None:
-                    for k in ["submission_id", "paper_id", "id"]:
-                        if k in inputs:
-                            val = inputs[k][i]
-                            paper_id = val if isinstance(val, str) else str(val)
-                            break
-    
-                # Robust fallback: lookup directly from eval_dataset or data.json
-                if paper_id is None:
-                    eval_ids = self._get_eval_paper_ids()
-                    if 0 <= self._attn_viz_sample_idx < len(eval_ids):
-                        paper_id = eval_ids[self._attn_viz_sample_idx]
-    
-                if paper_id is None and hasattr(self, "eval_dataset"):
-                    try:
-                        sample = self.eval_dataset[self._attn_viz_sample_idx]
-                        m = sample.get("_metadata")
-                        if m:
-                            paper_id = m.get("submission_id") or m.get("paper_id")
-                    except:
-                        pass
-    
-                image_paths = []
-                if "image_paths" in inputs:
-                    image_paths = inputs["image_paths"][i]
-                elif "images" in inputs and isinstance(inputs["images"][i], (list, tuple)) and isinstance(inputs["images"][i][0], str):
-                    image_paths = inputs["images"][i]
-    
-                if not image_paths and hasattr(self, "eval_dataset"):
-                    try:
-                        sample = self.eval_dataset[self._attn_viz_sample_idx]
-                        image_paths = sample.get("images") or sample.get("image_paths") or []
-                    except:
-                        pass
-    
-                if not image_paths and metadata and i < len(metadata) and metadata[i] is not None:
-                    if isinstance(metadata[i], dict):
-                        image_paths = metadata[i].get("images") or metadata[i].get("image_paths") or []
-    
-                # If still no paper_id, try to extract from image_paths
-                if paper_id is None and image_paths:
-                    for p in image_paths:
-                        parts = p.split("/")
-                        if "images" in parts:
-                            idx = parts.index("images")
-                            if idx + 1 < len(parts):
-                                paper_id = parts[idx+1]
-                                break
-    
-                if paper_id is None:
-                    logger.info_rank0(f"No submission_id in metadata; using sequential ID")
-                    paper_id = f"sample_{self._attn_viz_sample_idx:05d}"
+                sample_inputs = self._extract_sample_inputs(inputs, i, batch_size)
+                sample_inputs, gt = self._truncate_to_prompt(sample_inputs, inputs, i)
+                paper_id, pct_rating, citation_normalized_by_year, image_paths = self._extract_metadata(inputs, i)
     
                 # Prepare image grid information
                 prompt_ids = sample_inputs["input_ids"][0]
@@ -1052,72 +1581,36 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
                                 h_new = int(img.shape[0] * max_w / img.shape[1])
                                 img = cv2.resize(img, (max_w, h_new), interpolation=cv2.INTER_AREA)
                             standardized_bgr.append(img)
-    
-                # ── Attention capture via Q/K hooks on the last layer only ──────────
-                # Strategy: run the full forward with flash attention (no output_attentions).
-                # For the last transformer layer, capture Q (from q_proj, before RoPE) and
-                # position_embeddings (cos, sin) via hooks.  After each forward, apply RoPE
-                # to Q ourselves, read K for image positions from past_key_values, and compute
-                # softmax(Q_last @ K_image.T * scaling) averaged over heads.  This never
-                # materialises the full [seq, seq] attention matrix.
-                last_layer = layers[num_layers - 1]
-                last_attn = last_layer.self_attn
-    
-                q_cap: dict = {}   # filled by hooks each forward call
-    
-                def _q_proj_hook(module, input, output):
-                    # output: [1, seq_len, num_heads * head_dim]
-                    q_cap["q_raw"] = output.detach()
-    
-                def _self_attn_pre_hook(module, args, kwargs):
-                    # position_embeddings=(cos, sin) is passed as a kwarg by the model
-                    pe = kwargs.get("position_embeddings")
-                    if pe is not None:
-                        q_cap["cos"] = pe[0].detach()
-                        q_cap["sin"] = pe[1].detach()
-    
-                h_qproj = last_attn.q_proj.register_forward_hook(_q_proj_hook)
-                h_pre   = last_attn.register_forward_pre_hook(_self_attn_pre_hook, with_kwargs=True)
-    
-                # Generation parameters
+
+                rollout_method = self._resolve_rollout_method(self.finetuning_args)
+                use_rollout = rollout_method != "none"
+                rollout_state = None
+                all_hooks = []
+                all_q_caps, last_attn, q_cap = [], None, {}
+                lrp_active = False
+
+                if rollout_method == "attn_lrp":
+                    lrp_active = self._setup_attn_lrp(model)
+                    if not lrp_active:
+                        rollout_method = "none"
+                        use_rollout = False
+                elif rollout_method == "attention_rollout":
+                    all_hooks, rollout_state = self._setup_attn_hooks_matmul(model, layers, num_layers)
+                else:
+                    all_hooks, all_q_caps, last_attn, q_cap = self._setup_attn_hooks(
+                        layers, num_layers, rollout_method == "residual_mix"
+                    )
+
                 max_new_tokens = self.finetuning_args.attention_viz_max_new_tokens
-                generated_ids = []
                 paper_dir = os.path.join(output_root, paper_id)
                 os.makedirs(paper_dir, exist_ok=True)
-    
-                # Token IDs for decision logging
-                try:
-                    accept_id = self.processing_class.encode("accept", add_special_tokens=False)[0]
-                    reject_id = self.processing_class.encode("reject", add_special_tokens=False)[0]
-                except:
-                    accept_id, reject_id = -1, -1
+                accept_id, reject_id = self._get_decision_token_ids()
                 recorded_decision = False
-
-            # Read generation config from model (temperature, repetition_penalty, do_sample)
-                gen_cfg = getattr(model, "generation_config", None)
-                gen_temperature = float(getattr(gen_cfg, "temperature", 1.0)) if gen_cfg is not None else 1.0
-                gen_rep_penalty = float(getattr(gen_cfg, "repetition_penalty", 1.0)) if gen_cfg is not None else 1.0
-                gen_do_sample = bool(getattr(gen_cfg, "do_sample", False)) if gen_cfg is not None else False
+                gen_temperature, gen_rep_penalty, gen_do_sample = self._read_generation_config(model)
                 logger.info_rank0(
                     f"Generation config: temperature={gen_temperature}, "
                     f"repetition_penalty={gen_rep_penalty}, do_sample={gen_do_sample}"
                 )
-    
-                def _sample_next_token(logits_last: "torch.Tensor", prev_ids: list[int]) -> int:
-                    """Apply repetition penalty + temperature, then greedy or sample."""
-                    logits = logits_last.float().clone()  # [1, vocab]
-                    if gen_rep_penalty != 1.0 and prev_ids:
-                        for tid in set(prev_ids):
-                            if logits[0, tid] > 0:
-                                logits[0, tid] /= gen_rep_penalty
-                            else:
-                                logits[0, tid] *= gen_rep_penalty
-                    if gen_temperature > 0 and gen_temperature != 1.0:
-                        logits = logits / gen_temperature
-                    if gen_do_sample and gen_temperature > 0:
-                        probs = torch.softmax(logits, dim=-1)
-                        return torch.multinomial(probs, num_samples=1).item()
-                    return torch.argmax(logits, dim=-1).item()
     
                 def _compute_a_img(past_key_values) -> Optional[torch.Tensor]:
                     """After a forward pass, compute last-layer attention from the last query
@@ -1165,7 +1658,51 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
                         import traceback
                         logger.warning_rank0(f"_compute_a_img failed: {traceback.format_exc()}")
                         return None
-    
+
+                def _compute_a_img_rollout(past_key_values) -> Optional[torch.Tensor]:
+                    """Compute attention rollout across all layers for image positions.
+                    Returns [1, n_img] tensor for compatibility with head-averaged path."""
+                    if len(image_positions) == 0:
+                        return None
+                    try:
+                        from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import apply_multimodal_rotary_pos_emb
+                        img_pos_t = torch.from_numpy(image_positions).long()
+                        rollout = None
+                        for layer_idx in range(num_layers):
+                            cap = all_q_caps[layer_idx]
+                            if "q_raw" not in cap or "cos" not in cap:
+                                continue
+                            attn_mod = layers[layer_idx].self_attn
+                            q_raw = cap["q_raw"]  # [1, 1, num_heads * head_dim]
+                            cos, sin = cap["cos"], cap["sin"]
+                            bsz = q_raw.shape[0]
+                            num_heads_l = attn_mod.num_heads
+                            head_dim_l = attn_mod.head_dim
+                            num_kv_heads_l = attn_mod.num_key_value_heads
+                            scaling_l = attn_mod.scaling
+                            q = q_raw.view(bsz, 1, num_heads_l, head_dim_l).transpose(1, 2)
+                            mrope_section = attn_mod.rope_scaling["mrope_section"]
+                            q_rot, _ = apply_multimodal_rotary_pos_emb(q, q, cos, sin, mrope_section)
+                            k_full = past_key_values[layer_idx][0]
+                            groups = num_heads_l // num_kv_heads_l
+                            k_exp = k_full.repeat_interleave(groups, dim=1)
+                            attn_scores = torch.matmul(q_rot, k_exp.transpose(-1, -2)) * scaling_l
+                            attn_weights = torch.softmax(attn_scores.float(), dim=-1)
+                            a_layer = attn_weights[0, :, 0, img_pos_t].mean(dim=0)  # [n_img]
+                            a_layer = a_layer / (a_layer.sum() + 1e-12)
+                            if rollout is None:
+                                rollout = a_layer
+                            else:
+                                rollout = 0.5 * a_layer + 0.5 * rollout
+                                rollout = rollout / (rollout.sum() + 1e-12)
+                        if rollout is None:
+                            return None
+                        return rollout.unsqueeze(0)  # [1, n_img]
+                    except Exception as exc:
+                        import traceback
+                        logger.warning_rank0(f"_compute_a_img_rollout failed: {traceback.format_exc()}")
+                        return None
+
                 def _save_step(step_idx: int, token_safe: str, a_img_np: np.ndarray, is_smoothed: bool = False) -> None:
                     """Render and save heatmap overlays for a single generation step."""
                     if a_img is None or not standardized_bgr:
@@ -1202,8 +1739,8 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
                             bottom_stitched = cv2.hconcat(bottom_row)
                             stitched = cv2.vconcat([top_stitched, bottom_stitched])
                             
-                            # Save to both "last/" (last-layer) and "average/" (same here — single layer)
-                            for subdir in ("last", "average"):
+                            # Save to rollout/ when rollout is enabled, otherwise last/ and average/
+                            for subdir in (("rollout",) if use_rollout else ("last", "average")):
                                 out_dir = os.path.join(paper_dir, subdir, f"images{variant_name}")
                                 os.makedirs(out_dir, exist_ok=True)
                                 cv2.imwrite(os.path.join(out_dir, f"step_{step_idx:03d}_{token_safe}.jpg"), stitched)
@@ -1214,59 +1751,52 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
                         filtered = np.where(normed_global >= threshold, normed_global, 0.0)
                         _save_variant(sum_normalise(filtered), f"_top{k}{suffix}")
     
-                sample_inputs.pop("labels", None)
                 logger.info_rank0(f"Visualizing attention for {paper_id}...")
-    
-                # ── Prefill ───────────────────────────────────────────────────────────
-                # Setup for generation loop
-                past_key_values = None
-                cache_position = torch.arange(sample_inputs["input_ids"].shape[1], device=device)
-    
-                # ── Prefill ───────────────────────────────────────────────────────────
-                with torch.no_grad():
-                    with self.compute_loss_context_manager():
-                        model_dtype = next(model.parameters()).dtype
-                        for k, v in sample_inputs.items():
-                            if isinstance(v, torch.Tensor) and torch.is_floating_point(v):
-                                sample_inputs[k] = v.to(model_dtype)
-    
-                        inputs_for_gen = model.prepare_inputs_for_generation(
-                            **sample_inputs,
-                            past_key_values=past_key_values,
-                            use_cache=True,
-                            cache_position=cache_position,
-                        )
-                        
-                        outputs = model(**inputs_for_gen)
-                        last_logits = outputs.logits[:, -1, :].float()
-                        next_token_id = _sample_next_token(last_logits, generated_ids)
-                        generated_ids.append(next_token_id)
-                        past_key_values = outputs.past_key_values
-    
-                # Maintain attention mask for generation loop manually
-                attention_mask = sample_inputs.get("attention_mask")
-                if attention_mask is None:
-                    attention_mask = torch.ones_like(sample_inputs["input_ids"])
-    
+                last_logits, generated_ids, past_key_values, attention_mask = \
+                    self._run_prefill(model, sample_inputs, device, gen_temperature, gen_rep_penalty, gen_do_sample)
+
+                # Finalize matmul rollout after prefill
+                if rollout_method == "attention_rollout":
+                    self._finalize_matmul_rollout(rollout_state, image_positions)
+
                 attention_img_all: list[np.ndarray] = []
                 decision_img_all: list[tuple[int, str, np.ndarray]] = []
-    
+
                 # ── Token-by-token decode ─────────────────────────────────────────────
                 for step_idx in range(max_new_tokens):
                     cur_token_id = generated_ids[-1]
-                    token_text = self.processing_class.decode([cur_token_id]).strip() or f"token_{cur_token_id}"
-                    token_safe = "".join(c for c in token_text if c.isalnum() or c in ("_", "-")).strip() or f"token_{cur_token_id}"
-    
-                    # Compute and save attention heatmap for this step's token
-                    a_img_heads = _compute_a_img(past_key_values)
+                    token_text, token_safe = self._decode_token_text(cur_token_id)
+
+                    # Compute attention for this step's token
                     a_img = None
-                    if a_img_heads is not None:
+                    a_img_heads = None
+                    if rollout_method == "attn_lrp" and lrp_active:
+                        full_ids = torch.cat([
+                            sample_inputs["input_ids"],
+                            torch.tensor([generated_ids], device=device)
+                        ], dim=1)
+                        lrp_mask = torch.ones((1, full_ids.shape[1]), dtype=torch.long, device=device)
+                        a_img = self._compute_attn_lrp(
+                            model, full_ids, device, image_positions,
+                            pixel_values=sample_inputs.get("pixel_values"),
+                            image_grid_thw=sample_inputs.get("image_grid_thw"),
+                            attention_mask=lrp_mask,
+                        )
+                    elif rollout_method == "attention_rollout":
+                        a_img = self._compute_matmul_rollout(rollout_state)
+                    elif rollout_method == "residual_mix":
+                        a_img_heads = _compute_a_img_rollout(past_key_values)
+                    else:
+                        a_img_heads = _compute_a_img(past_key_values)
+
+                    if a_img is None and a_img_heads is not None:
                         a_img = a_img_heads.mean(dim=0).float().cpu().numpy()
                         # Normalize to sum to 1 prior to ensuing processing
                         s_img = a_img.sum()
                         if s_img > 1e-12:
                             a_img = a_img / s_img
 
+                    if a_img is not None:
                         # Smoothing: average over each horizontal row of tokens
                         a_img_smoothed = np.zeros_like(a_img)
                         offset = 0
@@ -1282,27 +1812,16 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
                         _save_step(step_idx, token_safe, a_img_smoothed, is_smoothed=True)
     
                         attention_img_all.append(a_img.copy())
-                        if "accept" in token_text.lower() or "reject" in token_text.lower():
+
+                        recorded_decision, is_decision = self._detect_decision_and_log(
+                            token_text, cur_token_id, last_logits, accept_id, reject_id,
+                            paper_id, gt, pct_rating, citation_normalized_by_year,
+                            output_root, recorded_decision)
+                        if is_decision:
                             decision_img_all.append((step_idx, token_text, a_img.copy()))
-                            # Confidence logging
-                            if not recorded_decision and cur_token_id in [accept_id, reject_id]:
-                                probs = torch.softmax(last_logits, dim=-1)
-                                conf = probs[0, cur_token_id].item()
-                                total_prob = (probs[0, accept_id] + probs[0, reject_id]).item()
-                                decision = "accept" if cur_token_id == accept_id else "reject"
-                                self._attn_viz_confidence_results.append({
-                                    "paper_id": paper_id,
-                                    "decision": decision,
-                                    "confidence": conf,
-                                    "total_prob": total_prob,
-                                    "ground_truth": gt,
-                                    "pct_rating": pct_rating,
-                                    "citation_normalized_by_year": citation_normalized_by_year
-                                })
-                                recorded_decision = True
-                                self._save_confidence_csv(output_root)
                     # Compute logits using a_img (image-only attended contribution) and compare with model logits.
-                    if a_img is not None and len(image_positions) > 0:
+                    # Skip for matmul rollout path which doesn't capture per-head attention weights.
+                    if a_img is not None and len(image_positions) > 0 and rollout_method != "attention_rollout":
                         try:
                             # -- Part A: reconstruct image-only logits from a_img + V_img --
                             img_pos_t = torch.from_numpy(image_positions).long().to(device)
@@ -1368,10 +1887,10 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
                             top1_match = top5_model[0] == top5_a_img[0]
                             logger.info_rank0(
                                 f"[attn_viz log] step={step_idx} "
-                                f"a_img_vs_model_attn: {attn_stats_str} total_mass={a_img_sum:.4f} | "
+                                f"a_img_vs_model_attn: {attn_stats_str} total_mass={s_img:.4f} | "
                                 f"logits top-1 match={top1_match} "
-                                f"(model={self.processing_class.decode([top5_model[0]])!r} vs "
-                                f"a_img={self.processing_class.decode([top5_a_img[0]])!r})"
+                                f"(model={self._robust_decode([top5_model[0]])!r} vs "
+                                f"a_img={self._robust_decode([top5_a_img[0]])!r})"
                             )
                         except Exception as _exc:
                             import traceback
@@ -1381,30 +1900,12 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
     
                     if cur_token_id == self.processing_class.eos_token_id or "im_end" in token_text:
                         break
-    
-                    # Update for next token
-                    cache_position = torch.tensor([sample_inputs["input_ids"].shape[1] + step_idx], device=device)
-                    attention_mask = torch.cat([attention_mask, torch.ones((1, 1), dtype=attention_mask.dtype, device=device)], dim=-1)
-    
-                    # Forward for next token (flash attention, no output_attentions)
-                    with torch.no_grad():
-                        with self.compute_loss_context_manager():
-                            inputs_for_gen = model.prepare_inputs_for_generation(
-                                input_ids=torch.tensor([[cur_token_id]], device=device),
-                                past_key_values=past_key_values,
-                                attention_mask=attention_mask,
-                                use_cache=True,
-                                cache_position=cache_position,
-                                pixel_values=sample_inputs.get("pixel_values"),
-                                image_grid_thw=sample_inputs.get("image_grid_thw"),
-                                pixel_values_videos=sample_inputs.get("pixel_values_videos"),
-                                video_grid_thw=sample_inputs.get("video_grid_thw"),
-                            )
-                            outputs = model(**inputs_for_gen)
-                            last_logits = outputs.logits[:, -1, :].float()
-                            next_token_id = _sample_next_token(last_logits, generated_ids)
-                            generated_ids.append(next_token_id)
-                            past_key_values = outputs.past_key_values
+
+                    last_logits, next_token_id, past_key_values, attention_mask = \
+                        self._decode_one_step(model, cur_token_id, sample_inputs, past_key_values,
+                                              attention_mask, step_idx, device,
+                                              gen_temperature, gen_rep_penalty, gen_do_sample, generated_ids)
+                    generated_ids.append(next_token_id)
     
                 # Save summary numpy arrays and 2-D heatmap for image attention
                 if attention_img_all:
@@ -1448,73 +1949,32 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
                     attn_img_2d = np.stack(attention_img_all)  # [steps, n_img_tokens]
                     np.save(os.path.join(summary_img_dir, "attention_image_avg.npy"), attn_img_2d)
     
-                    # Save plots for decision tokens
-                    for (d_step, d_tok, d_a) in decision_img_all:
-                        safe_d_tok = "".join(c for c in d_tok if c.isalnum() or c in ("_", "-")).strip() or "token"
-                        try:
-                            plt.figure(figsize=(12, 4))
-                            plt.plot(d_a)
-                            plt.title("Mean Attention Distribution Across Image Patches")
-                            plt.xlabel("Image Patch Index")
-                            plt.ylabel("Mean Attention Score")
-                            plt.tight_layout()
-                            plt.savefig(os.path.join(summary_img_dir, f"attention_distribution_line_step{d_step}_{safe_d_tok}.png"), dpi=150)
-                        except Exception as e:
-                            logger.warning_rank0(f"Failed to save attention_distribution_line for {paper_id}: {e}")
-                        plt.close()
-                        
-                        try:
-                            plt.figure(figsize=(8, 4))
-                            plt.hist(d_a, bins=500, color='red', alpha=0.7)
-                            plt.title(f"Histogram of Attention Scores for Decision Token '{d_tok}'")
-                            plt.xlabel("Attention Score")
-                            plt.ylabel("Frequency")
-                            plt.xscale('log')
-                            plt.yscale('log')
-                            plt.tight_layout()
-                            plt.savefig(os.path.join(summary_img_dir, f"attention_distribution_hist_step{d_step}_{safe_d_tok}.png"), dpi=150)
-                        except Exception as e:
-                            logger.warning_rank0(f"Failed to save attention_distribution_hist for {paper_id}: {e}")
-                        plt.close()
-    
-                    # 2-D heatmap for image attention
-                    row_min = attn_img_2d.min(axis=1, keepdims=True)
-                    row_max = attn_img_2d.max(axis=1, keepdims=True)
-                    normed_2d_img = (attn_img_2d - row_min) / (row_max - row_min + 1e-8)
-                    SUMMARY_W = 1024
-                    SUMMARY_H = max(attn_img_2d.shape[0] * 8, 64)
-                    heatmap_2d_img = cv2.applyColorMap(
-                        cv2.resize(np.uint8(255 * normed_2d_img), (SUMMARY_W, SUMMARY_H), interpolation=cv2.INTER_NEAREST),
-                        cv2.COLORMAP_JET,
-                    )
-                    cv2.imwrite(os.path.join(summary_img_dir, "attention_image_avg_2d.jpg"), heatmap_2d_img)
-    
-    
-                    if not recorded_decision:
-                        self._attn_viz_confidence_results.append({
-                            "paper_id": paper_id,
-                            "decision": "none",
-                            "confidence": 0.0,
-                            "total_prob": 0.0,
-                            "ground_truth": gt,
-                            "pct_rating": pct_rating,
-                            "citation_normalized_by_year": citation_normalized_by_year
-                        })
-                        self._save_confidence_csv(output_root)
+                    self._save_summary_plots(decision_img_all, summary_img_dir, paper_id, "Image Patch Index")
+                    if getattr(self.finetuning_args, "attention_viz_save_2d_heatmap", True):
+                        self._save_2d_heatmap(attn_img_2d, os.path.join(summary_img_dir, "attention_image_avg_2d.jpg"))
 
-                    # Cleanup
-                h_qproj.remove()
-                h_pre.remove()
-                q_cap.clear()
+                    if not recorded_decision:
+                        self._log_no_decision(paper_id, gt, pct_rating, citation_normalized_by_year, output_root)
+
+                if rollout_method == "attn_lrp":
+                    pass  # No hooks to clean up; monkey_patch is module-level
+                elif rollout_method == "attention_rollout" and rollout_state is not None:
+                    self._cleanup_matmul_hooks(model, all_hooks, rollout_state)
+                else:
+                    self._cleanup_hooks(all_hooks, all_q_caps, q_cap, use_rollout)
                 all_generated_ids.append(list(generated_ids))
-                del past_key_values, outputs, generated_ids
+                del past_key_values, generated_ids
                 torch.cuda.empty_cache()
                 gc.collect()
                 self._attn_viz_sample_idx += 1
             except torch.cuda.OutOfMemoryError:
                 logger.warning_rank0(f"OutOfMemoryError for sample {i} (paper_id={paper_id if 'paper_id' in locals() else 'unknown'}). Skipping.")
-                if 'h_qproj' in locals(): h_qproj.remove()
-                if 'h_pre' in locals(): h_pre.remove()
+                if rollout_method == "attn_lrp":
+                    pass
+                elif rollout_method == "attention_rollout" and rollout_state is not None:
+                    self._cleanup_matmul_hooks(model, all_hooks, rollout_state)
+                else:
+                    self._cleanup_hooks(all_hooks, all_q_caps, q_cap, use_rollout)
                 torch.cuda.empty_cache()
                 gc.collect()
                 self._attn_viz_sample_idx += 1
@@ -1524,15 +1984,7 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
                     pass
                 continue
 
-        # Pad generated sequences to the same length and return as a tensor so that
-        # save_predictions (which calls len(preds)) does not crash.
-        pad_id = self.processing_class.pad_token_id
-        max_gen_len = max((len(g) for g in all_generated_ids), default=1)
-        padded = [
-            g + [pad_id] * (max_gen_len - len(g)) for g in all_generated_ids
-        ]
-        generated_tokens = torch.tensor(padded, dtype=torch.long, device=device)
-        return None, generated_tokens, inputs.get("labels")
+        return self._pad_and_return(all_generated_ids, device, inputs)
 
     def _find_paper_token_range(
         self,
@@ -1601,16 +2053,7 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
         all_generated_ids: list[list[int]] = []
 
         # Locate transformer layers
-        layers = []
-        if hasattr(model, "model") and hasattr(model.model, "language_model") and hasattr(model.model.language_model, "layers"):
-            layers = model.model.language_model.layers
-        elif hasattr(model, "model") and hasattr(model.model, "layers"):
-            layers = model.model.layers
-        elif hasattr(model, "language_model") and hasattr(model.language_model, "model") and hasattr(model.language_model.model, "layers"):
-            layers = model.language_model.model.layers
-        elif hasattr(model, "layers"):
-            layers = model.layers
-
+        layers = self._find_transformer_layers(model)
         if not layers:
             logger.warning_rank0("Could not find layers for text attention visualization. Skipping.")
             return super().prediction_step(model, inputs, prediction_loss_only, ignore_keys, **gen_kwargs)
@@ -1620,109 +2063,12 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
 
         for i in range(batch_size):
             try:
-                # Extract single-sample inputs
-                sample_inputs = {}
-                for k, v in inputs.items():
-                    if isinstance(v, torch.Tensor):
-                        if v.dim() > 0 and v.size(0) == batch_size:
-                            sample_inputs[k] = v[i : i + 1]
-                        else:
-                            sample_inputs[k] = v
-                    else:
-                        sample_inputs[k] = v
-    
-                # Truncate to prompt-only
-                labels_batch = inputs.get("labels")
-                gt = "unknown"
-                if labels_batch is not None and labels_batch.dim() == 2:
-                    labels_i = labels_batch[i]
-                    non_ignored = labels_i[labels_i != IGNORE_INDEX]
-                    if len(non_ignored) > 0:
-                        gt_token_id = non_ignored[0].item()
-                        gt_text = self.processing_class.decode([gt_token_id]).strip().lower()
-                        if "accept" in gt_text: gt = "accept"
-                        elif "reject" in gt_text: gt = "reject"
-                        else: gt = gt_text
-
-                    response_starts = (labels_i != IGNORE_INDEX).nonzero(as_tuple=True)[0]
-                    if len(response_starts) > 0:
-                        prompt_end = response_starts[0].item()
-                        if prompt_end > 0:
-                            sample_inputs["input_ids"] = sample_inputs["input_ids"][:, :prompt_end]
-                            if "attention_mask" in sample_inputs and sample_inputs["attention_mask"].dim() == 2:
-                                sample_inputs["attention_mask"] = sample_inputs["attention_mask"][:, :prompt_end]
-                            logger.info_rank0(f"[text-viz] Truncated to prompt-only: {labels_i.shape[0]} → {prompt_end} tokens")
-    
-                # Debug inputs and metadata
-                logger.info_rank0(f"[text-viz] prediction_step keys: {list(inputs.keys())}")
-                if "_metadata" in inputs:
-                    logger.info_rank0(f"[text-viz] Found _metadata: {inputs['_metadata']}")
+                # Extract single-sample inputs and truncate to prompt-only
+                sample_inputs = self._extract_sample_inputs(inputs, i, batch_size)
+                sample_inputs, gt = self._truncate_to_prompt(sample_inputs, inputs, i)
     
                 # Metadata extraction
-                paper_id = None
-                pct_rating = 0.0
-                citation_normalized_by_year = 0.0
-
-                metadata = inputs.get("_metadata", [])
-                m_obj = None
-                if metadata and i < len(metadata) and metadata[i] is not None:
-                    if isinstance(metadata[i], dict):
-                        m_obj = metadata[i]
-                    elif isinstance(metadata[i], str):
-                        try:
-                            m_obj = json.loads(metadata[i])
-                        except:
-                            pass
-                
-                if m_obj:
-                    paper_id = m_obj.get("paper_id") or m_obj.get("submission_id")
-                    pct_rating = m_obj.get("pct_rating", 0.0)
-                    citation_normalized_by_year = m_obj.get("citation_normalized_by_year", 0.0)
-    
-                if paper_id is None:
-                    for k in ["submission_id", "paper_id", "id"]:
-                        if k in inputs:
-                            val = inputs[k][i]
-                            paper_id = val if isinstance(val, str) else str(val)
-                            break
-    
-                # Robust fallback: lookup directly from eval_dataset or data.json
-                if paper_id is None:
-                    eval_ids = self._get_eval_paper_ids()
-                    if 0 <= self._attn_viz_sample_idx < len(eval_ids):
-                        paper_id = eval_ids[self._attn_viz_sample_idx]
-    
-                if paper_id is None and hasattr(self, "eval_dataset"):
-                    try:
-                        sample = self.eval_dataset[self._attn_viz_sample_idx]
-                        m = sample.get("_metadata")
-                        if m:
-                            paper_id = m.get("submission_id") or m.get("paper_id")
-                    except:
-                        pass
-    
-                if paper_id is None:
-                    logger.info_rank0(
-                        f"[text-viz] No submission_id in metadata; using sequential ID"
-                    )
-                    paper_id = f"sample_{self._attn_viz_sample_idx:05d}"
-    
-                image_paths = []
-                if "image_paths" in inputs:
-                    image_paths = inputs["image_paths"][i]
-                elif "images" in inputs and isinstance(inputs["images"][i], (list, tuple)) and isinstance(inputs["images"][i][0], str):
-                    image_paths = inputs["images"][i]
-    
-                if not image_paths and hasattr(self, "eval_dataset"):
-                    try:
-                        sample = self.eval_dataset[self._attn_viz_sample_idx]
-                        image_paths = sample.get("images") or sample.get("image_paths") or []
-                    except:
-                        pass
-    
-                if not image_paths and metadata and i < len(metadata) and metadata[i] is not None:
-                    if isinstance(metadata[i], dict):
-                        image_paths = metadata[i].get("images") or metadata[i].get("image_paths") or []
+                paper_id, pct_rating, citation_normalized_by_year, image_paths = self._extract_metadata(inputs, i)
     
                 # Find paper token range
                 prompt_ids = sample_inputs["input_ids"][0]
@@ -1747,27 +2093,30 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
                 paper_token_ids = prompt_ids[paper_start_token:paper_end_token].tolist()
                 with open(os.path.join(paper_dir, "paper_tokens.txt"), "w", encoding="utf-8") as f:
                     for offset, tok_id in enumerate(paper_token_ids):
-                        tok_text = self.processing_class.decode([tok_id], skip_special_tokens=True)
+                        tok_text = self._robust_decode([tok_id], skip_special_tokens=True)
                         f.write(f"{paper_start_token + offset}\t{repr(tok_text)}\n")
     
-                # Hook setup — only the last layer; no full attention matrix materialised
-                last_layer = layers[num_layers - 1]
-                last_attn  = last_layer.self_attn
-                q_cap: dict = {}
-    
-                def _q_proj_hook(module, input, output):
-                    q_cap["q_raw"] = output.detach()
-    
-                def _self_attn_pre_hook(module, args, kwargs):
-                    pe = kwargs.get("position_embeddings")
-                    if pe is not None:
-                        q_cap["cos"] = pe[0].detach()
-                        q_cap["sin"] = pe[1].detach()
-    
-                h_qproj = last_attn.q_proj.register_forward_hook(_q_proj_hook)
-                h_pre   = last_attn.register_forward_pre_hook(_self_attn_pre_hook, with_kwargs=True)
-    
+                # Hook setup — 4-way: attn_lrp, matmul rollout, residual_mix, or none
+                rollout_method = self._resolve_rollout_method(self.finetuning_args)
+                use_rollout = rollout_method != "none"
+                rollout_state = None
+                all_hooks = []
+                all_q_caps, last_attn, q_cap = [], None, {}
+                lrp_active = False
+
                 paper_positions = np.arange(paper_start_token, paper_end_token)  # [num_paper_tokens]
+
+                if rollout_method == "attn_lrp":
+                    lrp_active = self._setup_attn_lrp(model)
+                    if not lrp_active:
+                        rollout_method = "none"
+                        use_rollout = False
+                elif rollout_method == "attention_rollout":
+                    all_hooks, rollout_state = self._setup_attn_hooks_matmul(model, layers, num_layers)
+                else:
+                    all_hooks, all_q_caps, last_attn, q_cap = self._setup_attn_hooks(
+                        layers, num_layers, rollout_method == "residual_mix"
+                    )
     
                 def _compute_a_text(past_key_values) -> Optional[np.ndarray]:
                     if not q_cap or "q_raw" not in q_cap or "cos" not in q_cap:
@@ -1807,86 +2156,89 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
                     except Exception as exc:
                         logger.warning_rank0(f"_compute_a_text failed: {exc}")
                         return None
-    
+
+                def _compute_a_text_rollout(past_key_values) -> Optional[np.ndarray]:
+                    """Compute attention rollout across all layers for paper text positions.
+                    Returns [n_paper_tokens] numpy array."""
+                    if len(paper_positions) == 0:
+                        return None
+                    try:
+                        cfg = model.config
+                        paper_pos_t = torch.from_numpy(paper_positions).long()
+                        rollout = None
+                        for layer_idx in range(num_layers):
+                            cap = all_q_caps[layer_idx]
+                            if "q_raw" not in cap or "cos" not in cap:
+                                continue
+                            attn_mod = layers[layer_idx].self_attn
+                            q_raw = cap["q_raw"]  # [1, 1, num_heads * head_dim]
+                            cos, sin = cap["cos"], cap["sin"]
+                            bsz = q_raw.shape[0]
+                            num_heads_l = getattr(cfg, "num_attention_heads", None) or getattr(attn_mod, "num_heads", None)
+                            num_kv_heads_l = getattr(cfg, "num_key_value_heads", None) or getattr(attn_mod, "num_key_value_heads", num_heads_l)
+                            head_dim_l = getattr(cfg, "hidden_size", num_heads_l * 128) // num_heads_l
+                            scaling_l = head_dim_l ** -0.5
+                            q = q_raw.view(bsz, 1, num_heads_l, head_dim_l).transpose(1, 2)
+                            mrope_section = None
+                            rope_scaling = getattr(attn_mod, "rope_scaling", None) or getattr(cfg, "rope_scaling", None)
+                            if isinstance(rope_scaling, dict):
+                                mrope_section = rope_scaling.get("mrope_section", None)
+                            if mrope_section is not None:
+                                from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import apply_multimodal_rotary_pos_emb
+                                q_rot, _ = apply_multimodal_rotary_pos_emb(q, q, cos, sin, mrope_section)
+                            else:
+                                from transformers.models.qwen2.modeling_qwen2 import apply_rotary_pos_emb
+                                q_rot, _ = apply_rotary_pos_emb(q, q, cos, sin)
+                            k_full = past_key_values[layer_idx][0]
+                            k_paper = k_full[:, :, paper_pos_t.to(k_full.device), :]
+                            groups = num_heads_l // num_kv_heads_l
+                            k_paper = k_paper.repeat_interleave(groups, dim=1)
+                            q_last = q_rot[:, :, -1:, :]
+                            attn_scores = torch.matmul(q_last, k_paper.transpose(-1, -2)) * scaling_l
+                            attn_weights = torch.softmax(attn_scores.float(), dim=-1)
+                            a_layer = attn_weights[0, :, 0, :].mean(dim=0)  # [n_paper]
+                            a_layer = a_layer / (a_layer.sum() + 1e-12)
+                            if rollout is None:
+                                rollout = a_layer
+                            else:
+                                rollout = 0.5 * a_layer + 0.5 * rollout
+                                rollout = rollout / (rollout.sum() + 1e-12)
+                        if rollout is None:
+                            return None
+                        return rollout.cpu().numpy()
+                    except Exception as exc:
+                        import traceback
+                        logger.warning_rank0(f"_compute_a_text_rollout failed: {traceback.format_exc()}")
+                        return None
+
                 # Prefill
                 max_new_tokens = self.finetuning_args.attention_viz_max_new_tokens
-                sample_inputs.pop("labels", None)
                 logger.info_rank0(f"[text-viz] Visualizing text attention for {paper_id}...")
-    
-                # Read generation config (temperature, repetition_penalty, do_sample)
-                gen_cfg = getattr(model, "generation_config", None)
-                gen_temperature = float(getattr(gen_cfg, "temperature", 1.0)) if gen_cfg is not None else 1.0
-                gen_rep_penalty = float(getattr(gen_cfg, "repetition_penalty", 1.0)) if gen_cfg is not None else 1.0
-                gen_do_sample = bool(getattr(gen_cfg, "do_sample", False)) if gen_cfg is not None else False
-    
-                # Generation parameters
-                try:
-                    accept_id = self.processing_class.encode("accept", add_special_tokens=False)[0]
-                    reject_id = self.processing_class.encode("reject", add_special_tokens=False)[0]
-                except:
-                    accept_id, reject_id = -1, -1
+
+                gen_temperature, gen_rep_penalty, gen_do_sample = self._read_generation_config(model)
+                accept_id, reject_id = self._get_decision_token_ids()
                 recorded_decision = False
 
-                def _sample_next_token(logits_last: "torch.Tensor", prev_ids: list[int]) -> int:
-                    """Apply repetition penalty + temperature, then greedy or sample."""
-                    logits = logits_last.float().clone()  # [1, vocab]
-                    if gen_rep_penalty != 1.0 and prev_ids:
-                        for tid in set(prev_ids):
-                            if logits[0, tid] > 0:
-                                logits[0, tid] /= gen_rep_penalty
-                            else:
-                                logits[0, tid] *= gen_rep_penalty
-                    if gen_temperature > 0 and gen_temperature != 1.0:
-                        logits = logits / gen_temperature
-                    if gen_do_sample and gen_temperature > 0:
-                        probs = torch.softmax(logits, dim=-1)
-                        return torch.multinomial(probs, num_samples=1).item()
-                    return torch.argmax(logits, dim=-1).item()
-    
-                # Maintain attention mask for generation loop manually
-                generated_ids: list[int] = []
-                attention_mask = sample_inputs.get("attention_mask")
-                if attention_mask is None:
-                    attention_mask = torch.ones_like(sample_inputs["input_ids"])
-                
-                past_key_values = None
-                cache_position = torch.arange(sample_inputs["input_ids"].shape[1], device=device)
+                last_logits, generated_ids, past_key_values, attention_mask = self._run_prefill(
+                    model, sample_inputs, device, gen_temperature, gen_rep_penalty, gen_do_sample
+                )
 
-                # Generation parameters
-                try:
-                    accept_id = self.processing_class.encode("accept", add_special_tokens=False)[0]
-                    reject_id = self.processing_class.encode("reject", add_special_tokens=False)[0]
-                except:
-                    accept_id, reject_id = -1, -1
-                recorded_decision = False
+                # Finalize matmul rollout after prefill
+                if rollout_method == "attention_rollout":
+                    self._finalize_matmul_rollout(rollout_state, paper_positions)
 
-                with torch.no_grad():
-                    with self.compute_loss_context_manager():
-                        model_dtype = next(model.parameters()).dtype
-                        for k, v in sample_inputs.items():
-                            if isinstance(v, torch.Tensor) and torch.is_floating_point(v):
-                                sample_inputs[k] = v.to(model_dtype)
-                        
-                        inputs_for_gen = model.prepare_inputs_for_generation(
-                            **sample_inputs,
-                            past_key_values=past_key_values,
-                            use_cache=True,
-                            cache_position=cache_position,
-                        )
-    
-                        outputs = model(**inputs_for_gen)
-                        last_logits = outputs.logits[:, -1, :].float()
-                        next_token_id = _sample_next_token(last_logits, generated_ids)
-                        generated_ids.append(next_token_id)
-                        past_key_values = outputs.past_key_values
-    
                 # Accumulators for the 2-D summary
                 attention_avg_all: list[np.ndarray] = []   # per step: avg across layers
                 attention_last_all: list[np.ndarray] = []  # per step: last layer only
+                attention_rollout_all: list[np.ndarray] = []  # per step: rollout across all layers
                 decision_text_all: list[tuple[int, str, np.ndarray]] = []
-    
+
                 # Precompute output dirs to avoid repeated joins
                 def _get_out_dirs(variant=""):
+                    if use_rollout:
+                        rollout_d = os.path.join(paper_dir, "rollout", f"images{variant}")
+                        os.makedirs(rollout_d, exist_ok=True)
+                        return rollout_d, rollout_d  # both avg_d and last_d map to rollout
                     avg_d = os.path.join(paper_dir, "average", f"images{variant}")
                     last_d = os.path.join(paper_dir, "last", f"images{variant}")
                     os.makedirs(avg_d, exist_ok=True)
@@ -1908,13 +2260,24 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
                 # Token-by-token generation
                 for step_idx in range(max_new_tokens):
                     cur_token_id = generated_ids[-1]
-                    token_text = self.processing_class.decode([cur_token_id]).strip() or f"token_{cur_token_id}"
-                    token_safe = (
-                        "".join(c for c in token_text if c.isalnum() or c in ("_", "-")).strip()
-                        or f"token_{cur_token_id}"
-                    )
+                    token_text, token_safe = self._decode_token_text(cur_token_id)
     
-                    a_text = _compute_a_text(past_key_values)
+                    if rollout_method == "attn_lrp" and lrp_active:
+                        full_ids = torch.cat([
+                            sample_inputs["input_ids"],
+                            torch.tensor([generated_ids], device=device)
+                        ], dim=1)
+                        lrp_mask = torch.ones((1, full_ids.shape[1]), dtype=torch.long, device=device)
+                        a_text = self._compute_attn_lrp(
+                            model, full_ids, device, paper_positions,
+                            attention_mask=lrp_mask,
+                        )
+                    elif rollout_method == "attention_rollout":
+                        a_text = self._compute_matmul_rollout(rollout_state)
+                    elif rollout_method == "residual_mix":
+                        a_text = _compute_a_text_rollout(past_key_values)
+                    else:
+                        a_text = _compute_a_text(past_key_values)
 
                     if a_text is not None:
                         # Normalize to sum to 1 prior to ensuing processing
@@ -1925,31 +2288,23 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
                         # Smoothing: average over every 200 tokens
                         a_text_smoothed = np.zeros_like(a_text)
                         chunk_size = 200
-                        for i in range(0, len(a_text), chunk_size):
-                            a_text_smoothed[i:i+chunk_size] = a_text[i:i+chunk_size].mean()
+                        for _i in range(0, len(a_text), chunk_size):
+                            a_text_smoothed[_i:_i+chunk_size] = a_text[_i:_i+chunk_size].mean()
                         a_text = a_text_smoothed
-    
+
                         attention_avg_all.append(a_text.copy())
                         attention_last_all.append(a_text.copy())   # same — single layer captured
-                        if "accept" in token_text.lower() or "reject" in token_text.lower():
+                        if use_rollout:
+                            attention_rollout_all.append(a_text.copy())
+                        # Decision detection + confidence logging
+                        recorded_decision, is_decision = self._detect_decision_and_log(
+                            token_text, cur_token_id, last_logits,
+                            accept_id, reject_id, paper_id, gt,
+                            pct_rating, citation_normalized_by_year,
+                            output_root, recorded_decision,
+                        )
+                        if is_decision:
                             decision_text_all.append((step_idx, token_text, a_text.copy()))
-                            # Confidence logging
-                            if not recorded_decision and cur_token_id in [accept_id, reject_id]:
-                                probs = torch.softmax(last_logits, dim=-1)
-                                conf = probs[0, cur_token_id].item()
-                                total_prob = (probs[0, accept_id] + probs[0, reject_id]).item()
-                                decision = "accept" if cur_token_id == accept_id else "reject"
-                                self._attn_viz_confidence_results.append({
-                                    "paper_id": paper_id,
-                                    "decision": decision,
-                                    "confidence": conf,
-                                    "total_prob": total_prob,
-                                    "ground_truth": gt,
-                                    "pct_rating": pct_rating,
-                                    "citation_normalized_by_year": citation_normalized_by_year
-                                })
-                                recorded_decision = True
-                                self._save_confidence_csv(output_root)
     
                         normed = sum_normalise(a_text)
                         
@@ -1976,66 +2331,25 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
     
                     if cur_token_id == self.processing_class.eos_token_id or "im_end" in token_text:
                         break
-    
-                    # Update for next token
-                    cache_position = torch.tensor([sample_inputs["input_ids"].shape[1] + step_idx], device=device)
-                    attention_mask = torch.cat([attention_mask, torch.ones((1, 1), dtype=attention_mask.dtype, device=device)], dim=-1)
-    
+
                     # Forward for next token
-                    with torch.no_grad():
-                        with self.compute_loss_context_manager():
-                            inputs_for_gen = model.prepare_inputs_for_generation(
-                                input_ids=torch.tensor([[cur_token_id]], device=device),
-                                past_key_values=past_key_values,
-                                attention_mask=attention_mask,
-                                use_cache=True,
-                                cache_position=cache_position,
-                                pixel_values=sample_inputs.get("pixel_values"),
-                                image_grid_thw=sample_inputs.get("image_grid_thw"),
-                                pixel_values_videos=sample_inputs.get("pixel_values_videos"),
-                                video_grid_thw=sample_inputs.get("video_grid_thw"),
-                            )
-                            outputs = model(**inputs_for_gen)
-                            next_token_id = _sample_next_token(outputs.logits[:, -1, :], generated_ids)
-                            generated_ids.append(next_token_id)
-                            past_key_values = outputs.past_key_values
+                    last_logits, next_token_id, past_key_values, attention_mask = self._decode_one_step(
+                        model, cur_token_id, sample_inputs, past_key_values,
+                        attention_mask, step_idx, device,
+                        gen_temperature, gen_rep_penalty, gen_do_sample, generated_ids,
+                    )
+                    generated_ids.append(next_token_id)
     
                 # Save summary numpy arrays and 2-D heatmap
                 if attention_avg_all:
                     summary_dir = os.path.join(paper_dir, "summary")
                     os.makedirs(summary_dir, exist_ok=True)
-    
+
                     attn_avg_2d = np.stack(attention_avg_all)   # [steps, paper_tokens]
                     np.save(os.path.join(summary_dir, "attention_avg.npy"), attn_avg_2d)
-    
+
                     # Save plots for decision tokens
-                    for (d_step, d_tok, d_a) in decision_text_all:
-                        safe_d_tok = "".join(c for c in d_tok if c.isalnum() or c in ("_", "-")).strip() or "token"
-                        try:
-                            plt.figure(figsize=(12, 4))
-                            plt.plot(d_a)
-                            plt.title("Mean Attention Distribution Across Paper Tokens")
-                            plt.xlabel("Paper Token Index")
-                            plt.ylabel("Mean Attention Score")
-                            plt.tight_layout()
-                            plt.savefig(os.path.join(summary_dir, f"attention_distribution_line_step{d_step}_{safe_d_tok}.png"), dpi=150)
-                        except Exception as e:
-                            logger.warning_rank0(f"Failed to save attention_distribution_line (text) for {paper_id}: {e}")
-                        plt.close()
-                        
-                        try:
-                            plt.figure(figsize=(8, 4))
-                            plt.hist(d_a, bins=500, color='red', alpha=0.7)
-                            plt.title(f"Histogram of Attention Scores for Decision Token '{d_tok}'")
-                            plt.xscale('log')
-                            plt.yscale('log')
-                            plt.xlabel("Attention Score")
-                            plt.ylabel("Frequency")
-                            plt.tight_layout()
-                            plt.savefig(os.path.join(summary_dir, f"attention_distribution_hist_step{d_step}_{safe_d_tok}.png"), dpi=150)
-                        except Exception as e:
-                            logger.warning_rank0(f"Failed to save attention_distribution_hist (text) for {paper_id}: {e}")
-                        plt.close()
+                    self._save_summary_plots(decision_text_all, summary_dir, paper_id, x_label="Paper Token Index")
                     
                     # Section-wise attention stats (Text)
                     blocks = self._get_block_metadata(paper_id)
@@ -2074,141 +2388,142 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
                     if attention_last_all:
                         attn_last_2d = np.stack(attention_last_all)
                         np.save(os.path.join(summary_dir, "attention_last.npy"), attn_last_2d)
-    
-                    # 2-D heatmap: row-normalise each step so intra-step distribution is visible
-                    row_min = attn_avg_2d.min(axis=1, keepdims=True)
-                    row_max = attn_avg_2d.max(axis=1, keepdims=True)
-                    normed_2d = (attn_avg_2d - row_min) / (row_max - row_min + 1e-8)
-                    SUMMARY_W = 1024
-                    SUMMARY_H = max(attn_avg_2d.shape[0] * 8, 64)
-                    heatmap_2d = cv2.applyColorMap(
-                        cv2.resize(np.uint8(255 * normed_2d), (SUMMARY_W, SUMMARY_H), interpolation=cv2.INTER_NEAREST),
-                        cv2.COLORMAP_JET,
-                    )
-                    cv2.imwrite(os.path.join(summary_dir, "attention_avg_2d.jpg"), heatmap_2d)
-    
+
+                    if attention_rollout_all:
+                        attn_rollout_2d = np.stack(attention_rollout_all)
+                        np.save(os.path.join(summary_dir, "attention_rollout.npy"), attn_rollout_2d)
+
+                    # 2-D heatmaps
+                    if getattr(self.finetuning_args, "attention_viz_save_2d_heatmap", True):
+                        self._save_2d_heatmap(attn_avg_2d, os.path.join(summary_dir, "attention_avg_2d.jpg"))
+                        if attention_rollout_all:
+                            self._save_2d_heatmap(attn_rollout_2d, os.path.join(summary_dir, "attention_rollout_2d.jpg"))
+
                     # ── Interactive HTML ──────────────────────────────────────────
-                    try:
-                        n_steps = attn_avg_2d.shape[0]
-                        # Paper token texts (one per paper position)
-                        _paper_toks = [
-                            self.processing_class.decode(
-                                [prompt_ids[paper_start_token + j].item()],
-                                skip_special_tokens=False,
+                    if getattr(self.finetuning_args, "attention_viz_save_html", True):
+                        try:
+                            n_steps = attn_avg_2d.shape[0]
+                            _paper_toks = [
+                                self.processing_class.decode(
+                                    [prompt_ids[paper_start_token + j].item()],
+                                    skip_special_tokens=False,
+                                )
+                                for j in range(num_paper_tokens)
+                            ]
+                            _gen_toks = [
+                                self.processing_class.decode([generated_ids[j]], skip_special_tokens=False)
+                                for j in range(min(n_steps, len(generated_ids)))
+                            ]
+
+                            _section_mapping = ["None"] * num_paper_tokens
+                            if blocks:
+                                _section_mapping = self._get_token_to_section_mapping(paper_token_ids, sections)
+
+                            _tok_js  = json.dumps(_paper_toks)
+                            _sec_js  = json.dumps(_section_mapping)
+                            _opts = "\n".join(
+                                '<option value="{}">[{}] {}</option>'.format(
+                                    i, i,
+                                    t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"),
+                                )
+                                for i, t in enumerate(_gen_toks)
                             )
-                            for j in range(num_paper_tokens)
-                        ]
-                        # Generated token texts aligned with attention steps
-                        _gen_toks = [
-                            self.processing_class.decode([generated_ids[j]], skip_special_tokens=False)
-                            for j in range(min(n_steps, len(generated_ids)))
-                        ]
-                        
-                        # Section mapping
-                        _section_mapping = ["None"] * num_paper_tokens
-                        if blocks:
-                            _section_mapping = self._get_token_to_section_mapping(paper_token_ids, sections)
-                        
-                        _tok_js  = json.dumps(_paper_toks)
-                        _sec_js  = json.dumps(_section_mapping)
-                        _opts = "\n".join(
-                            '<option value="{}">[{}] {}</option>'.format(
-                                i, i,
-                                t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"),
-                            )
-                            for i, t in enumerate(_gen_toks)
-                        )
-                        
-                        def _write_html(arr_2d, variant=""):
-                            _attn_js = json.dumps(arr_2d.round(4).tolist())
-                            _html = (
-                                "<!DOCTYPE html>\n<html lang=\"en\">\n<head><meta charset=\"UTF-8\">"
-                                "<title>Attention{v}: {pid}</title>\n<style>\n"
-                                "body{{font-family:Georgia,serif;line-height:1.9;padding:20px 40px;"
-                                "max-width:1100px;margin:auto}}\n"
-                                ".ctrl{{position:sticky;top:0;background:#fff;padding:8px 0;"
-                                "border-bottom:2px solid #ddd;margin-bottom:10px;z-index:10}}\n"
-                                "select{{font-size:14px;padding:4px;margin-left:6px}}\n"
-                                ".scale{{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:#444}}\n"
-                                ".scale-bar{{flex:1;height:14px;border-radius:3px;"
-                                "background:linear-gradient(to right,rgba(220,50,30,0),rgba(220,50,30,1));"
-                                "border:1px solid #ccc}}\n"
-                                ".paper{{white-space:pre-wrap;font-size:14px;line-height:2}}\n"
-                                ".sec-info{{font-size:12px;color:#666;margin-top:4px;height:1.2em}}\n"
-                                "</style></head>\n<body>\n"
-                                "<h2>Text Attention{v} &mdash; {pid}</h2>\n"
-                                "<div class=\"ctrl\">"
-                                "<label><b>Generated token:</b>"
-                                "<select id=\"sel\" onchange=\"render(+this.value)\">\n{opts}\n"
-                                "</select></label>\n"
-                                "<div class=\"sec-info\" id=\"sec-info\">Section: -</div>\n"
-                                "<div class=\"scale\">"
-                                "<span id=\"lo-lbl\">0.0000</span>"
-                                "<div class=\"scale-bar\"></div>"
-                                "<span id=\"hi-lbl\">1.0000</span>"
-                                "</div></div>\n"
-                                "<div class=\"paper\" id=\"paper\"></div>\n<script>\n"
-                                "const A={attn};\nconst toks={toks};\nconst secs={secs};\n"
-                                "const uniqueSecs = Array.from(new Set(secs));\n"
-                                "function esc(s){{return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}}\n"
-                                "function render(step){{\n"
-                                "  const a=A[step];\n"
-                                "  let lo=a[0],hi=a[0];\n"
-                                "  for(const v of a){{if(v<lo)lo=v;if(v>hi)hi=v;}}\n"
-                                "  document.getElementById('lo-lbl').textContent=lo.toFixed(5);\n"
-                                "  document.getElementById('hi-lbl').textContent=hi.toFixed(5);\n"
-                                "  const rng=hi-lo+1e-9;\n"
-                                "  document.getElementById('paper').innerHTML=toks.map((t,i)=>{{\n"
-                                "    const norm=(a[i]-lo)/rng;\n"
-                                "    const s=secs[i];\n"
-                                "    const sIdx = uniqueSecs.indexOf(s);\n"
-                                "    const border = (s==='None' || s==='Preamble') ? 'none' : '2px solid hsl('+(sIdx*137 % 360)+',60%,50%)';\n"
-                                "    return '<span style=\"background:rgba(220,50,30,'+norm.toFixed(3)+'); border-bottom:'+border+'\""
-                                " onmouseover=\"document.getElementById(\\'sec-info\\').textContent=\\'Section: \\'+secs[i]\""
-                                " title=\"['+secs[i]+'] '+a[i].toFixed(5)+'\">'+esc(t)+'</span>';\n"
-                                "  }}).join('');\n}}\n"
-                                "render(0);\n</script>\n</body>\n</html>\n"
-                            ).format(pid=paper_id, opts=_opts, attn=_attn_js, toks=_tok_js, secs=_sec_js, v=variant)
-                            html_path = os.path.join(paper_dir, f"attention{variant}.html")
-                            with open(html_path, "w", encoding="utf-8") as _f:
-                                _f.write(_html)
-                            
-                        _write_html(attn_avg_2d, "")
-                        for k in [5, 10, 25]:
-                            th = np.percentile(attn_avg_2d, 100 - k, axis=1, keepdims=True)
-                            filtered_2d = np.where(attn_avg_2d >= th, attn_avg_2d, 0.0)
-                            _write_html(filtered_2d, f"_top{k}")
-    
-                        logger.info_rank0(f"[text-viz] Wrote attention HTMLs for {paper_id}")
-                    except Exception as _html_exc:
-                        logger.warning_rank0(f"[text-viz] HTML generation failed: {_html_exc}")
+
+                            def _write_html(arr_2d, variant=""):
+                                _attn_js = json.dumps(arr_2d.round(4).tolist())
+                                _html = (
+                                    "<!DOCTYPE html>\n<html lang=\"en\">\n<head><meta charset=\"UTF-8\">"
+                                    "<title>Attention{v}: {pid}</title>\n<style>\n"
+                                    "body{{font-family:Georgia,serif;line-height:1.9;padding:20px 40px;"
+                                    "max-width:1100px;margin:auto}}\n"
+                                    ".ctrl{{position:sticky;top:0;background:#fff;padding:8px 0;"
+                                    "border-bottom:2px solid #ddd;margin-bottom:10px;z-index:10}}\n"
+                                    "select{{font-size:14px;padding:4px;margin-left:6px}}\n"
+                                    ".scale{{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:#444}}\n"
+                                    ".scale-bar{{flex:1;height:14px;border-radius:3px;"
+                                    "background:linear-gradient(to right,rgba(220,50,30,0),rgba(220,50,30,1));"
+                                    "border:1px solid #ccc}}\n"
+                                    ".paper{{white-space:pre-wrap;font-size:14px;line-height:2}}\n"
+                                    ".sec-info{{font-size:12px;color:#666;margin-top:4px;height:1.2em}}\n"
+                                    "</style></head>\n<body>\n"
+                                    "<h2>Text Attention{v} &mdash; {pid}</h2>\n"
+                                    "<div class=\"ctrl\">"
+                                    "<label><b>Generated token:</b>"
+                                    "<select id=\"sel\" onchange=\"render(+this.value)\">\n{opts}\n"
+                                    "</select></label>\n"
+                                    "<div class=\"sec-info\" id=\"sec-info\">Section: -</div>\n"
+                                    "<div class=\"scale\">"
+                                    "<span id=\"lo-lbl\">0.0000</span>"
+                                    "<div class=\"scale-bar\"></div>"
+                                    "<span id=\"hi-lbl\">1.0000</span>"
+                                    "</div></div>\n"
+                                    "<div class=\"paper\" id=\"paper\"></div>\n<script>\n"
+                                    "const A={attn};\nconst toks={toks};\nconst secs={secs};\n"
+                                    "const uniqueSecs = Array.from(new Set(secs));\n"
+                                    "function esc(s){{return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}}\n"
+                                    "function render(step){{\n"
+                                    "  const a=A[step];\n"
+                                    "  let lo=a[0],hi=a[0];\n"
+                                    "  for(const v of a){{if(v<lo)lo=v;if(v>hi)hi=v;}}\n"
+                                    "  document.getElementById('lo-lbl').textContent=lo.toFixed(5);\n"
+                                    "  document.getElementById('hi-lbl').textContent=hi.toFixed(5);\n"
+                                    "  const rng=hi-lo+1e-9;\n"
+                                    "  document.getElementById('paper').innerHTML=toks.map((t,i)=>{{\n"
+                                    "    const norm=(a[i]-lo)/rng;\n"
+                                    "    const s=secs[i];\n"
+                                    "    const sIdx = uniqueSecs.indexOf(s);\n"
+                                    "    const border = (s==='None' || s==='Preamble') ? 'none' : '2px solid hsl('+(sIdx*137 % 360)+',60%,50%)';\n"
+                                    "    return '<span style=\"background:rgba(220,50,30,'+norm.toFixed(3)+'); border-bottom:'+border+'\""
+                                    " onmouseover=\"document.getElementById(\\'sec-info\\').textContent=\\'Section: \\'+secs[i]\""
+                                    " title=\"['+secs[i]+'] '+a[i].toFixed(5)+'\">'+esc(t)+'</span>';\n"
+                                    "  }}).join('');\n}}\n"
+                                    "render(0);\n</script>\n</body>\n</html>\n"
+                                ).format(pid=paper_id, opts=_opts, attn=_attn_js, toks=_tok_js, secs=_sec_js, v=variant)
+                                html_path = os.path.join(paper_dir, f"attention{variant}.html")
+                                with open(html_path, "w", encoding="utf-8") as _f:
+                                    _f.write(_html)
+
+                            _write_html(attn_avg_2d, "")
+                            for k in [5, 10, 25]:
+                                th = np.percentile(attn_avg_2d, 100 - k, axis=1, keepdims=True)
+                                filtered_2d = np.where(attn_avg_2d >= th, attn_avg_2d, 0.0)
+                                _write_html(filtered_2d, f"_top{k}")
+
+                            if attention_rollout_all:
+                                _write_html(attn_rollout_2d, "_rollout")
+                                for k in [5, 10, 25]:
+                                    th = np.percentile(attn_rollout_2d, 100 - k, axis=1, keepdims=True)
+                                    filtered_2d = np.where(attn_rollout_2d >= th, attn_rollout_2d, 0.0)
+                                    _write_html(filtered_2d, f"_rollout_top{k}")
+
+                            logger.info_rank0(f"[text-viz] Wrote attention HTMLs for {paper_id}")
+                        except Exception as _html_exc:
+                            logger.warning_rank0(f"[text-viz] HTML generation failed: {_html_exc}")
     
                     if not recorded_decision:
-                        self._attn_viz_confidence_results.append({
-                            "paper_id": paper_id,
-                            "decision": "none",
-                            "confidence": 0.0,
-                            "total_prob": 0.0,
-                            "ground_truth": gt,
-                            "pct_rating": pct_rating,
-                            "citation_normalized_by_year": citation_normalized_by_year
-                        })
-                        self._save_confidence_csv(output_root)
+                        self._log_no_decision(paper_id, gt, pct_rating, citation_normalized_by_year, output_root)
 
                 # Cleanup
-                h_qproj.remove()
-                h_pre.remove()
-                q_cap.clear()
+                if rollout_method == "attn_lrp":
+                    pass  # No hooks to clean up; monkey_patch is module-level
+                elif rollout_method == "attention_rollout" and rollout_state is not None:
+                    self._cleanup_matmul_hooks(model, all_hooks, rollout_state)
+                else:
+                    self._cleanup_hooks(all_hooks, all_q_caps, q_cap, use_rollout)
                 all_generated_ids.append(list(generated_ids))
-                del past_key_values, outputs, generated_ids
+                del past_key_values, generated_ids
                 torch.cuda.empty_cache()
                 gc.collect()
                 self._attn_viz_sample_idx += 1
-    
+
             except torch.cuda.OutOfMemoryError:
                 logger.warning_rank0(f"OutOfMemoryError for sample {i} (paper_id={paper_id if 'paper_id' in locals() else 'unknown'}). Skipping.")
-                if 'h_qproj' in locals(): h_qproj.remove()
-                if 'h_pre' in locals(): h_pre.remove()
+                if rollout_method == "attn_lrp":
+                    pass
+                elif rollout_method == "attention_rollout" and rollout_state is not None:
+                    self._cleanup_matmul_hooks(model, all_hooks, rollout_state)
+                else:
+                    self._cleanup_hooks(all_hooks, all_q_caps, q_cap, use_rollout)
                 torch.cuda.empty_cache()
                 gc.collect()
                 self._attn_viz_sample_idx += 1
@@ -2217,13 +2532,8 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
                 except Exception:
                     pass
                 continue
-        pad_id = self.processing_class.pad_token_id
-        max_gen_len = max((len(g) for g in all_generated_ids), default=1)
-        padded = [
-            g + [pad_id] * (max_gen_len - len(g)) for g in all_generated_ids
-        ]
-        generated_tokens = torch.tensor(padded, dtype=torch.long, device=device)
-        return None, generated_tokens, inputs.get("labels")
+
+        return self._pad_and_return(all_generated_ids, device, inputs)
 
     def save_predictions(
         self, dataset: "Dataset", predict_results: "PredictionOutput", skip_special_tokens: bool = True

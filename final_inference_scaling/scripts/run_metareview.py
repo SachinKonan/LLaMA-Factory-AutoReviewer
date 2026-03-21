@@ -79,9 +79,58 @@ def parse_json_decision(text: str) -> Tuple[Optional[str], Optional[Dict]]:
     return None, None
 
 
+def _group_ungrouped_predictions(input_path: str, n_per_group: int = 5) -> list[dict]:
+    """
+    Group ungrouped predictions (one predict string per line) into grouped entries.
+
+    Detects the pattern used by Gemini gen5: N_papers lines repeated n_per_group times
+    (lines 0..N-1 are sample 0, N..2N-1 are sample 1, etc). Groups them by prompt hash
+    into entries with predict as a list.
+    """
+    import hashlib
+    from collections import defaultdict
+
+    entries = []
+    with open(input_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                entries.append(json.loads(line))
+
+    if not entries:
+        return []
+
+    # Group by prompt hash (preserves order of first occurrence)
+    groups = defaultdict(lambda: {"predictions": [], "label": None})
+    order = []
+    for entry in entries:
+        key = hashlib.md5(entry.get("prompt", "").encode()).hexdigest()
+        if key not in groups:
+            order.append(key)
+        g = groups[key]
+        g["predictions"].append(entry.get("predict", ""))
+        if g["label"] is None:
+            g["label"] = entry.get("label", "")
+
+    # Build grouped entries
+    grouped = []
+    for key in order:
+        g = groups[key]
+        grouped.append({"predict": g["predictions"], "label": g["label"]})
+
+    print(f"  Grouped {len(entries)} lines into {len(grouped)} papers "
+          f"(~{len(entries)//len(grouped)} samples each)")
+    return grouped
+
+
 def create_metareview_dataset(input_path: str, output_path: str):
     """
     Create a dataset for meta-review inference from predictions with multiple generations.
+
+    Supports two input formats:
+    - Grouped: each line has predict as a list of N strings (vllm_infer_ensemble output)
+    - Ungrouped: each line has predict as a single string (Gemini gen5 output);
+      these are auto-grouped by prompt before processing.
 
     Args:
         input_path: Path to predictions.jsonl with n_generations > 1
@@ -89,47 +138,59 @@ def create_metareview_dataset(input_path: str, output_path: str):
     """
     metareview_samples = []
 
+    # Peek at first line to detect format
     with open(input_path, "r", encoding="utf-8") as f:
-        for line_num, line in enumerate(f, 1):
-            try:
-                data = json.loads(line.strip())
-            except json.JSONDecodeError:
-                print(f"Warning: Failed to parse line {line_num}")
-                continue
+        first_line = f.readline().strip()
+    first_entry = json.loads(first_line) if first_line else {}
+    is_ungrouped = isinstance(first_entry.get("predict"), str)
 
-            predictions = data.get("predict", [])
-            if isinstance(predictions, str):
-                predictions = [predictions]
+    if is_ungrouped:
+        print(f"  Detected ungrouped predictions (Gemini gen5 format), grouping by prompt...")
+        grouped = _group_ungrouped_predictions(input_path)
+        all_entries = grouped
+    else:
+        all_entries = []
+        with open(input_path, "r", encoding="utf-8") as f:
+            for line_num, line in enumerate(f, 1):
+                try:
+                    all_entries.append(json.loads(line.strip()))
+                except json.JSONDecodeError:
+                    print(f"Warning: Failed to parse line {line_num}")
 
-            # Need at least 5 predictions for meta-review
-            if len(predictions) < 5:
-                print(f"Warning: Line {line_num} has only {len(predictions)} predictions, skipping")
-                continue
+    for idx, data in enumerate(all_entries):
+        predictions = data.get("predict", [])
+        if isinstance(predictions, str):
+            predictions = [predictions]
 
-            # Format the meta-review prompt
-            user_content = METAREVIEW_USER_TEMPLATE.format(
-                review1=predictions[0],
-                review2=predictions[1],
-                review3=predictions[2],
-                review4=predictions[3],
-                review5=predictions[4]
-            )
+        # Need at least 5 predictions for meta-review
+        if len(predictions) < 5:
+            print(f"Warning: Entry {idx} has only {len(predictions)} predictions, skipping")
+            continue
 
-            # Create ShareGPT format sample
-            sample = {
-                "conversations": [
-                    {"from": "system", "value": METAREVIEW_SYSTEM_PROMPT},
-                    {"from": "human", "value": user_content},
-                    {"from": "gpt", "value": data.get("label", "")}  # Keep original label for evaluation
-                ],
-                "_metadata": {
-                    "original_predictions": predictions,
-                    "original_label": data.get("label", ""),
-                    "source_line": line_num
-                }
+        # Format the meta-review prompt
+        user_content = METAREVIEW_USER_TEMPLATE.format(
+            review1=predictions[0],
+            review2=predictions[1],
+            review3=predictions[2],
+            review4=predictions[3],
+            review5=predictions[4]
+        )
+
+        # Create ShareGPT format sample
+        sample = {
+            "conversations": [
+                {"from": "system", "value": METAREVIEW_SYSTEM_PROMPT},
+                {"from": "human", "value": user_content},
+                {"from": "gpt", "value": data.get("label", "")}
+            ],
+            "_metadata": {
+                "original_predictions": predictions,
+                "original_label": data.get("label", ""),
+                "source_idx": idx
             }
+        }
 
-            metareview_samples.append(sample)
+        metareview_samples.append(sample)
 
     # Save as dataset
     os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else ".", exist_ok=True)

@@ -21,77 +21,115 @@ from typing import Dict, List, Optional, Tuple
 
 
 def parse_boxed_decision(text: str) -> Optional[str]:
-    """Extract decision from \\boxed{Accept} or \\boxed{Reject} format, or plain text."""
-    # Match \boxed{Accept} or \boxed{Reject}
+    """Extract decision from \boxed{Accept} or \boxed{Reject} format, or plain text.
+    
+    Greedy search to handle conversational models that omit the tag.
+    """
+    # 1. Standard \boxed logic (highest confidence)
     match = re.search(r'\\boxed\{(Accept|Reject)\}', text, re.IGNORECASE)
     if match:
         return match.group(1).capitalize()
 
-    # Also try plain "Accept" or "Reject" (e.g., from Gemini)
-    text_stripped = text.strip().lower()
-    if text_stripped == "accept":
+    # 2. Look for common patterns like "Decision: Accept"
+    # Prioritizes the LAST occurrence in the text
+    patterns = [
+        r'Decision:\s*(Accept|Reject)',
+        r'Prediction:\s*(Accept|Reject)',
+        r'Outcome:\s*(Accept|Reject)',
+        r'Final\s*Decision:\s*(Accept|Reject)',
+        r'Final\s*Prediction:\s*(Accept|Reject)'
+    ]
+    
+    best_pos = -1
+    best_decision = None
+    
+    for pattern in patterns:
+        for m in re.finditer(pattern, text, re.IGNORECASE):
+            if m.start() > best_pos:
+                best_pos = m.start()
+                best_decision = m.group(1).capitalize()
+    
+    if best_decision:
+        return best_decision
+
+    # 3. Last-ditch: look for the absolute last occurrence of "Accept" or "Reject"
+    # This is a very greedy fallback for conversational responses.
+    last_accept = text.lower().rfind("accept")
+    last_reject = text.lower().rfind("reject")
+    
+    if last_accept > last_reject:
         return "Accept"
-    elif text_stripped == "reject":
+    elif last_reject > last_accept:
         return "Reject"
 
     return None
 
 
 def parse_json_decision(text: str) -> Tuple[Optional[str], Optional[Dict]]:
-    """Extract decision and full review from JSON output."""
-    # Try to find JSON block in markdown code fence
-    json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
-    if json_match:
+    """Extract decision and full review from JSON output.
+    
+    Tries multiple strategies to handle common LLM output issues:
+    - Literal newlines (strict=False)
+    - Unescaped backslashes (LaTeX)
+    - Prematurely closed blocks (greedy matching)
+    """
+    # 1. Try greedy extraction within triple backticks
+    fence_match = re.search(r'```(?:json)?\s*(.*?)\s*```', text, re.DOTALL)
+    content = fence_match.group(1) if fence_match else text
+    
+    # 2. Find first '{' and LAST '}' to capture full block (greedy)
+    json_start = content.find('{')
+    json_end = content.rfind('}') + 1
+    
+    if json_start != -1 and json_end > json_start:
+        json_str = content[json_start:json_end]
+        
+        # 3. Pre-process to handle common LLM errors
+        # Double up backslashes that aren't valid JSON escapes (e.g., LaTeX \beta)
+        json_str = re.sub(r'\\(?![\\"/bfnrtu])', r'\\\\', json_str)
+        
         try:
-            review = json.loads(json_match.group(1))
+            # 4. Load with strict=False to allow literal newlines
+            review = json.loads(json_str, strict=False)
             decision = review.get("decision", "").lower()
             if decision in ["accept", "reject"]:
                 return decision.capitalize(), review
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, AttributeError, TypeError):
             pass
-
-    # Try to find raw JSON object
-    try:
-        # Find the last occurrence of a JSON-like structure
-        json_start = text.rfind('{')
-        json_end = text.rfind('}') + 1
-        if json_start != -1 and json_end > json_start:
-            json_str = text[json_start:json_end]
-            review = json.loads(json_str)
-            decision = review.get("decision", "").lower()
-            if decision in ["accept", "reject"]:
-                return decision.capitalize(), review
-    except json.JSONDecodeError:
-        pass
 
     return None, None
 
 
 def parse_calibrated_decision(text: str, threshold: int = 6) -> Optional[str]:
-    """Extract decision based on overall score threshold."""
+    """Extract decision based on score threshold."""
     _, review = parse_json_decision(text)
-    if review and "overall" in review:
-        try:
-            overall = int(review["overall"])
-            return "Accept" if overall >= threshold else "Reject"
-        except (ValueError, TypeError):
-            pass
+    if review:
+        # Check for common score field names
+        for key in ["score", "overall", "rating"]:
+            if key in review:
+                try:
+                    val = int(review[key])
+                    return "Accept" if val >= threshold else "Reject"
+                except (ValueError, TypeError):
+                    pass
     return None
 
 
 def extract_decision(text: str, use_calibration: bool = False, threshold: int = 6) -> Optional[str]:
     """Extract decision from a single prediction text."""
-    # Try boxed format first (original prompt)
+    # 1. If calibration is requested, try that first (prefers JSON score)
+    if use_calibration:
+        decision = parse_calibrated_decision(text, threshold)
+        if decision:
+            return decision
+
+    # 2. Try boxed format (original prompt / fallback)
     decision = parse_boxed_decision(text)
     if decision:
         return decision
 
-    # Try JSON format (new prompt)
-    if use_calibration:
-        decision = parse_calibrated_decision(text, threshold)
-    else:
-        decision, _ = parse_json_decision(text)
-
+    # 3. Try JSON decision field (fallback)
+    decision, _ = parse_json_decision(text)
     return decision
 
 

@@ -694,6 +694,19 @@ class FinetuningArguments(
         default=False,
         metadata={"help": "Whether to save per-layer attention maps (large output). If False, only saves average and last-layer."},
     )
+    attention_viz_rollout: bool = field(
+        default=False,
+        metadata={"help": "Use attention rollout across all layers instead of last-layer-only. "
+                  "Compatible with both visualize_attention and visualize_attention_text. "
+                  "Equivalent to attention_viz_rollout_method='residual_mix' for backwards compatibility."},
+    )
+    attention_viz_rollout_method: str = field(
+        default="none",
+        metadata={"help": "Rollout method: 'none' (last-layer only), 'residual_mix' (0.5 residual mixing), "
+                  "'attention_rollout' (proper matrix multiplication across layers), "
+                  "'attn_lrp' (LRP-based attribution, requires lxt package). "
+                  "Overrides attention_viz_rollout when set to a non-'none' value."},
+    )
     visualize_attention_text: bool = field(
         default=False,
         metadata={"help": "Whether to visualize attention over paper text tokens during evaluation (text-only variant)."},
@@ -705,6 +718,14 @@ class FinetuningArguments(
     attention_viz_text_paper_start_marker: str = field(
         default="\n\n",
         metadata={"help": "Marker in the decoded prompt that separates the fixed instruction prefix from the paper content."},
+    )
+    attention_viz_save_html: bool = field(
+        default=True,
+        metadata={"help": "Save interactive HTML attention visualizations (text variant only)."},
+    )
+    attention_viz_save_2d_heatmap: bool = field(
+        default=True,
+        metadata={"help": "Save 2-D attention heatmap JPGs (rows=steps, cols=tokens)."},
     )
     track_decision_probs: bool = field(
         default=False,

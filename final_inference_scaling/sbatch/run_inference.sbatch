@@ -90,11 +90,13 @@ if [ "$MODALITY" == "text" ]; then
     MEDIA_DIR=""
     # YaRN rope scaling: 32768 * 4 = 131072 context length
     ROPE_SCALING='{"rope_scaling":{"rope_type":"yarn","factor":4.0,"original_max_position_embeddings":32768}}'
+    BATCH_SIZE=32
 else
     MODEL="${MODEL_VISION}"
     TEMPLATE="${TEMPLATE_VL:-qwen2_vl}"
     MEDIA_DIR="."
     ROPE_SCALING=""
+    BATCH_SIZE=1
 fi
 
 # Clean model name for the output path
@@ -139,7 +141,8 @@ INFERENCE_CMD="python final_inference_scaling/scripts/vllm_infer_ensemble.py \
     --cutoff_len ${CUTOFF_LEN} \
     --max_new_tokens 10240 \
     --save_name ${OUTPUT_FILE} \
-    --n_generations ${N_GENERATIONS}"
+    --n_generations ${N_GENERATIONS} \
+    --batch_size ${BATCH_SIZE}"
 
 # Add media_dir for VL models
 if [ -n "${MEDIA_DIR}" ]; then

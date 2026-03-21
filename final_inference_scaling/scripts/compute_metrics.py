@@ -28,28 +28,17 @@ import numpy as np
 import pandas as pd
 
 
-# Expected JSON schema fields for the new prompt format
+# Expected JSON schema fields for the prompt format
 EXPECTED_FIELDS = {
     "summary": str,
-    "questions": str,
-    "limitations": str,
     "strengths": str,
     "weaknesses": str,
-    "ethical_concerns": bool,
-    "soundness": int,  # 1-5
-    "presentation": int,  # 1-5
-    "contribution": int,  # 1-5
-    "overall": int,  # 1-10
-    "confidence": int,  # 1-5
-    "decision": str,  # "accept" or "reject"
+    "score": int,  # 1-10
+    "decision": str,  # "Accept" or "Reject"
 }
 
 SCORE_RANGES = {
-    "soundness": (1, 5),
-    "presentation": (1, 5),
-    "contribution": (1, 5),
-    "overall": (1, 10),
-    "confidence": (1, 5),
+    "score": (1, 10),
 }
 
 
@@ -356,6 +345,8 @@ def compute_metrics(
     # Basic counts
     total = len(valid_results)
     correct = sum(1 for r in valid_results if r["correct"])
+    accept_preds = sum(1 for r in valid_results if r["prediction"] == "Accept")
+    acceptance_rate = accept_preds / total if total > 0 else 0
 
     # Confusion matrix components
     tp = sum(1 for r in valid_results if r["prediction"] == "Accept" and r["ground_truth"] == "Accept")
@@ -374,6 +365,7 @@ def compute_metrics(
         "total": total,
         "correct": correct,
         "accuracy": accuracy,
+        "acceptance_rate": acceptance_rate,
         "accept_recall": accept_recall,
         "reject_recall": reject_recall,
         "accept_precision": accept_precision,
@@ -630,6 +622,7 @@ def create_summary_table(all_metrics: Dict[str, Dict], output_path: str):
         row = {
             "Configuration": config,
             "Accuracy": f"{metrics['accuracy']:.4f}",
+            "Acceptance Rate": f"{metrics.get('acceptance_rate', 0):.4f}",
             "Accept Recall": f"{metrics['accept_recall']:.4f}",
             "Reject Recall": f"{metrics['reject_recall']:.4f}",
             "Accept Precision": f"{metrics['accept_precision']:.4f}",
@@ -685,7 +678,7 @@ def process_results_directory(
         modality = modality_dir.name
 
         # Skip non-modality directories (like 'gemini' subfolder when processing main dir)
-        if modality not in ["clean", "clean_images", "vision"]:
+        if modality not in ["clean", "clean_images", "vision", "text"]:
             continue
 
         for variant_dir in modality_dir.iterdir():
@@ -773,6 +766,8 @@ def main():
     parser.add_argument("--base_data_dir", type=str,
                         default="/n/fs/vision-mix/sk7524/LLaMA-Factory/data",
                         help="Base directory containing original datasets (for metadata)")
+    parser.add_argument("--model", type=str, default=None,
+                        help="Filter to only include results for this model name")
 
     args = parser.parse_args()
 
@@ -783,23 +778,43 @@ def main():
 
     results_dir = Path(args.results_dir)
 
-    # Process main results (Qwen)
-    print("\n" + "=" * 70)
-    print("Processing Qwen results")
-    print("=" * 70)
-    process_results_directory(
-        results_dir, args.base_data_dir, all_metrics, all_json_metrics, prefix=""
-    )
+    # Iterate over model subdirectories inside results_dir
+    # Expected structure: results/{model}/{modality}/{prompt_variant}/results_{strategy}.jsonl
+    for model_dir in sorted(results_dir.iterdir()):
+        if not model_dir.is_dir():
+            continue
 
-    # Process Gemini results if they exist
-    gemini_dir = results_dir / "gemini"
-    if gemini_dir.exists():
-        print("\n" + "=" * 70)
-        print("Processing Gemini results")
-        print("=" * 70)
-        process_results_directory(
-            gemini_dir, args.base_data_dir, all_metrics, all_json_metrics, prefix="gemini/"
+        model_name = model_dir.name
+        
+        # Apply model filter if provided
+        if args.model and model_name != args.model:
+            continue
+
+        # Check if this directory contains modality subdirectories directly
+        # (i.e., it's a model directory like Qwen2.5-7B-Instruct/)
+        has_modality_dirs = any(
+            child.is_dir() and child.name in ["clean", "clean_images", "vision", "text"]
+            for child in model_dir.iterdir()
         )
+
+        if has_modality_dirs:
+            print("\n" + "=" * 70)
+            print(f"Processing model: {model_name}")
+            print("=" * 70)
+            process_results_directory(
+                model_dir, args.base_data_dir, all_metrics, all_json_metrics,
+                prefix=f"{model_name}/"
+            )
+        else:
+            # Fallback: maybe results_dir itself contains modality dirs (old structure)
+            if model_name in ["clean", "clean_images", "vision", "text"]:
+                print("\n" + "=" * 70)
+                print("Processing results (legacy structure)")
+                print("=" * 70)
+                process_results_directory(
+                    results_dir, args.base_data_dir, all_metrics, all_json_metrics, prefix=""
+                )
+                break  # Only process once for legacy structure
 
     if all_metrics:
         # Generate plots

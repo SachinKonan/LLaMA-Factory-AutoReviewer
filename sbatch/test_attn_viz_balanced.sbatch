@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=attn_viz_balanced
-#SBATCH --time=06:00:00
-#SBATCH --mem=256G
+#SBATCH --time=12:00:00
+#SBATCH --mem=48G
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:1
 #SBATCH --partition=ailab

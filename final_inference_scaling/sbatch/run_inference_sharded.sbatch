@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=inf_sharded
-#SBATCH --time=08:00:00
+#SBATCH --time=01:00:00
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
+#SBATCH --mem=256G
 #SBATCH --gres=gpu:1
 #SBATCH --array=0-15
 #SBATCH --output=logs/final_inference_scaling/%A/infer_%A_%a.out
@@ -49,7 +49,7 @@ RESULTS_DIR="${PROJECT_DIR}/final_inference_scaling/results"
 MODEL_CLEAN="${MODEL_CLEAN:-Qwen/Qwen2.5-7B-Instruct}"
 MODEL_VISION="${MODEL_VISION:-/scratch/gpfs/ZHUANGL/jl0796/.hf_home/hub/models--Qwen--qwen2.5-VL-7B-instruct/snapshots/cc594898137f460bfe9f0759e9844b3ce807cfb5}"
 
-CTX_LEN_NOFEWSHOT="${CTX_LEN_NOFEWSHOT:-20480}"
+CTX_LEN_NOFEWSHOT="${CTX_LEN_NOFEWSHOT:-24480}"
 CTX_LEN_FEWSHOT="${CTX_LEN_FEWSHOT:-60000}"
 
 # Target Prompt Variant to run 5 generations on
@@ -93,6 +93,11 @@ else
     TEMPLATE="${TEMPLATE_VL:-qwen2_vl}"
     MEDIA_DIR="."
     ROPE_SCALING=""
+    BATCH_SIZE=1
+fi
+
+if [ "$MODALITY" == "text" ]; then
+    BATCH_SIZE=32
 fi
 
 
@@ -141,7 +146,8 @@ INFERENCE_CMD="python final_inference_scaling/scripts/vllm_infer_ensemble.py \
     --save_name ${OUTPUT_FILE} \
     --n_generations ${N_GENERATIONS} \
     --shard_id ${SHARD_ID} \
-    --num_shards ${NUM_SHARDS}"
+    --num_shards ${NUM_SHARDS} \
+    --batch_size ${BATCH_SIZE}"
 
 # Add media_dir for VL models
 if [ -n "${MEDIA_DIR}" ]; then

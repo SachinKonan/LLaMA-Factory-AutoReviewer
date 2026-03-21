@@ -99,6 +99,16 @@ def vllm_infer(
     """
     image_max_pixels = 28*28*1280
     image_min_pixels = 1*28*28
+
+    # Robust type coercion — fire can pass unexpected types when shell quoting
+    # interacts with Python literal parsing (e.g. '{}' → dict)
+    pipeline_parallel_size = int(pipeline_parallel_size) if str(pipeline_parallel_size).strip() else 1
+    if isinstance(vllm_config, dict):
+        import json as _json
+        vllm_config = _json.dumps(vllm_config)
+    if max_samples is not None:
+        max_samples = int(max_samples)
+
     if pipeline_parallel_size > get_device_count():
         raise ValueError("Pipeline parallel size should be smaller than the number of gpus.")
 
@@ -130,15 +140,17 @@ def vllm_infer(
     template_obj = get_template_and_fix_tokenizer(tokenizer, data_args)
     template_obj.mm_plugin.expand_mm_tokens = False  # for vllm generate
 
+    n_gpus = get_device_count()
+    # pipeline_parallel_size already coerced to int above
     engine_args = {
         "model": model_args.model_name_or_path,
         "trust_remote_code": True,
         "dtype": model_args.infer_dtype,
         "max_model_len": cutoff_len + max_new_tokens,
-        "tensor_parallel_size": (get_device_count() // pipeline_parallel_size) or 1,
+        "tensor_parallel_size": (n_gpus // pipeline_parallel_size) or 1,
         "pipeline_parallel_size": pipeline_parallel_size,
         "disable_log_stats": True,
-        "enable_lora": model_args.adapter_name_or_path is not None,
+        "enable_lora": False,
     }
     if template_obj.mm_plugin.__class__.__name__ != "BasePlugin":
         engine_args["limit_mm_per_prompt"] = {"image": 50, "video": 2, "audio": 2}
@@ -149,6 +161,12 @@ def vllm_infer(
 
     if isinstance(model_args.vllm_config, dict):
         engine_args.update(model_args.vllm_config)
+
+    # vllm 0.17+ removed rope_scaling as a top-level EngineArgs parameter;
+    # pass it via hf_overrides to override the model's config.json at runtime
+    rope_scaling = engine_args.pop("rope_scaling", None)
+    if rope_scaling is not None:
+        engine_args["hf_overrides"] = {"rope_scaling": rope_scaling}
 
     llm = LLM(**engine_args)
 
@@ -182,8 +200,9 @@ def vllm_infer(
     else:
         lora_request = None
 
-    # Store all results in these lists
-    all_prompts, all_preds, all_labels = [], [], []
+    # Open output file for streaming
+    f_out = open(save_name, "w", encoding="utf-8")
+    total_processed = 0
     need_video_kwargs = _need_video_kwargs(template)
 
     # Debug: print dataset info
@@ -291,25 +310,22 @@ def vllm_infer(
         else:
             preds = [result.outputs[0].text for result in results]
 
-        # Accumulate results
-        all_prompts.extend(prompts)
-        all_preds.extend(preds)
-        all_labels.extend(labels)
-        gc.collect()
-
-    # Write all results at once outside the loop
-    with open(save_name, "w", encoding="utf-8") as f:
-        for text, pred, label in zip(all_prompts, all_preds, all_labels):
-            # pred is either a string (n_generations=1) or list of strings (n_generations>1)
-            f.write(json.dumps({
+        # Stream results to disk
+        for text, pred, label in zip(prompts, preds, labels):
+            f_out.write(json.dumps({
                 "prompt": text,
-                "predict": pred,  # Will be list if n_generations > 1
+                "predict": pred,
                 "label": label,
                 "n_generations": n_generations
             }, ensure_ascii=False) + "\n")
+        f_out.flush()
+        total_processed += len(prompts)
+        gc.collect()
+
+    f_out.close()
 
     print("*" * 70, flush=True)
-    print(f"{len(all_prompts)} total generated results have been saved at {save_name}.", flush=True)
+    print(f"{total_processed} total generated results have been saved at {save_name}.", flush=True)
     if n_generations > 1:
         print(f"Each sample has {n_generations} generations for ensembling.", flush=True)
     print("*" * 70, flush=True)

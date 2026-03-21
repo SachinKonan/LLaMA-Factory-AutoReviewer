@@ -107,9 +107,6 @@ def transform_sample(sample: Dict, modifier: str, output_format: str, is_fewshot
             new_conv["value"] = user_message
         
         conversations.append(new_conv)
-        
-        # If there's no system prompt initially, we need to ensure it's there. The templates build_system_prompt returns the prompt text itself.
-        # But wait, the standard datasets usually have a system prompt entry.
 
     # If the original didn't have a system prompt (some data might not), we should insert it.
     has_system = any(c["from"] == "system" for c in conversations)
