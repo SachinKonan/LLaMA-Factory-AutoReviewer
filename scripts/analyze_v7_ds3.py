@@ -126,6 +126,36 @@ def _extras_dataset_factory(extras_suffix: str):
     return resolver
 
 
+def _trainval_dataset(variant_name: str) -> str:
+    """Dataset for optim_search_trainval variants (eval on 2026 labelfix test)."""
+    if variant_name.endswith("_text") or "_text_" in variant_name:
+        return "iclr_2020_2023_2025_2026_85_5_10_balanced_original_text_labelfix_v7_filtered"
+    return "iclr_2020_2023_2025_2026_85_5_10_balanced_original_vision_labelfix_v7_filtered_filtered24480"
+
+
+def _year_conditioned_dataset(variant_name: str) -> str:
+    """Dataset for year_conditioned variants (multi-conference yearcond test)."""
+    if "vision" in variant_name:
+        return "all_conferences_vision_v7_extra_yearcond"
+    return "all_conferences_text_v7_extra_yearcond"
+
+
+def _gemini_no2026_dataset(variant_name: str) -> str:
+    """Dataset for gemini_no2026 variants (multi-conference test)."""
+    return "all_conferences_text_v7_extra"
+
+
+def _pretrain_then_sft_dataset(variant_name: str) -> str:
+    """Dataset for pretrain_then_sft variants (multi-conference text test).
+
+    New runs (base_direct_text, base_iclr_only_*) use balanced_nips_icml_iclr_text_eval;
+    old runs use all_conferences_text_v7_extra.
+    """
+    if variant_name in ("base_direct_text",) or variant_name.startswith("base_iclr_only"):
+        return "balanced_nips_icml_iclr_text_eval"
+    return "all_conferences_text_v7_extra"
+
+
 def _trainagreeing_dataset(variant_name: str) -> str:
     """Dataset for trainagreeing variants (2026 labelfix vs no-2026)."""
     has_2026 = "2026" in variant_name and "no2026" not in variant_name
@@ -154,11 +184,27 @@ SUBDIR_CONFIGS = [
     ("optim_search_2026", _optim_2026_labelfix_dataset),
     ("optim_2020_2025_origin", _optim_2020_2025_origin_dataset),
     ("trainagreeing", _trainagreeing_dataset),
+    ("optim_search_trainval", _trainval_dataset),
     ("optim_search_2026_with_extras/paper_stats", _extras_dataset_factory("paperstats")),
+    ("optim_search_2026_with_extras/paper_stats_full", _extras_dataset_factory("paperstats_full")),
     ("optim_search_2026_with_extras/qwen_reviews", _extras_dataset_factory("qwenreviews")),
     ("optim_search_2026_with_extras/gemini_reviews", _extras_dataset_factory("geminireviews")),
     ("optim_search_2026_with_extras/qwen_reviews_x2", _extras_dataset_factory("qwenreviews_x2")),
     ("optim_search_2026_with_extras/gemini_reviews_x2", _extras_dataset_factory("geminireviews_x2")),
+    ("optim_search_2026_with_extras/gemini_reviews_x3", _extras_dataset_factory("geminireviews_x3")),
+    ("year_conditioned", _year_conditioned_dataset),
+    ("gemini_no2026", _gemini_no2026_dataset),
+    ("data_cleaning", lambda v: (
+        "iclr_2020_2023_2025_2026_85_5_10_balanced_original_text_labelfix_v7_filtered"
+        if v.startswith("text_") else
+        "iclr_2020_2023_2025_2026_85_5_10_balanced_original_vision_labelfix_v7_filtered_filtered24480"
+    )),
+    ("scaling", _optim_2026_labelfix_dataset),
+]
+
+# Separate results dirs not under final_sweep_v7_datasweepv3
+EXTRA_RESULT_CONFIGS = [
+    ("results/pretrain_then_sft", _pretrain_then_sft_dataset),
 ]
 
 DATA_DIR = Path("data")
@@ -251,15 +297,70 @@ def extract_label(text: str) -> str:
     return "unknown"
 
 
-def compute_stats(predictions: list[dict], test_data: list[dict]) -> dict:
-    """Compute per-year statistics from SFT predictions."""
+def compute_stats(predictions: list[dict], test_data: list[dict]) -> tuple[dict, dict]:
+    """Compute per-year statistics from SFT predictions.
+
+    If the test set has multiple entries per submission_id (e.g. x2/x3
+    datasets with different reviews per paper), predictions are grouped
+    by submission_id and majority-voted before scoring.
+
+    Returns (year_stats, conf_year_stats) where:
+      year_stats = {year: {tp, tn, fp, fn, total}}
+      conf_year_stats = {conference: {year: {tp, tn, fp, fn, total}}}
+    """
     if len(predictions) != len(test_data):
         print(f"Warning: predictions ({len(predictions)}) != test_data ({len(test_data)})")
         min_len = min(len(predictions), len(test_data))
         predictions = predictions[:min_len]
         test_data = test_data[:min_len]
 
-    year_stats = defaultdict(lambda: {"tp": 0, "tn": 0, "fp": 0, "fn": 0, "total": 0})
+    # Detect multi-answer datasets by checking for duplicate submission_ids
+    sid_counts: dict[str, int] = defaultdict(int)
+    for item in test_data:
+        sid = item.get("_metadata", {}).get("submission_id")
+        if sid:
+            sid_counts[sid] += 1
+    max_copies = max(sid_counts.values()) if sid_counts else 1
+    has_multi = max_copies > 1
+
+    if has_multi:
+        n_unique = len(sid_counts)
+        n_multi = sum(1 for c in sid_counts.values() if c > 1)
+        print(f"  Multi-answer dataset detected: {max_copies} copies/paper, "
+              f"{n_unique} unique papers ({n_multi} with {max_copies} copies)")
+        return _compute_stats_majority_vote(predictions, test_data)
+
+    return _compute_stats_simple(predictions, test_data)
+
+
+def _update_stats(stats: dict, pred_label: str, true_label: str):
+    """Update a stats dict with a single prediction."""
+    stats["total"] += 1
+    if true_label == "accept":
+        if pred_label == "accept":
+            stats["tp"] += 1
+        else:
+            stats["fn"] += 1
+    else:
+        if pred_label == "reject":
+            stats["tn"] += 1
+        else:
+            stats["fp"] += 1
+
+
+def _new_stats():
+    return {"tp": 0, "tn": 0, "fp": 0, "fn": 0, "total": 0}
+
+
+def _compute_stats_simple(predictions: list[dict], test_data: list[dict]) -> tuple[dict, dict]:
+    """Standard per-entry scoring (1 prediction per paper).
+
+    Returns (year_stats, conf_year_stats) where:
+      year_stats = {year: {tp, tn, fp, fn, total}}
+      conf_year_stats = {conference: {year: {tp, tn, fp, fn, total}}}
+    """
+    year_stats = defaultdict(_new_stats)
+    conf_year_stats = defaultdict(lambda: defaultdict(_new_stats))
 
     for i, pred in enumerate(predictions):
         metadata = test_data[i].get("_metadata", {})
@@ -267,26 +368,59 @@ def compute_stats(predictions: list[dict], test_data: list[dict]) -> dict:
         if year is None:
             continue
 
+        conference = metadata.get("conference", "unknown").lower()
         pred_label = extract_prediction(pred.get("predict", ""))
         true_label = extract_label(pred.get("label", ""))
 
         if pred_label == "unknown" or true_label == "unknown":
             continue
 
-        year_stats[year]["total"] += 1
+        _update_stats(year_stats[year], pred_label, true_label)
+        _update_stats(conf_year_stats[conference][year], pred_label, true_label)
 
-        if true_label == "accept":
-            if pred_label == "accept":
-                year_stats[year]["tp"] += 1
-            else:
-                year_stats[year]["fn"] += 1
-        else:
-            if pred_label == "reject":
-                year_stats[year]["tn"] += 1
-            else:
-                year_stats[year]["fp"] += 1
+    return dict(year_stats), {c: dict(v) for c, v in conf_year_stats.items()}
 
-    return dict(year_stats)
+
+def _compute_stats_majority_vote(predictions: list[dict], test_data: list[dict]) -> tuple[dict, dict]:
+    """Group predictions by submission_id and majority-vote before scoring."""
+    # Collect all predictions per submission_id
+    paper_preds: dict[str, dict] = {}  # sid -> {year, conference, true_label, pred_labels: []}
+    for i, pred in enumerate(predictions):
+        metadata = test_data[i].get("_metadata", {})
+        sid = metadata.get("submission_id")
+        year = metadata.get("year")
+        if sid is None or year is None:
+            continue
+
+        conference = metadata.get("conference", "unknown").lower()
+        pred_label = extract_prediction(pred.get("predict", ""))
+        true_label = extract_label(pred.get("label", ""))
+
+        if pred_label == "unknown" or true_label == "unknown":
+            continue
+
+        if sid not in paper_preds:
+            paper_preds[sid] = {"year": year, "conference": conference, "true_label": true_label, "pred_labels": []}
+        paper_preds[sid]["pred_labels"].append(pred_label)
+
+    # Majority vote and score
+    year_stats = defaultdict(_new_stats)
+    conf_year_stats = defaultdict(lambda: defaultdict(_new_stats))
+
+    for sid, info in paper_preds.items():
+        year = info["year"]
+        conference = info["conference"]
+        true_label = info["true_label"]
+        votes = info["pred_labels"]
+
+        # Majority vote (accept wins ties)
+        accept_count = sum(1 for v in votes if v == "accept")
+        pred_label = "accept" if accept_count > len(votes) / 2 else "reject"
+
+        _update_stats(year_stats[year], pred_label, true_label)
+        _update_stats(conf_year_stats[conference][year], pred_label, true_label)
+
+    return dict(year_stats), {c: dict(v) for c, v in conf_year_stats.items()}
 
 
 def calc_metrics(stats: dict) -> dict:
@@ -474,6 +608,169 @@ def print_combined_overall_table(all_year_stats: list[dict], ckpt_names: list[st
         print(f"{'N:':<20}{all_metrics_2025_2026[0]['n']}")
 
 
+def print_conference_breakdown(all_conf_year_stats: list[dict], ckpt_names: list[str]):
+    """Print accuracy breakdown by conference, then ICLR 2025/2026 detail."""
+    conferences = set()
+    for cys in all_conf_year_stats:
+        conferences.update(cys.keys())
+    if len(conferences) <= 1:
+        return  # No point in conference breakdown for single-conference data
+
+    conferences = sorted(conferences)
+    num_ckpts = len(ckpt_names)
+    col_w = max(8, 7)
+
+    # --- By Conference (all years) ---
+    print(f"\n--- Accuracy by Conference ---")
+    header = f"{'Conference':<12}{'N':>6}" + "".join(f"{'ep' + str(i+1):>{col_w}}" for i in range(num_ckpts))
+    print(header)
+    print("-" * len(header))
+
+    for conf in conferences:
+        # Aggregate all years for this conference
+        all_years_for_conf = set()
+        for cys in all_conf_year_stats:
+            if conf in cys:
+                all_years_for_conf.update(cys[conf].keys())
+        all_years_list = sorted(all_years_for_conf)
+
+        n = None
+        vals = []
+        for cys in all_conf_year_stats:
+            if conf in cys:
+                agg = aggregate_stats(cys[conf], all_years_list)
+                m = calc_metrics(agg)
+                vals.append(m["accuracy"])
+                if n is None:
+                    n = m["n"]
+            else:
+                vals.append(None)
+
+        row = f"{conf:<12}{n or 0:>6}" + "".join(
+            f"{(f'{v:.1f}%' if v is not None else '-'):>{col_w}}" for v in vals
+        )
+        print(row)
+
+    # --- ICLR 2025/2026 detail ---
+    if "iclr" in conferences:
+        print(f"\n--- ICLR 2025/2026 Detail ---")
+        header = f"{'Year':<12}{'N':>6}" + "".join(f"{'ep' + str(i+1):>{col_w}}" for i in range(num_ckpts))
+        print(header)
+        print("-" * len(header))
+
+        for year in [2025, 2026]:
+            n = None
+            vals = []
+            for cys in all_conf_year_stats:
+                if "iclr" in cys and year in cys["iclr"]:
+                    m = calc_metrics(cys["iclr"][year])
+                    vals.append(m["accuracy"])
+                    if n is None:
+                        n = m["n"]
+                else:
+                    vals.append(None)
+            row = f"{year:<12}{n or 0:>6}" + "".join(
+                f"{(f'{v:.1f}%' if v is not None else '-'):>{col_w}}" for v in vals
+            )
+            print(row)
+
+        # Combined 2025+2026
+        n = None
+        vals = []
+        for cys in all_conf_year_stats:
+            if "iclr" in cys:
+                agg = aggregate_stats(cys["iclr"], [2025, 2026])
+                m = calc_metrics(agg)
+                vals.append(m["accuracy"])
+                if n is None:
+                    n = m["n"]
+            else:
+                vals.append(None)
+        row = f"{'25+26':<12}{n or 0:>6}" + "".join(
+            f"{(f'{v:.1f}%' if v is not None else '-'):>{col_w}}" for v in vals
+        )
+        print(row)
+
+    # --- ICLR 2017-2019 detail (if present) ---
+    if "iclr" in conferences:
+        early_years = [2017, 2018, 2019]
+        has_early = any(
+            y in cys.get("iclr", {}) for cys in all_conf_year_stats for y in early_years
+        )
+        if has_early:
+            print(f"\n--- ICLR 2017-2019 Detail ---")
+            header = f"{'Year':<12}{'N':>6}" + "".join(f"{'ep' + str(i+1):>{col_w}}" for i in range(num_ckpts))
+            print(header)
+            print("-" * len(header))
+
+            for year in early_years:
+                n = None
+                vals = []
+                for cys in all_conf_year_stats:
+                    if "iclr" in cys and year in cys["iclr"]:
+                        m = calc_metrics(cys["iclr"][year])
+                        vals.append(m["accuracy"])
+                        if n is None:
+                            n = m["n"]
+                    else:
+                        vals.append(None)
+                row = f"{year:<12}{n or 0:>6}" + "".join(
+                    f"{(f'{v:.1f}%' if v is not None else '-'):>{col_w}}" for v in vals
+                )
+                print(row)
+
+            # Combined 2017-2019
+            n = None
+            vals = []
+            for cys in all_conf_year_stats:
+                if "iclr" in cys:
+                    agg = aggregate_stats(cys["iclr"], early_years)
+                    m = calc_metrics(agg)
+                    vals.append(m["accuracy"])
+                    if n is None:
+                        n = m["n"]
+                else:
+                    vals.append(None)
+            if n and n > 0:
+                row = f"{'17-19':<12}{n:>6}" + "".join(
+                    f"{(f'{v:.1f}%' if v is not None else '-'):>{col_w}}" for v in vals
+                )
+                print(row)
+
+    # --- Non-ICLR conferences by year ---
+    non_iclr = [c for c in conferences if c != "iclr"]
+    if non_iclr:
+        for conf in non_iclr:
+            all_years_for_conf = set()
+            for cys in all_conf_year_stats:
+                if conf in cys:
+                    all_years_for_conf.update(cys[conf].keys())
+            if not all_years_for_conf:
+                continue
+            years_sorted = sorted(all_years_for_conf)
+
+            print(f"\n--- {conf.upper()} by Year ---")
+            header = f"{'Year':<12}{'N':>6}" + "".join(f"{'ep' + str(i+1):>{col_w}}" for i in range(num_ckpts))
+            print(header)
+            print("-" * len(header))
+
+            for year in years_sorted:
+                n = None
+                vals = []
+                for cys in all_conf_year_stats:
+                    if conf in cys and year in cys[conf]:
+                        m = calc_metrics(cys[conf][year])
+                        vals.append(m["accuracy"])
+                        if n is None:
+                            n = m["n"]
+                    else:
+                        vals.append(None)
+                row = f"{year:<12}{n or 0:>6}" + "".join(
+                    f"{(f'{v:.1f}%' if v is not None else '-'):>{col_w}}" for v in vals
+                )
+                print(row)
+
+
 def analyze_directory(result_dir: Path, data_root: Path, dataset_name: Optional[str] = None) -> tuple[list[dict], Optional[dict]]:
     """Analyze all checkpoints in a result directory with combined tables.
 
@@ -516,12 +813,14 @@ def analyze_directory(result_dir: Path, data_root: Path, dataset_name: Optional[
 
     # Load and compute stats for all checkpoints
     all_year_stats = []
+    all_conf_year_stats = []
     ckpt_names = []
     for ckpt_file in ckpt_files:
         try:
             predictions = load_predictions(ckpt_file)
-            year_stats = compute_stats(predictions, test_data)
+            year_stats, conf_year_stats = compute_stats(predictions, test_data)
             all_year_stats.append(year_stats)
+            all_conf_year_stats.append(conf_year_stats)
             ckpt_names.append(get_ckpt_short_name(ckpt_file.name))
         except Exception as e:
             print(f"Error loading {ckpt_file}: {e}")
@@ -540,6 +839,10 @@ def analyze_directory(result_dir: Path, data_root: Path, dataset_name: Optional[
     # Print combined tables
     print_combined_per_year_table(all_year_stats, ckpt_names)
     print_combined_overall_table(all_year_stats, ckpt_names)
+
+    # Print conference breakdown if multi-conference data
+    print_conference_breakdown(all_conf_year_stats, ckpt_names)
+
     print()
 
     # Build CSV rows
@@ -643,6 +946,36 @@ def analyze_all(data_root: Path, csv_dir: Optional[Path] = None):
         if csv_dir and subdir_rows:
             write_csv(subdir_rows, csv_dir / f"{subdir_name}_metrics.csv")
 
+    # Scan extra result directories (not under final_sweep_v7_datasweepv3)
+    for extra_dir, dataset_resolver in EXTRA_RESULT_CONFIGS:
+        extra_path = Path(extra_dir)
+        if not extra_path.exists():
+            continue
+        variant_dirs = sorted(
+            d for d in extra_path.iterdir()
+            if d.is_dir() and not d.name.startswith("_") and not d.name.startswith(".")
+        )
+        if not variant_dirs:
+            continue
+        print(f"\nScanning: {extra_path}")
+        extra_rows = []
+        extra_best_infos = []
+        for variant_dir in variant_dirs:
+            ds_name = dataset_resolver(variant_dir.name)
+            rows, best_info = analyze_directory(variant_dir, data_root, dataset_name=ds_name)
+            extra_rows.extend(rows)
+            if best_info is not None:
+                extra_best_infos.append(best_info)
+
+        if extra_best_infos:
+            overall_best = max(extra_best_infos, key=lambda x: x["accuracy"])
+            print(f"\n--- Overall Metrics (only 2025 and 2026) --- <--------- MAX: "
+                  f"{overall_best['variant']} ckpt-{overall_best['ckpt']} = {overall_best['accuracy']:.1f}%")
+
+        if csv_dir and extra_rows:
+            safe_name = extra_dir.replace("/", "_")
+            write_csv(extra_rows, csv_dir / f"{safe_name}_metrics.csv")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Analyze final_sweep_v7_datasweepv3 results with per-year breakdown")
@@ -661,6 +994,12 @@ def main():
         default=Path("data"),
         help="Root directory for test data (default: data)",
     )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default=None,
+        help="Override test dataset name (e.g. all_conferences_text_v7_extra)",
+    )
     args = parser.parse_args()
 
     if args.all:
@@ -669,15 +1008,23 @@ def main():
         all_rows = []
         for p in args.path:
             if p.is_dir():
-                # Try to infer dataset from parent directory via SUBDIR_CONFIGS
-                ds_name = None
-                for subdir_name, resolver in SUBDIR_CONFIGS:
-                    # Handle both flat (wd_sweep) and nested (optim_.../paper_stats) subdirs
-                    subdir_parts = Path(subdir_name).parts
-                    parent_parts = p.parent.parts
-                    if len(parent_parts) >= len(subdir_parts) and parent_parts[-len(subdir_parts):] == subdir_parts:
-                        ds_name = resolver(p.name)
-                        break
+                ds_name = args.dataset
+                if ds_name is None:
+                    # Try to infer dataset from parent directory via SUBDIR_CONFIGS
+                    for subdir_name, resolver in SUBDIR_CONFIGS:
+                        subdir_parts = Path(subdir_name).parts
+                        parent_parts = p.parent.parts
+                        if len(parent_parts) >= len(subdir_parts) and parent_parts[-len(subdir_parts):] == subdir_parts:
+                            ds_name = resolver(p.name)
+                            break
+                    # Also check EXTRA_RESULT_CONFIGS
+                    if ds_name is None:
+                        for extra_dir, resolver in EXTRA_RESULT_CONFIGS:
+                            extra_parts = Path(extra_dir).parts
+                            parent_parts = p.parent.parts
+                            if len(parent_parts) >= len(extra_parts) and parent_parts[-len(extra_parts):] == extra_parts:
+                                ds_name = resolver(p.name)
+                                break
                 rows, _ = analyze_directory(p, args.data_root, dataset_name=ds_name)
                 all_rows.extend(rows)
             else:

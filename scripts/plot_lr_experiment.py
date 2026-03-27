@@ -50,6 +50,10 @@ EXPERIMENT_LOG_FILES = {
     "trainagreeing_original_no2024_vision_cls": "logs/lr_experiment_v7/4524594.out",
     "trainagreeing_original_no2024_vision_cls_rating": "logs/lr_experiment_v7/4524595.out",
     "trainagreeing_original_no2024_vision_sft": "logs/lr_experiment_v7/4524596.out",
+    # Rating weight sweep (text) - job 4964678
+    "text_balanced_text_lr2e6_norating": "logs/lr_experiment_v7/rating_weight_sweep/4964678_0.out",
+    "text_balanced_text_lr2e6_rw0.001": "logs/lr_experiment_v7/rating_weight_sweep/4964678_1.out",
+    # Rating weight sweep (vision) - TBD
 }
 
 # Experiment groupings for separate plots
@@ -69,6 +73,13 @@ NEW_EXPERIMENTS = [
     "text_balanced_no2024_lr_1.75e6_bs16_3epoch",
     "vision_trainagreeing_no2024_head2e5_bb2e6_bs16_3epoch",
     "vision_balanced_no2024_head2e5_bb2e6_bs16_3epoch",
+]
+
+RATING_WEIGHT_EXPERIMENTS = [
+    "text_balanced_text_lr2e6_norating",
+    "text_balanced_text_lr2e6_rw0.001",
+    "text_balanced_text_lr2e6_rw0.01",
+    # Vision variants will be added when they start running
 ]
 
 
@@ -161,6 +172,25 @@ def parse_experiment_name(exp_name: str) -> Dict[str, str]:
         'lr_config': 'unknown',
         'short_name': exp_name,
     }
+
+    # Handle rating weight sweep experiments
+    # e.g., text_balanced_text_lr2e6_norating, text_balanced_text_lr2e6_rw0.001
+    if '_lr2e6_norating' in exp_name or '_lr2e6_rw' in exp_name:
+        if exp_name.startswith('text_'):
+            info['model_type'] = 'text'
+        elif exp_name.startswith('vision_'):
+            info['model_type'] = 'vision'
+        info['dataset'] = 'balanced'
+        if 'norating' in exp_name:
+            info['lr_config'] = 'LR=2e-6, no rating'
+            info['short_name'] = 'bal_lr2e6_norating'
+        else:
+            # Extract rw value, e.g., rw0.001
+            rw_match = re.search(r'rw([\d.]+)', exp_name)
+            rw_val = rw_match.group(1) if rw_match else '?'
+            info['lr_config'] = f'LR=2e-6, rw={rw_val}'
+            info['short_name'] = f'bal_lr2e6_rw{rw_val}'
+        return info
 
     # Handle trainagreeing_original experiments
     if exp_name.startswith('trainagreeing_original_no2024_'):
@@ -269,8 +299,30 @@ def load_all_experiments(saves_dir: Path, base_dir: Path = None) -> Dict[str, Tu
         exp_name = exp_dir.name
         info = parse_experiment_name(exp_name)
 
+        # Check if trainer_log already has cls_accuracy (new-style CLS training)
+        if 'cls_accuracy' in df.columns:
+            # Normalize field names: cls_accuracy -> accuracy, cls_loss -> loss
+            if 'accuracy' not in df.columns:
+                df['accuracy'] = df['cls_accuracy']
+            if 'cls_loss' in df.columns and 'loss' not in df.columns:
+                df['loss'] = df['cls_loss']
+            # Extract eval metrics from eval rows (rows with eval_cls_accuracy)
+            if 'eval_cls_accuracy' in df.columns:
+                eval_rows = df[df['eval_cls_accuracy'].notna()]
+                info['eval_epoch'] = eval_rows['epoch'].tolist()
+                info['eval_accuracy'] = eval_rows['eval_cls_accuracy'].tolist()
+                if 'eval_cls_loss' in eval_rows.columns:
+                    info['eval_loss'] = eval_rows['eval_cls_loss'].tolist()
+                # else: no eval_loss available (CLS trainer doesn't compute it)
+            # Filter to training rows only (have cls_accuracy but not eval_cls_accuracy)
+            train_mask = df['cls_accuracy'].notna()
+            if 'eval_cls_accuracy' in df.columns:
+                train_mask = train_mask & df['eval_cls_accuracy'].isna()
+            df = df[train_mask].reset_index(drop=True)
+            has_eval = len(info.get('eval_epoch', [])) > 0
+            print(f"Loaded: {exp_name} ({len(df)} steps, with cls_accuracy" + (f", {len(info['eval_epoch'])} eval points)" if has_eval else ")"))
         # Try to get accuracy from raw log file if available
-        if exp_name in EXPERIMENT_LOG_FILES:
+        elif exp_name in EXPERIMENT_LOG_FILES:
             raw_log_path = base_dir / EXPERIMENT_LOG_FILES[exp_name]
             metrics = parse_raw_log_for_metrics(raw_log_path)
             if metrics['epoch']:
@@ -406,9 +458,10 @@ def plot_old_and_new_separately(
     show: bool = True,
 ):
     """Create separate plots for old and new experiments."""
-    # Split into old and new
+    # Split into old, new, and rating weight sweep
     old_exps = {k: v for k, v in experiments.items() if k in OLD_EXPERIMENTS}
     new_exps = {k: v for k, v in experiments.items() if k in NEW_EXPERIMENTS}
+    rw_exps = {k: v for k, v in experiments.items() if k in RATING_WEIGHT_EXPERIMENTS}
 
     # Plot old experiments
     if old_exps:
@@ -428,6 +481,16 @@ def plot_old_and_new_separately(
             output_file=output_dir / "lr_experiment_new.png",
             show=show,
             title_prefix="[NEW] ",
+        )
+
+    # Plot rating weight sweep experiments
+    if rw_exps:
+        print(f"\n=== RATING WEIGHT SWEEP ({len(rw_exps)}) ===")
+        plot_training_curves(
+            rw_exps,
+            output_file=output_dir / "lr_experiment_rating_weight.png",
+            show=show,
+            title_prefix="[RW] ",
         )
 
 

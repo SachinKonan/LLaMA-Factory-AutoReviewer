@@ -194,6 +194,13 @@ def parse_args() -> argparse.Namespace:
         help="Comma-separated epoch numbers (1-indexed) to keep safetensors for (skip deletion). "
              "Checkpoints are sorted by step; the i-th checkpoint = epoch i.",
     )
+    parser.add_argument(
+        "--train_dataset",
+        type=str,
+        default=None,
+        help="Override train dataset name for --compute_train_accuracy "
+             "(default: derived from --dataset by replacing _test with _train)",
+    )
 
     return parser.parse_args()
 
@@ -383,10 +390,15 @@ def main():
                         "SAVE_LOGPROBS": "1" if args.save_logprobs else "0",
                     }
 
+                    if args.train_dataset:
+                        env["TRAIN_DATASET"] = args.train_dataset
+
                     if image_params:
                         env["IMAGE_PARAMS"] = image_params
 
-                    if args.delete_safetensors_posteval:
+                    # TODO: Remove this override once queue pressure is resolved.
+                    # Temporarily ignore --delete_safetensors_posteval to keep all weights.
+                    if False and args.delete_safetensors_posteval:
                         should_keep = ckpt_step in keep_steps
                         if not should_keep and keep_epoch_idx:
                             # Sort all checkpoints by step, find 1-indexed position

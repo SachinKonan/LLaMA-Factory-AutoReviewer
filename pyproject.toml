@@ -84,6 +84,8 @@ dependencies = [
     # google cloud / gemini
     "google-genai>=1.0.0",
     "google-cloud-storage>=2.0.0",
+    "liger-kernel>=0.7.0",
+    "fastmcp>=3.1.0",
 ]
 
 [project.optional-dependencies]
