@@ -74,7 +74,8 @@ def count_dataset_samples(dataset_name: str, dataset_dir: str = "data") -> int:
 
 def eval_training_ckpt(
     model_name_or_path: str,
-    dataset: str,
+    adapter_name_or_path: str = None,
+    dataset: str = "alpaca_en_demo",
     dataset_dir: str = "data",
     template: str = "default",
     cutoff_len: int = 2048,
@@ -116,6 +117,7 @@ def eval_training_ckpt(
     # Build model args
     model_args = ModelArguments(
         model_name_or_path=model_name_or_path,
+        adapter_name_or_path=adapter_name_or_path,
         image_max_pixels=image_max_pixels,
         image_min_pixels=image_min_pixels,
         use_kv_cache=False,  # Not doing generation, just forward pass for logits

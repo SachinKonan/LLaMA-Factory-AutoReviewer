@@ -31,6 +31,7 @@ Features:
 """
 
 import argparse
+import json as json_module
 import logging
 import os
 import subprocess
@@ -206,17 +207,25 @@ def parse_args() -> argparse.Namespace:
 
 
 def is_checkpoint_complete(checkpoint_dir: Path) -> bool:
-    """Check if a checkpoint has all required model files."""
-    required_patterns = [
-        "model*.safetensors",  # Model weights
-        "config.json",  # Config file
-    ]
+    """Check if a checkpoint has all required model files (full FT or LoRA)."""
+    # LoRA checkpoint: adapter_model*.safetensors + adapter_config.json
+    lora_files = list(checkpoint_dir.glob("adapter_model*.safetensors"))
+    lora_config = checkpoint_dir / "adapter_config.json"
+    if lora_files and lora_config.exists():
+        return True
 
-    for pattern in required_patterns:
-        matches = list(checkpoint_dir.glob(pattern))
-        if not matches:
-            return False
-    return True
+    # Full FT checkpoint: model*.safetensors + config.json
+    model_files = list(checkpoint_dir.glob("model*.safetensors"))
+    config_file = checkpoint_dir / "config.json"
+    if model_files and config_file.exists():
+        return True
+
+    return False
+
+
+def is_lora_checkpoint(checkpoint_dir: Path) -> bool:
+    """Check if a checkpoint directory contains LoRA adapter weights."""
+    return (checkpoint_dir / "adapter_config.json").exists()
 
 
 def get_checkpoint_step(checkpoint_dir: Path) -> Optional[int]:
@@ -390,15 +399,24 @@ def main():
                         "SAVE_LOGPROBS": "1" if args.save_logprobs else "0",
                     }
 
+                    # LoRA checkpoint: pass base model path + adapter path + rank
+                    ckpt_is_lora = is_lora_checkpoint(ckpt_dir)
+                    if ckpt_is_lora:
+                        env["IS_LORA"] = "1"
+                        adapter_cfg = json_module.loads((ckpt_dir / "adapter_config.json").read_text())
+                        env["BASE_MODEL_PATH"] = adapter_cfg["base_model_name_or_path"]
+                        env["LORA_RANK"] = str(adapter_cfg.get("r", 64))
+                        logger.info(f"LoRA checkpoint detected: base_model={env['BASE_MODEL_PATH']}")
+
                     if args.train_dataset:
                         env["TRAIN_DATASET"] = args.train_dataset
 
                     if image_params:
                         env["IMAGE_PARAMS"] = image_params
 
-                    # TODO: Remove this override once queue pressure is resolved.
-                    # Temporarily ignore --delete_safetensors_posteval to keep all weights.
-                    if False and args.delete_safetensors_posteval:
+                    # Skip safetensors deletion for LoRA (adapters are small, keep them)
+                    # TODO: Remove the `False and` override once queue pressure is resolved.
+                    if not ckpt_is_lora and False and args.delete_safetensors_posteval:
                         should_keep = ckpt_step in keep_steps
                         if not should_keep and keep_epoch_idx:
                             # Sort all checkpoints by step, find 1-indexed position

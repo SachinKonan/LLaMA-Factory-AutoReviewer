@@ -46,6 +46,9 @@ TRAIN_ACCURACY_BATCH_SIZE=${TRAIN_ACCURACY_BATCH_SIZE:-2}
 DELETE_SAFETENSORS=${DELETE_SAFETENSORS:-0}
 TEMPERATURE=${TEMPERATURE:-0}
 SAVE_LOGPROBS=${SAVE_LOGPROBS:-0}
+IS_LORA=${IS_LORA:-0}
+BASE_MODEL_PATH=${BASE_MODEL_PATH:-}
+LORA_RANK=${LORA_RANK:-64}
 
 # Derive train dataset from test dataset if not provided
 # e.g., dataset_test -> dataset_train
@@ -72,7 +75,20 @@ echo "Train Accuracy Batch Size: ${TRAIN_ACCURACY_BATCH_SIZE}"
 echo "Delete Safetensors: ${DELETE_SAFETENSORS}"
 echo "Temperature: ${TEMPERATURE}"
 echo "Save Logprobs: ${SAVE_LOGPROBS}"
+echo "Is LoRA: ${IS_LORA}"
+echo "Base Model Path: ${BASE_MODEL_PATH:-<not set>}"
 echo "=============================================="
+
+# Compute model/adapter paths for LoRA vs full FT
+MODEL_PATH="${CHECKPOINT_DIR}"
+ADAPTER_ARG=""
+LORA_VLLM_CONFIG=""
+if [ "$IS_LORA" = "1" ]; then
+    MODEL_PATH="${BASE_MODEL_PATH}"
+    ADAPTER_ARG="--adapter_name_or_path ${CHECKPOINT_DIR}"
+    LORA_VLLM_CONFIG="--vllm_config {\"max_lora_rank\": ${LORA_RANK}}"
+    echo "LoRA mode: base=${MODEL_PATH}, adapter=${CHECKPOINT_DIR}, rank=${LORA_RANK}"
+fi
 
 # Create directories
 mkdir -p logs/auto_inference "${RESULTS_DIR}"
@@ -101,7 +117,8 @@ if [ "$COMPUTE_TRAIN_ACCURACY" = "1" ]; then
 
     # Build eval command with optional image params
     EVAL_CMD="python scripts/eval_training_ckpt.py \
-        --model_name_or_path \"${CHECKPOINT_DIR}\" \
+        --model_name_or_path \"${MODEL_PATH}\" \
+        ${ADAPTER_ARG} \
         --dataset \"${TRAIN_DATASET}\" \
         --template \"${TEMPLATE}\" \
         --cutoff_len ${CUTOFF_LEN} \
@@ -152,7 +169,9 @@ fi
 # Run inference
 # Note: IMAGE_PARAMS and INFER_EXTRA_ARGS are intentionally unquoted to allow word splitting
 python scripts/vllm_infer.py \
-    --model_name_or_path "${CHECKPOINT_DIR}" \
+    --model_name_or_path "${MODEL_PATH}" \
+    ${ADAPTER_ARG} \
+    ${LORA_VLLM_CONFIG} \
     --dataset "${DATASET}" \
     --template "${TEMPLATE}" \
     --cutoff_len "${CUTOFF_LEN}" \
@@ -167,7 +186,7 @@ echo "${OUTPUT_FILE}" > "${CHECKPOINT_DIR}/.inferdone.touch"
 # ============================================
 # Step 3: Delete safetensors to save disk space (optional)
 # ============================================
-if [ "$DELETE_SAFETENSORS" = "1" ]; then
+if [ "$DELETE_SAFETENSORS" = "1" ] && [ "$IS_LORA" != "1" ]; then
     echo ""
     echo "=== Step 3: Cleaning up safetensors ==="
     SAFETENSOR_COUNT=$(ls "${CHECKPOINT_DIR}"/*.safetensors 2>/dev/null | wc -l)
@@ -178,6 +197,9 @@ if [ "$DELETE_SAFETENSORS" = "1" ]; then
     else
         echo "No safetensors files found in ${CHECKPOINT_DIR}"
     fi
+elif [ "$IS_LORA" = "1" ]; then
+    echo ""
+    echo "=== Step 3: Skipped (LoRA adapters are small, keeping them) ==="
 fi
 
 echo ""
