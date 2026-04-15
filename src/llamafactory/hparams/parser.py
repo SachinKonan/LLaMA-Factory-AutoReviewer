@@ -293,7 +293,8 @@ def get_train_args(args: dict[str, Any] | list[str] | None = None) -> _TRAIN_CLS
             raise ValueError("GRPO training is incompatible with S^2-Attn.")
 
     if not model_args.use_kt and training_args.parallel_mode == ParallelMode.NOT_DISTRIBUTED:
-        raise ValueError("Please launch distributed training with `llamafactory-cli` or `torchrun`.")
+        pass
+        # raise ValueError("Please launch distributed training with `llamafactory-cli` or `torchrun`.")
 
     if training_args.deepspeed and training_args.parallel_mode != ParallelMode.DISTRIBUTED:
         raise ValueError("Please use `FORCE_TORCHRUN=1` to launch DeepSpeed training.")
@@ -461,7 +462,10 @@ def get_train_args(args: dict[str, Any] | list[str] | None = None) -> _TRAIN_CLS
     elif training_args.fp16:
         model_args.compute_dtype = torch.float16
 
-    model_args.device_map = {"": get_current_device()}
+    if os.environ.get("device_map") == "auto":
+        model_args.device_map = "auto"
+    else:
+        model_args.device_map = {"": get_current_device()}
     model_args.model_max_length = data_args.cutoff_len
     model_args.block_diag_attn = data_args.neat_packing
     data_args.packing = data_args.packing if data_args.packing is not None else finetuning_args.stage == "pt"

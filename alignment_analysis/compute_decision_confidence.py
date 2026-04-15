@@ -17,6 +17,7 @@ import argparse
 import json
 import math
 import re
+import os
 
 from transformers import AutoTokenizer
 
@@ -60,10 +61,26 @@ def main():
         "--model_name_or_path",
         default="/scratch/gpfs/ZHUANGL/jl0796/shared/saves/best_2025_2026_text/checkpoint-1322",
     )
+    parser.add_argument(
+        "--dataset_json",
+        default="/scratch/gpfs/ZHUANGL/jl0796/shared/data/iclr_2020_2023_2025_2026_85_5_10_balanced_original_text_labelfix_v7_filtered_test/data.json",
+        help="Path to the original dataset JSON to extract submission_ids from."
+    )
     args = parser.parse_args()
 
     print(f"Loading tokenizer from {args.model_name_or_path}")
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, trust_remote_code=True)
+
+    submission_ids = []
+    submission_years = []
+    if args.dataset_json and os.path.exists(args.dataset_json):
+        print(f"Loading metadata from {args.dataset_json}")
+        with open(args.dataset_json, "r") as f:
+            data = json.load(f)
+            for entry in data:
+                metadata = entry.get("_metadata", {})
+                submission_ids.append(metadata.get("submission_id"))
+                submission_years.append(metadata.get("year"))
 
     n_total = n_found = n_missing_id = 0
 
@@ -75,12 +92,21 @@ def main():
             entry = json.loads(line)
             n_total += 1
 
-            submission_id = entry.get("submission_id", f"sample_{n_total - 1:05d}")
-            if "submission_id" not in entry:
+            submission_id = entry.get("submission_id")
+            year = entry.get("year")
+            
+            if not submission_id and n_total - 1 < len(submission_ids):
+                submission_id = submission_ids[n_total - 1]
+            if not year and n_total - 1 < len(submission_years):
+                year = submission_years[n_total - 1]
+            
+            if not submission_id:
+                submission_id = f"sample_{n_total - 1:05d}"
                 n_missing_id += 1
 
             predict = entry.get("predict", "")
             token_logprobs = entry.get("token_logprobs", [])
+            label = entry.get("label", None)
 
             decision, tok_idx, logprob = find_decision_token_index(predict, token_logprobs, tokenizer)
 
@@ -90,14 +116,22 @@ def main():
                     "submission_id": submission_id,
                     "decision": None,
                     "decision_logit": None,
+                    "label": label,
+                    "year": year,
                     "predict": predict,
                 }
             else:
                 n_found += 1
+                prob = math.exp(logprob)
+                accept_prob = prob if decision == "Accept" else 1.0 - prob
+                
                 out = {
                     "submission_id": submission_id,
                     "decision": decision,
                     "decision_logit": logprob,
+                    "accept_probability": accept_prob,
+                    "label": label,
+                    "year": year,
                     "decision_token_idx": tok_idx,
                     "predict": predict,
                 }

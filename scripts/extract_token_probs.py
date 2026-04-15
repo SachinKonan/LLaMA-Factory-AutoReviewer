@@ -136,6 +136,7 @@ def extract_probs(
             cutoff_len=cutoff_len,
             max_samples=max_samples,
             preprocessing_num_workers=16,
+            infer_dtype="bfloat16",
         )
     )
 
