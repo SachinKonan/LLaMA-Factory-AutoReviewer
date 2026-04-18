@@ -85,18 +85,10 @@ def render(entry: dict, submission_id: str, output_stem: Path) -> None:
             else:
                 with Image.open(img_path) as im:
                     ax.imshow(im)
-            ax.set_title(f"Page {idx + 1}", fontsize=12)
         else:
             ax.axis("off")
 
-    meta = entry.get("_metadata") or {}
-    title_bits = [f"submission_id: {submission_id}"]
-    for k in ("answer", "year", "decision", "pct_rating", "ratings"):
-        if k in meta:
-            title_bits.append(f"{k}={meta[k]}")
-    fig.suptitle("  |  ".join(title_bits), fontsize=11, y=0.995)
-
-    fig.tight_layout(rect=(0, 0, 1, 0.97))
+    fig.tight_layout()
 
     output_stem.parent.mkdir(parents=True, exist_ok=True)
     png_path = output_stem.with_suffix(".png")
