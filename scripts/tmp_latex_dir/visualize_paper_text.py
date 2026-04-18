@@ -18,7 +18,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import textwrap
 from pathlib import Path
 
 import matplotlib as mpl
@@ -28,12 +27,15 @@ from PIL import Image, ImageDraw, ImageFont
 mpl.rcParams.update({
     "text.usetex": False,
     "font.family": "sans-serif",
-    "font.sans-serif": ["Arial", "DejaVu Sans"],
+    "font.sans-serif": ["Roboto", "Arial", "DejaVu Sans"],
 })
 
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = ROOT / "tmp_latex_dir" / "figures"
 DATASET_INFO = ROOT / "data" / "dataset_info.json"
+FONT_DIR = Path(__file__).resolve().parent / "fonts"
+FONT_PATH_REG = FONT_DIR / "Roboto-Regular.ttf"
+FONT_PATH_BOLD = FONT_DIR / "Roboto-Bold.ttf"
 
 ROWS, COLS = 2, 5
 MAX_PANELS = ROWS * COLS
@@ -41,10 +43,10 @@ MAX_PANELS = ROWS * COLS
 # Page canvas sized to match the 3.0 x 3.9 inch panel aspect (0.769)
 PAGE_W, PAGE_H = 620, 806
 MARGIN = 28
-FONT_PATH_REG = "/usr/share/fonts/dejavu-sans-mono-fonts/DejaVuSansMono.ttf"
-FONT_PATH_BOLD = "/usr/share/fonts/dejavu-sans-mono-fonts/DejaVuSansMono-Bold.ttf"
-FONT_SIZE = 12
-LINE_GAP = 3  # extra px between lines
+LINE_GAP = 2             # extra px between lines
+BLANK_LINE_FRACTION = 0.55  # blank line = this fraction of a normal line
+MIN_FONT = 7
+MAX_FONT = 22
 
 
 def resolve_data_json(dataset_name: str) -> Path:
@@ -68,61 +70,127 @@ def find_entry(data: list[dict], submission_id: str) -> dict:
     raise KeyError(f"submission_id {submission_id!r} not found in dataset")
 
 
-def wrap_paragraphs(body: str, width: int) -> list[str]:
-    """Wrap body text paragraph-by-paragraph; returns list of lines including blanks."""
+def wrap_to_pixel_width(text: str, font: ImageFont.FreeTypeFont, max_w: float) -> list[str]:
+    """Greedy word-wrap against a pixel width using the font's own metrics."""
+    lines: list[str] = []
+    for line in text.split("\n"):
+        if not line.strip():
+            lines.append("")
+            continue
+        words = line.split(" ")
+        current = ""
+        for w in words:
+            trial = w if not current else current + " " + w
+            if font.getlength(trial) <= max_w:
+                current = trial
+            else:
+                if current:
+                    lines.append(current)
+                # handle pathological long word — hard-break it
+                while font.getlength(w) > max_w and len(w) > 1:
+                    # find biggest prefix that fits
+                    lo, hi = 1, len(w)
+                    while lo < hi:
+                        mid = (lo + hi + 1) // 2
+                        if font.getlength(w[:mid]) <= max_w:
+                            lo = mid
+                        else:
+                            hi = mid - 1
+                    lines.append(w[:lo])
+                    w = w[lo:]
+                current = w
+        if current:
+            lines.append(current)
+    return lines
+
+
+def wrap_body(body: str, font: ImageFont.FreeTypeFont, max_w: float) -> list[str]:
+    """Wrap body preserving paragraph breaks (blank line at '\\n\\n')."""
     out: list[str] = []
     for i, para in enumerate(body.split("\n\n")):
         if i > 0:
-            out.append("")  # paragraph separator
-        if not para.strip():
-            continue
-        for line in para.split("\n"):
-            if not line.strip():
-                out.append("")
-                continue
-            wrapped = textwrap.fill(line, width=width,
-                                    break_long_words=False, break_on_hyphens=False)
-            out.extend(wrapped.split("\n"))
+            out.append("")
+        if para.strip():
+            out.extend(wrap_to_pixel_width(para, font, max_w))
     return out
 
 
-def render_section_page(header: str, body: str) -> Image.Image:
-    font_reg = ImageFont.truetype(FONT_PATH_REG, FONT_SIZE)
-    font_bold = ImageFont.truetype(FONT_PATH_BOLD, FONT_SIZE)
+def layout_height(header_lines: list[str], body_lines: list[str],
+                  line_h: int, blank_h: int) -> int:
+    """Total pixel height needed to render the full (untruncated) layout."""
+    h = 0
+    h += line_h * len(header_lines)
+    h += blank_h  # separator between header and body
+    for ln in body_lines:
+        h += blank_h if ln == "" else line_h
+    return h
 
-    # measure char width (monospace so any char works)
-    char_w = font_reg.getlength("M")
+
+def pick_font_size(header: str, body: str, usable_w: float, usable_h: float) -> int:
+    """Binary-search the largest font size where the full section fits."""
+    def fits(size: int) -> bool:
+        font_reg = ImageFont.truetype(str(FONT_PATH_REG), size)
+        font_bold = ImageFont.truetype(str(FONT_PATH_BOLD), size)
+        ascent, descent = font_reg.getmetrics()
+        line_h = ascent + descent + LINE_GAP
+        blank_h = int(round(line_h * BLANK_LINE_FRACTION))
+        header_lines = wrap_to_pixel_width(header, font_bold, usable_w) or [header]
+        body_lines = wrap_body(body, font_reg, usable_w)
+        return layout_height(header_lines, body_lines, line_h, blank_h) <= usable_h
+
+    lo, hi = MIN_FONT, MAX_FONT
+    best = MIN_FONT
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if fits(mid):
+            best = mid
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return best
+
+
+def render_section_page(header: str, body: str) -> Image.Image:
     usable_w = PAGE_W - 2 * MARGIN
     usable_h = PAGE_H - 2 * MARGIN
-    chars_per_line = max(10, int(usable_w // char_w))
 
+    size = pick_font_size(header, body, usable_w, usable_h)
+    font_reg = ImageFont.truetype(str(FONT_PATH_REG), size)
+    font_bold = ImageFont.truetype(str(FONT_PATH_BOLD), size)
     ascent, descent = font_reg.getmetrics()
     line_h = ascent + descent + LINE_GAP
-    max_lines = max(1, usable_h // line_h)
+    blank_h = int(round(line_h * BLANK_LINE_FRACTION))
 
-    header_lines = textwrap.wrap(header, width=chars_per_line,
-                                 break_long_words=False, break_on_hyphens=False) or [header]
-    body_lines = wrap_paragraphs(body, chars_per_line)
+    header_lines = wrap_to_pixel_width(header, font_bold, usable_w) or [header]
+    body_lines = wrap_body(body, font_reg, usable_w)
 
-    # Budget: header + 1 blank + body, all capped at max_lines
-    budget_body = max_lines - len(header_lines) - 1
-    if budget_body < 1:
-        body_lines = []
-    elif len(body_lines) > budget_body:
-        body_lines = body_lines[:budget_body]
-        if body_lines:
-            body_lines[-1] = body_lines[-1].rstrip() + " …"
+    # Truncate if even MIN_FONT couldn't fit the whole thing
+    max_lines_by_height = usable_h
+    remaining = max_lines_by_height - len(header_lines) * line_h - blank_h
+    kept_body: list[str] = []
+    for ln in body_lines:
+        h = blank_h if ln == "" else line_h
+        if h > remaining:
+            break
+        kept_body.append(ln)
+        remaining -= h
+    if len(kept_body) < len(body_lines) and kept_body:
+        kept_body[-1] = kept_body[-1].rstrip() + " …"
+    body_lines = kept_body
 
     img = Image.new("RGB", (PAGE_W, PAGE_H), color="white")
     draw = ImageDraw.Draw(img)
     y = MARGIN
-    for line in header_lines:
-        draw.text((MARGIN, y), line, font=font_bold, fill="black")
+    for ln in header_lines:
+        draw.text((MARGIN, y), ln, font=font_bold, fill="black")
         y += line_h
-    y += line_h  # blank line between header and body
-    for line in body_lines:
-        draw.text((MARGIN, y), line, font=font_reg, fill="black")
-        y += line_h
+    y += blank_h
+    for ln in body_lines:
+        if ln == "":
+            y += blank_h
+        else:
+            draw.text((MARGIN, y), ln, font=font_reg, fill="black")
+            y += line_h
     return img
 
 
