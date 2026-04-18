@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Render a paper's markdown sections as a 2x5 grid of text panels.
+"""Render a paper's markdown sections as a 2x5 grid of "text pages".
+
+Each panel is a PIL-rendered page image (white canvas, monospace text,
+bold `# HEADER` on first line, raw markdown body). Uses matplotlib imshow
+identically to the vision variant so the grid visually matches.
 
 Usage:
     uv run python scripts/tmp_latex_dir/visualize_paper_text.py \\
@@ -8,9 +12,6 @@ Usage:
 
 Outputs:
     tmp_latex_dir/figures/paper_text_<submission_id>.{png,pdf}
-
-Each panel is one `# HEADER` section (header bold, body raw markdown).
-First 10 sections only, truncated to fit.
 """
 from __future__ import annotations
 
@@ -22,11 +23,12 @@ from pathlib import Path
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from PIL import Image, ImageDraw, ImageFont
 
 mpl.rcParams.update({
     "text.usetex": False,
-    "text.parse_math": False,
-    "font.family": "monospace",
+    "font.family": "sans-serif",
+    "font.sans-serif": ["Arial", "DejaVu Sans"],
 })
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -35,9 +37,14 @@ DATASET_INFO = ROOT / "data" / "dataset_info.json"
 
 ROWS, COLS = 2, 5
 MAX_PANELS = ROWS * COLS
-FONT_SIZE = 5
-CHARS_PER_LINE = 58
-MAX_LINES = 46
+
+# Page canvas sized to match the 3.0 x 3.9 inch panel aspect (0.769)
+PAGE_W, PAGE_H = 620, 806
+MARGIN = 28
+FONT_PATH_REG = "/usr/share/fonts/dejavu-sans-mono-fonts/DejaVuSansMono.ttf"
+FONT_PATH_BOLD = "/usr/share/fonts/dejavu-sans-mono-fonts/DejaVuSansMono-Bold.ttf"
+FONT_SIZE = 12
+LINE_GAP = 3  # extra px between lines
 
 
 def resolve_data_json(dataset_name: str) -> Path:
@@ -61,23 +68,62 @@ def find_entry(data: list[dict], submission_id: str) -> dict:
     raise KeyError(f"submission_id {submission_id!r} not found in dataset")
 
 
-def wrap_body(body: str, width: int) -> str:
-    """Wrap paragraph-by-paragraph, preserving blank-line breaks."""
-    out = []
-    for para in body.split("\n\n"):
+def wrap_paragraphs(body: str, width: int) -> list[str]:
+    """Wrap body text paragraph-by-paragraph; returns list of lines including blanks."""
+    out: list[str] = []
+    for i, para in enumerate(body.split("\n\n")):
+        if i > 0:
+            out.append("")  # paragraph separator
         if not para.strip():
-            out.append("")
             continue
-        # wrap each physical line separately so list bullets etc. stay aligned
-        wrapped_lines = []
         for line in para.split("\n"):
             if not line.strip():
-                wrapped_lines.append("")
+                out.append("")
                 continue
-            wrapped_lines.append(textwrap.fill(line, width=width, break_long_words=False,
-                                                break_on_hyphens=False))
-        out.append("\n".join(wrapped_lines))
-    return "\n\n".join(out)
+            wrapped = textwrap.fill(line, width=width,
+                                    break_long_words=False, break_on_hyphens=False)
+            out.extend(wrapped.split("\n"))
+    return out
+
+
+def render_section_page(header: str, body: str) -> Image.Image:
+    font_reg = ImageFont.truetype(FONT_PATH_REG, FONT_SIZE)
+    font_bold = ImageFont.truetype(FONT_PATH_BOLD, FONT_SIZE)
+
+    # measure char width (monospace so any char works)
+    char_w = font_reg.getlength("M")
+    usable_w = PAGE_W - 2 * MARGIN
+    usable_h = PAGE_H - 2 * MARGIN
+    chars_per_line = max(10, int(usable_w // char_w))
+
+    ascent, descent = font_reg.getmetrics()
+    line_h = ascent + descent + LINE_GAP
+    max_lines = max(1, usable_h // line_h)
+
+    header_lines = textwrap.wrap(header, width=chars_per_line,
+                                 break_long_words=False, break_on_hyphens=False) or [header]
+    body_lines = wrap_paragraphs(body, chars_per_line)
+
+    # Budget: header + 1 blank + body, all capped at max_lines
+    budget_body = max_lines - len(header_lines) - 1
+    if budget_body < 1:
+        body_lines = []
+    elif len(body_lines) > budget_body:
+        body_lines = body_lines[:budget_body]
+        if body_lines:
+            body_lines[-1] = body_lines[-1].rstrip() + " …"
+
+    img = Image.new("RGB", (PAGE_W, PAGE_H), color="white")
+    draw = ImageDraw.Draw(img)
+    y = MARGIN
+    for line in header_lines:
+        draw.text((MARGIN, y), line, font=font_bold, fill="black")
+        y += line_h
+    y += line_h  # blank line between header and body
+    for line in body_lines:
+        draw.text((MARGIN, y), line, font=font_reg, fill="black")
+        y += line_h
+    return img
 
 
 def render(entry: dict, output_stem: Path) -> None:
@@ -97,8 +143,8 @@ def render(entry: dict, output_stem: Path) -> None:
     for ax in axes:
         ax.set_xticks([])
         ax.set_yticks([])
-
-    line_height_ax = 1.0 / MAX_LINES  # axes-fraction per text line
+        for spine in ax.spines.values():
+            spine.set_visible(False)
 
     for idx, ax in enumerate(axes):
         if idx >= n_shown:
@@ -110,29 +156,8 @@ def render(entry: dict, output_stem: Path) -> None:
             header, body_text = sec, ""
         else:
             header, body_text = sec[:first_nl], sec[first_nl + 1:]
-
-        wrapped_header = textwrap.fill(header, width=CHARS_PER_LINE,
-                                       break_long_words=False, break_on_hyphens=False)
-        wrapped_body = wrap_body(body_text, CHARS_PER_LINE)
-
-        # Line budget: header + gap + body
-        header_lines = wrapped_header.count("\n") + 1
-        body_budget = MAX_LINES - header_lines - 1
-        body_lines = wrapped_body.split("\n")
-        if len(body_lines) > body_budget:
-            body_lines = body_lines[:body_budget]
-            body_lines[-1] = body_lines[-1].rstrip() + " …"
-        wrapped_body = "\n".join(body_lines)
-
-        ax.text(0.02, 0.98, wrapped_header,
-                transform=ax.transAxes, fontsize=FONT_SIZE,
-                fontweight="bold", family="monospace",
-                verticalalignment="top", horizontalalignment="left")
-        body_y = 0.98 - (header_lines + 1) * line_height_ax
-        ax.text(0.02, body_y, wrapped_body,
-                transform=ax.transAxes, fontsize=FONT_SIZE,
-                family="monospace",
-                verticalalignment="top", horizontalalignment="left")
+        page_img = render_section_page(header, body_text)
+        ax.imshow(page_img)
 
     fig.tight_layout()
 
