@@ -86,6 +86,7 @@ dependencies = [
     "google-cloud-storage>=2.0.0",
     "liger-kernel>=0.7.0",
     "fastmcp>=3.1.0",
+    "pymupdf>=1.27.2.2",
 ]
 
 [project.optional-dependencies]

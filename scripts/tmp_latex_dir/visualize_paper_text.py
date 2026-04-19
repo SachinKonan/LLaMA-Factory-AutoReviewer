@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Render a paper's markdown sections as a 2x5 grid of "text pages".
+"""Render a paper's markdown content as a 2x5 grid by typesetting it to PDF.
 
-Each panel is a PIL-rendered page image (white canvas, monospace text,
-bold `# HEADER` on first line, raw markdown body). Uses matplotlib imshow
-identically to the vision variant so the grid visually matches.
+Pipeline:
+    markdown (entry.human, from first `#` on)
+        -> pandoc + xelatex -> letter-size PDF (Roboto font)
+        -> pymupdf rasterize first 10 pages
+        -> matplotlib subplots (same layout as visualize_paper.py)
 
 Usage:
     uv run python scripts/tmp_latex_dir/visualize_paper_text.py \\
@@ -18,11 +20,14 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
+import tempfile
 from pathlib import Path
 
+import fitz  # pymupdf
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
 mpl.rcParams.update({
     "text.usetex": False,
@@ -34,19 +39,30 @@ ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = ROOT / "tmp_latex_dir" / "figures"
 DATASET_INFO = ROOT / "data" / "dataset_info.json"
 FONT_DIR = Path(__file__).resolve().parent / "fonts"
-FONT_PATH_REG = FONT_DIR / "Roboto-Regular.ttf"
-FONT_PATH_BOLD = FONT_DIR / "Roboto-Bold.ttf"
 
 ROWS, COLS = 2, 5
 MAX_PANELS = ROWS * COLS
 
-# Page canvas sized to match the 3.0 x 3.9 inch panel aspect (0.769)
-PAGE_W, PAGE_H = 620, 806
-MARGIN = 28
-LINE_GAP = 2             # extra px between lines
-BLANK_LINE_FRACTION = 0.55  # blank line = this fraction of a normal line
-MIN_FONT = 7
-MAX_FONT = 22
+# Pandoc input format: disable TeX math / raw_tex so $ and \ are escaped,
+# not interpreted (the paper text is full of LaTeX-y notation that won't
+# compile in vanilla xelatex).
+PANDOC_FORMAT = (
+    "markdown"
+    "-tex_math_dollars"
+    "-tex_math_single_backslash"
+    "-tex_math_double_backslash"
+    "-raw_tex"
+    "-raw_html"
+    "-latex_macros"
+)
+
+LATEX_HEADER = r"""
+\usepackage{fontspec}
+\setmainfont{Roboto-Regular.ttf}[
+  Path = %s/,
+  BoldFont = Roboto-Bold.ttf
+]
+""" % FONT_DIR
 
 
 def resolve_data_json(dataset_name: str) -> Path:
@@ -70,140 +86,54 @@ def find_entry(data: list[dict], submission_id: str) -> dict:
     raise KeyError(f"submission_id {submission_id!r} not found in dataset")
 
 
-def wrap_to_pixel_width(text: str, font: ImageFont.FreeTypeFont, max_w: float) -> list[str]:
-    """Greedy word-wrap against a pixel width using the font's own metrics."""
-    lines: list[str] = []
-    for line in text.split("\n"):
-        if not line.strip():
-            lines.append("")
-            continue
-        words = line.split(" ")
-        current = ""
-        for w in words:
-            trial = w if not current else current + " " + w
-            if font.getlength(trial) <= max_w:
-                current = trial
-            else:
-                if current:
-                    lines.append(current)
-                # handle pathological long word — hard-break it
-                while font.getlength(w) > max_w and len(w) > 1:
-                    # find biggest prefix that fits
-                    lo, hi = 1, len(w)
-                    while lo < hi:
-                        mid = (lo + hi + 1) // 2
-                        if font.getlength(w[:mid]) <= max_w:
-                            lo = mid
-                        else:
-                            hi = mid - 1
-                    lines.append(w[:lo])
-                    w = w[lo:]
-                current = w
-        if current:
-            lines.append(current)
-    return lines
+def extract_markdown(entry: dict) -> str:
+    """Return the human-prompt content from the first `#` header onward."""
+    human = next(c["value"] for c in entry["conversations"] if c["from"] == "human")
+    m = re.search(r"^# ", human, flags=re.MULTILINE)
+    return human if m is None else human[m.start():]
 
 
-def wrap_body(body: str, font: ImageFont.FreeTypeFont, max_w: float) -> list[str]:
-    """Wrap body preserving paragraph breaks (blank line at '\\n\\n')."""
-    out: list[str] = []
-    for i, para in enumerate(body.split("\n\n")):
-        if i > 0:
-            out.append("")
-        if para.strip():
-            out.extend(wrap_to_pixel_width(para, font, max_w))
-    return out
+def md_to_pdf_pages(md: str, dpi: int = 120) -> list[Image.Image]:
+    """Run pandoc to typeset md -> letter-size PDF, rasterize each page to PIL."""
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        md_path = td / "doc.md"
+        pdf_path = td / "doc.pdf"
+        header_path = td / "header.tex"
+        md_path.write_text(md)
+        header_path.write_text(LATEX_HEADER)
 
+        cmd = [
+            "pandoc", "-f", PANDOC_FORMAT, str(md_path), "-o", str(pdf_path),
+            "--pdf-engine=xelatex",
+            "--include-in-header", str(header_path),
+            "-V", "geometry:paperwidth=8.5in",
+            "-V", "geometry:paperheight=11in",
+            "-V", "geometry:margin=0.6in",
+            "-V", "fontsize=10pt",
+        ]
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise RuntimeError(f"pandoc failed (rc={proc.returncode}):\n{proc.stderr[-1500:]}")
 
-def layout_height(header_lines: list[str], body_lines: list[str],
-                  line_h: int, blank_h: int) -> int:
-    """Total pixel height needed to render the full (untruncated) layout."""
-    h = 0
-    h += line_h * len(header_lines)
-    h += blank_h  # separator between header and body
-    for ln in body_lines:
-        h += blank_h if ln == "" else line_h
-    return h
-
-
-def pick_font_size(header: str, body: str, usable_w: float, usable_h: float) -> int:
-    """Binary-search the largest font size where the full section fits."""
-    def fits(size: int) -> bool:
-        font_reg = ImageFont.truetype(str(FONT_PATH_REG), size)
-        font_bold = ImageFont.truetype(str(FONT_PATH_BOLD), size)
-        ascent, descent = font_reg.getmetrics()
-        line_h = ascent + descent + LINE_GAP
-        blank_h = int(round(line_h * BLANK_LINE_FRACTION))
-        header_lines = wrap_to_pixel_width(header, font_bold, usable_w) or [header]
-        body_lines = wrap_body(body, font_reg, usable_w)
-        return layout_height(header_lines, body_lines, line_h, blank_h) <= usable_h
-
-    lo, hi = MIN_FONT, MAX_FONT
-    best = MIN_FONT
-    while lo <= hi:
-        mid = (lo + hi) // 2
-        if fits(mid):
-            best = mid
-            lo = mid + 1
-        else:
-            hi = mid - 1
-    return best
-
-
-def render_section_page(header: str, body: str) -> Image.Image:
-    usable_w = PAGE_W - 2 * MARGIN
-    usable_h = PAGE_H - 2 * MARGIN
-
-    size = pick_font_size(header, body, usable_w, usable_h)
-    font_reg = ImageFont.truetype(str(FONT_PATH_REG), size)
-    font_bold = ImageFont.truetype(str(FONT_PATH_BOLD), size)
-    ascent, descent = font_reg.getmetrics()
-    line_h = ascent + descent + LINE_GAP
-    blank_h = int(round(line_h * BLANK_LINE_FRACTION))
-
-    header_lines = wrap_to_pixel_width(header, font_bold, usable_w) or [header]
-    body_lines = wrap_body(body, font_reg, usable_w)
-
-    # Truncate if even MIN_FONT couldn't fit the whole thing
-    max_lines_by_height = usable_h
-    remaining = max_lines_by_height - len(header_lines) * line_h - blank_h
-    kept_body: list[str] = []
-    for ln in body_lines:
-        h = blank_h if ln == "" else line_h
-        if h > remaining:
-            break
-        kept_body.append(ln)
-        remaining -= h
-    if len(kept_body) < len(body_lines) and kept_body:
-        kept_body[-1] = kept_body[-1].rstrip() + " …"
-    body_lines = kept_body
-
-    img = Image.new("RGB", (PAGE_W, PAGE_H), color="white")
-    draw = ImageDraw.Draw(img)
-    y = MARGIN
-    for ln in header_lines:
-        draw.text((MARGIN, y), ln, font=font_bold, fill="black")
-        y += line_h
-    y += blank_h
-    for ln in body_lines:
-        if ln == "":
-            y += blank_h
-        else:
-            draw.text((MARGIN, y), ln, font=font_reg, fill="black")
-            y += line_h
-    return img
+        doc = fitz.open(pdf_path)
+        try:
+            pages: list[Image.Image] = []
+            for page in doc:
+                pix = page.get_pixmap(dpi=dpi)
+                img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+                pages.append(img)
+        finally:
+            doc.close()
+        return pages
 
 
 def render(entry: dict, output_stem: Path) -> None:
-    human = [c for c in entry["conversations"] if c["from"] == "human"][0]["value"]
-    m = re.search(r"^# ", human, flags=re.MULTILINE)
-    if m is None:
-        sections = [human]
-    else:
-        body = human[m.start():]
-        sections = re.split(r"\n(?=# )", body)
-    sections = sections[:MAX_PANELS]
-    n_shown = len(sections)
+    md = extract_markdown(entry)
+    pages = md_to_pdf_pages(md)
+    n_total = len(pages)
+    pages = pages[:MAX_PANELS]
+    n_shown = len(pages)
 
     fig, axes = plt.subplots(ROWS, COLS, figsize=(COLS * 3.0, ROWS * 3.9))
     axes = axes.flatten()
@@ -215,17 +145,10 @@ def render(entry: dict, output_stem: Path) -> None:
             spine.set_visible(False)
 
     for idx, ax in enumerate(axes):
-        if idx >= n_shown:
-            ax.axis("off")
-            continue
-        sec = sections[idx]
-        first_nl = sec.find("\n")
-        if first_nl == -1:
-            header, body_text = sec, ""
+        if idx < n_shown:
+            ax.imshow(pages[idx])
         else:
-            header, body_text = sec[:first_nl], sec[first_nl + 1:]
-        page_img = render_section_page(header, body_text)
-        ax.imshow(page_img)
+            ax.axis("off")
 
     fig.tight_layout()
 
@@ -238,7 +161,7 @@ def render(entry: dict, output_stem: Path) -> None:
 
     print(f"Saved {png_path}")
     print(f"Saved {pdf_path}")
-    print(f"Sections shown: {n_shown}")
+    print(f"Pages shown: {n_shown} of {n_total} typeset")
 
 
 def main() -> None:
