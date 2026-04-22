@@ -119,6 +119,14 @@ VIS_CONFIGS = [
     ("7B", 7.0, ROOT / "results/final_sweep_v7_datasweepv3/optim_search_2026/bz16_lr1e-6_vision/finetuned-ckpt-2648.jsonl",           VIS_TDS),
 ]
 
+# LoRA points: shown alongside full-FT scaling curve but as separate markers.
+# Training method is fundamentally different from full FT, so keep them visually distinct.
+VIS_LORA_CONFIGS = [
+    ("32B (LoRA r64)", 32.0, ROOT / "results/final_sweep_v7_datasweepv3/optim_search_2026/scaling/bz16_lr2e-5_vision_32b_lora/finetuned-ckpt-2648.jsonl", VIS_TDS),
+]
+
+TEXT_LORA_CONFIGS: list = []  # No text 32B LoRA checkpoints yet
+
 
 def collect(configs):
     rows = []
@@ -145,68 +153,155 @@ def collect(configs):
     return rows
 
 
-def panel(ax, rows, modality, title):
+def _style_axis(ax, rows, ylabel, ylim, lora_rows=None):
     xs = [r["params"] for r in rows]
     labels = [r["label"] for r in rows]
-    acc = [r["acc"] for r in rows]
-    accr = [r["accr"] for r in rows]
-    rejr = [r["rejr"] for r in rows]
-
-    # Overall accuracy — solid
-    ax.plot(xs, acc, "-o", color=ACC_COLOR, linewidth=LINEWIDTH,
-            markersize=MARKERSIZE, label="Accuracy", zorder=3)
-    # Accept recall — dashed
-    ax.plot(xs, accr, "--s", color=ACCR_COLOR, linewidth=LINEWIDTH,
-            markersize=MARKERSIZE - 2, label="Accept Recall", alpha=0.9, zorder=2)
-    # Reject recall — dashed
-    ax.plot(xs, rejr, "--^", color=REJR_COLOR, linewidth=LINEWIDTH,
-            markersize=MARKERSIZE - 2, label="Reject Recall", alpha=0.9, zorder=2)
-
-    # Annotate the overall accuracy points
-    for x, a in zip(xs, acc):
-        ax.annotate(f"{a:.1f}", (x, a), xytext=(0, 10),
-                    textcoords="offset points", ha="center",
-                    fontsize=ticksize - 2, color=ACC_COLOR,
-                    fontweight="bold")
+    if lora_rows:
+        xs = xs + [r["params"] for r in lora_rows]
+        labels = labels + [r["label"] for r in lora_rows]
 
     ax.set_xscale("log")
     ax.set_xticks(xs)
-    ax.set_xticklabels(labels, fontsize=ticksize)
+    ax.set_xticklabels(labels, fontsize=ticksize - 2)
     ax.get_xaxis().set_major_formatter(mpl.ticker.NullFormatter())
     ax.get_xaxis().set_minor_formatter(mpl.ticker.NullFormatter())
     ax.set_xticks(xs)
-    ax.set_xticklabels(labels, fontsize=ticksize)
+    ax.set_xticklabels(labels, fontsize=ticksize - 2)
 
     ax.set_xlabel("Model Size", fontsize=labelsize)
-    ax.set_ylabel("Score (%)", fontsize=labelsize)
-    ax.set_ylim(55, 80)
+    ax.set_ylabel(ylabel, fontsize=labelsize)
+    ax.set_ylim(*ylim)
     ax.tick_params(axis="y", labelsize=ticksize)
-    ax.set_title(title, fontsize=titlesize, pad=10)
     ax.grid(True, axis="y", linestyle=":", alpha=0.4)
-    ax.legend(fontsize=legendsize, loc="lower right", framealpha=0.95)
 
     for spine in ax.spines.values():
         spine.set_visible(True)
         spine.set_linewidth(1.2)
 
 
+def _zoom_lim(values, pad_low=0.3, pad_high=0.3):
+    lo, hi = min(values), max(values)
+    span = max(hi - lo, 0.5)
+    return (lo - span * pad_low, hi + span * pad_high)
+
+
+POINT_LABEL_SIZE = labelsize  # bigger labels on data points
+
+
+def panel_accuracy(ax, rows, lora_rows=None):
+    xs = [r["params"] for r in rows]
+    acc = [r["acc"] for r in rows]
+    ax.plot(xs, acc, "-o", color=ACC_COLOR, linewidth=LINEWIDTH,
+            markersize=MARKERSIZE, label="Full FT", zorder=3)
+    for x, a in zip(xs, acc):
+        ax.annotate(f"{a:.1f}", (x, a), xytext=(0, 14),
+                    textcoords="offset points", ha="center",
+                    fontsize=POINT_LABEL_SIZE, color=ACC_COLOR,
+                    fontweight="bold")
+
+    all_acc = list(acc)
+    if lora_rows:
+        lxs = [r["params"] for r in lora_rows]
+        lacc = [r["acc"] for r in lora_rows]
+        ax.plot(lxs, lacc, "D", color="#999999", markersize=MARKERSIZE + 2,
+                markeredgecolor="black", markeredgewidth=1.4,
+                label="LoRA", zorder=4, linestyle="None")
+        for x, a in zip(lxs, lacc):
+            ax.annotate(f"{a:.1f}", (x, a), xytext=(0, 14),
+                        textcoords="offset points", ha="center",
+                        fontsize=POINT_LABEL_SIZE, color="#555555",
+                        fontweight="bold")
+        all_acc += lacc
+
+    _style_axis(ax, rows, "Accuracy (%)",
+                _zoom_lim(all_acc, pad_low=0.4, pad_high=0.8),
+                lora_rows=lora_rows)
+    ax.legend(fontsize=legendsize, loc="lower right", framealpha=0.95)
+
+
+def panel_recalls(ax, rows, lora_rows=None):
+    xs = [r["params"] for r in rows]
+    accr = [r["accr"] for r in rows]
+    rejr = [r["rejr"] for r in rows]
+
+    ax.plot(xs, accr, "-s", color=ACCR_COLOR, linewidth=LINEWIDTH,
+            markersize=MARKERSIZE - 2, label="Accept Recall (Full FT)", zorder=2)
+    ax.plot(xs, rejr, "-^", color=REJR_COLOR, linewidth=LINEWIDTH,
+            markersize=MARKERSIZE - 2, label="Reject Recall (Full FT)", zorder=2)
+
+    for x, a in zip(xs, accr):
+        ax.annotate(f"{a:.1f}", (x, a), xytext=(0, 14),
+                    textcoords="offset points", ha="center",
+                    fontsize=POINT_LABEL_SIZE, color=ACCR_COLOR,
+                    fontweight="bold")
+    for x, r in zip(xs, rejr):
+        ax.annotate(f"{r:.1f}", (x, r), xytext=(0, -22),
+                    textcoords="offset points", ha="center",
+                    fontsize=POINT_LABEL_SIZE, color=REJR_COLOR,
+                    fontweight="bold")
+
+    all_vals = list(accr) + list(rejr)
+    if lora_rows:
+        lxs = [r["params"] for r in lora_rows]
+        laccr = [r["accr"] for r in lora_rows]
+        lrejr = [r["rejr"] for r in lora_rows]
+        ax.plot(lxs, laccr, "D", color=ACCR_COLOR, markersize=MARKERSIZE,
+                markeredgecolor="black", markeredgewidth=1.4,
+                label="Accept Recall (LoRA)", zorder=4, linestyle="None", alpha=0.85)
+        ax.plot(lxs, lrejr, "D", color=REJR_COLOR, markersize=MARKERSIZE,
+                markeredgecolor="black", markeredgewidth=1.4,
+                label="Reject Recall (LoRA)", zorder=4, linestyle="None", alpha=0.85)
+        for x, a in zip(lxs, laccr):
+            ax.annotate(f"{a:.1f}", (x, a), xytext=(0, 14),
+                        textcoords="offset points", ha="center",
+                        fontsize=POINT_LABEL_SIZE, color=ACCR_COLOR,
+                        fontweight="bold")
+        for x, r in zip(lxs, lrejr):
+            ax.annotate(f"{r:.1f}", (x, r), xytext=(0, -22),
+                        textcoords="offset points", ha="center",
+                        fontsize=POINT_LABEL_SIZE, color=REJR_COLOR,
+                        fontweight="bold")
+        all_vals += list(laccr) + list(lrejr)
+
+    # Extra headroom at top so legend sits clear of the data lines.
+    _style_axis(ax, rows, "Recall (%)",
+                _zoom_lim(all_vals, pad_low=0.25, pad_high=0.75),
+                lora_rows=lora_rows)
+    ax.legend(fontsize=legendsize - 4, loc="upper right", framealpha=0.95, ncol=2)
+
+
 def main():
     text_rows = collect(TEXT_CONFIGS)
     vis_rows = collect(VIS_CONFIGS)
+    text_lora_rows = collect(TEXT_LORA_CONFIGS)
+    vis_lora_rows = collect(VIS_LORA_CONFIGS)
 
-    print("Text:")
+    print("Text (Full FT):")
     for r in text_rows:
         print(f"  {r['label']:<4} acc={r['acc']:.1f}%  accR={r['accr']:.1f}%  rejR={r['rejr']:.1f}%  n={r['n']}")
-    print("Vision:")
+    print("Text (LoRA):")
+    for r in text_lora_rows:
+        print(f"  {r['label']:<16} acc={r['acc']:.1f}%  accR={r['accr']:.1f}%  rejR={r['rejr']:.1f}%  n={r['n']}")
+    print("Vision (Full FT):")
     for r in vis_rows:
         print(f"  {r['label']:<4} acc={r['acc']:.1f}%  accR={r['accr']:.1f}%  rejR={r['rejr']:.1f}%  n={r['n']}")
+    print("Vision (LoRA):")
+    for r in vis_lora_rows:
+        print(f"  {r['label']:<16} acc={r['acc']:.1f}%  accR={r['accr']:.1f}%  rejR={r['rejr']:.1f}%  n={r['n']}")
 
-    fig, (ax_text, ax_vis) = plt.subplots(1, 2, figsize=(16, 6))
-    panel(ax_text, text_rows, "text", "Text Scaling (ckpt-1322)")
-    panel(ax_vis, vis_rows, "vision", "Vision Scaling (ckpt-2648)")
+    # 2x2 layout: row 1 accuracy, row 2 recalls
+    fig, axes = plt.subplots(2, 2, figsize=(16, 11))
+    panel_accuracy(axes[0, 0], text_rows, lora_rows=text_lora_rows or None)
+    panel_accuracy(axes[0, 1], vis_rows, lora_rows=vis_lora_rows or None)
+    panel_recalls(axes[1, 0],  text_rows, lora_rows=text_lora_rows or None)
+    panel_recalls(axes[1, 1],  vis_rows, lora_rows=vis_lora_rows or None)
 
-    fig.suptitle("Model Scaling on ICLR '25+'26 Test Set",
-                 fontsize=titlesize + 2, y=1.01)
+    # Column headers (text | vision) — small, above row 1 panels
+    axes[0, 0].set_title("Text", fontsize=titlesize, pad=10)
+    axes[0, 1].set_title("Vision", fontsize=titlesize, pad=10)
+
+    fig.suptitle("Text and Vision Parameter Scaling",
+                 fontsize=titlesize + 4, y=1.00, fontweight="bold")
     plt.tight_layout()
 
     out = OUTPUT_DIR / "scaling_laws"
