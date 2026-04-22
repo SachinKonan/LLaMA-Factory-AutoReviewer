@@ -125,7 +125,9 @@ VIS_LORA_CONFIGS = [
     ("32B (LoRA r64)", 32.0, ROOT / "results/final_sweep_v7_datasweepv3/optim_search_2026/scaling/bz16_lr2e-5_vision_32b_lora/finetuned-ckpt-2648.jsonl", VIS_TDS),
 ]
 
-TEXT_LORA_CONFIGS: list = []  # No text 32B LoRA checkpoints yet
+TEXT_LORA_CONFIGS = [
+    ("32B (LoRA r64)", 32.0, ROOT / "results/final_sweep_v7_datasweepv3/optim_search_2026/scaling/bz32_lr2e-5_text_32b_lora/finetuned-ckpt-1322.jsonl", TEXT_TDS),
+]
 
 
 def collect(configs):
