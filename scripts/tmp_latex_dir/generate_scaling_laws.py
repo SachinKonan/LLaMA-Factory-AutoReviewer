@@ -272,31 +272,36 @@ def panel_recalls(ax, rows, lora_rows=None):
     ax.legend(fontsize=legendsize - 4, loc="upper right", framealpha=0.95, ncol=2)
 
 
+SHOW_LORA = False  # set to True to overlay LoRA 32B points
+
+
 def main():
     text_rows = collect(TEXT_CONFIGS)
     vis_rows = collect(VIS_CONFIGS)
-    text_lora_rows = collect(TEXT_LORA_CONFIGS)
-    vis_lora_rows = collect(VIS_LORA_CONFIGS)
+    text_lora_rows = collect(TEXT_LORA_CONFIGS) if SHOW_LORA else None
+    vis_lora_rows = collect(VIS_LORA_CONFIGS) if SHOW_LORA else None
 
     print("Text (Full FT):")
     for r in text_rows:
         print(f"  {r['label']:<4} acc={r['acc']:.1f}%  accR={r['accr']:.1f}%  rejR={r['rejr']:.1f}%  n={r['n']}")
-    print("Text (LoRA):")
-    for r in text_lora_rows:
-        print(f"  {r['label']:<16} acc={r['acc']:.1f}%  accR={r['accr']:.1f}%  rejR={r['rejr']:.1f}%  n={r['n']}")
+    if SHOW_LORA:
+        print("Text (LoRA):")
+        for r in text_lora_rows:
+            print(f"  {r['label']:<16} acc={r['acc']:.1f}%  accR={r['accr']:.1f}%  rejR={r['rejr']:.1f}%  n={r['n']}")
     print("Vision (Full FT):")
     for r in vis_rows:
         print(f"  {r['label']:<4} acc={r['acc']:.1f}%  accR={r['accr']:.1f}%  rejR={r['rejr']:.1f}%  n={r['n']}")
-    print("Vision (LoRA):")
-    for r in vis_lora_rows:
-        print(f"  {r['label']:<16} acc={r['acc']:.1f}%  accR={r['accr']:.1f}%  rejR={r['rejr']:.1f}%  n={r['n']}")
+    if SHOW_LORA:
+        print("Vision (LoRA):")
+        for r in vis_lora_rows:
+            print(f"  {r['label']:<16} acc={r['acc']:.1f}%  accR={r['accr']:.1f}%  rejR={r['rejr']:.1f}%  n={r['n']}")
 
     # 2x2 layout: row 1 accuracy, row 2 recalls
     fig, axes = plt.subplots(2, 2, figsize=(16, 11))
-    panel_accuracy(axes[0, 0], text_rows, lora_rows=text_lora_rows or None)
-    panel_accuracy(axes[0, 1], vis_rows, lora_rows=vis_lora_rows or None)
-    panel_recalls(axes[1, 0],  text_rows, lora_rows=text_lora_rows or None)
-    panel_recalls(axes[1, 1],  vis_rows, lora_rows=vis_lora_rows or None)
+    panel_accuracy(axes[0, 0], text_rows, lora_rows=text_lora_rows)
+    panel_accuracy(axes[0, 1], vis_rows, lora_rows=vis_lora_rows)
+    panel_recalls(axes[1, 0],  text_rows, lora_rows=text_lora_rows)
+    panel_recalls(axes[1, 1],  vis_rows, lora_rows=vis_lora_rows)
 
     # Column headers (text | vision) — small, above row 1 panels
     axes[0, 0].set_title("Text", fontsize=titlesize, pad=10)
