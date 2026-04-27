@@ -342,8 +342,7 @@ def panel_test_acc(ax, modality, train_ratio, short, ckpts, save_path,
     if all_acc:
         lo, hi = min(all_acc), max(all_acc)
         span = max(hi - lo, 2.0)
-        ax.set_ylim(lo - 0.2 * span, hi + 0.45 * span)
-    ax.legend(fontsize=legendsize, loc="lower right", framealpha=0.95, ncol=1)
+        ax.set_ylim(lo - 0.15 * span, hi + 0.25 * span)
     for spine in ax.spines.values():
         spine.set_visible(True)
         spine.set_linewidth(1.2)
@@ -417,11 +416,8 @@ def panel_recall_minis(fig, outer_spec, modality, train_ratio, short, ckpts,
         for ax in sub_axes:
             ax.set_ylim(*ylim)
 
-    # Single shared y-label on the leftmost (top mini); single legend on top mini
+    # Single shared y-label on the top mini (no per-panel legend; column legend at top)
     sub_axes[0].set_ylabel("Recall (%)", fontsize=labelsize - 4)
-    sub_axes[0].legend(fontsize=legendsize - 4, loc="lower right",
-                       framealpha=0.95, ncol=2, handlelength=1.2)
-
     return sub_axes
 
 
@@ -458,8 +454,7 @@ def panel_auc(ax, modality, train_ratio, short, ckpts, save_path, test_datasets)
     if all_aucs:
         lo, hi = min(all_aucs), max(all_aucs)
         span = max(hi - lo, 0.04)
-        ax.set_ylim(lo - 0.2 * span, hi + 0.4 * span)
-    ax.legend(fontsize=legendsize, loc="lower right", framealpha=0.95, ncol=1)
+        ax.set_ylim(lo - 0.15 * span, hi + 0.25 * span)
     for spine in ax.spines.values():
         spine.set_visible(True)
         spine.set_linewidth(1.2)
@@ -512,6 +507,62 @@ def make_figure(modality: str, runs, test_data: dict, out_basename: str):
 
     fig.suptitle(f"Ratio Sweep — {modality.title()}",
                  fontsize=titlesize + 4, y=0.995, fontweight="bold")
+
+    # Column-level legends placed above row-0 panels.
+    from matplotlib.lines import Line2D
+
+    # Test-ratio legend (used for cols 1 (test acc) and 3 (AUC))
+    test_handles = [
+        Line2D([0], [0], color=COLOR_PER_TEST["50_50"], linewidth=LINEWIDTH,
+               marker="o", markersize=MARKERSIZE - 1, label="Test 50/50"),
+        Line2D([0], [0], color=COLOR_PER_TEST["40_60"], linewidth=LINEWIDTH,
+               marker="o", markersize=MARKERSIZE - 1, label="Test 40/60"),
+        Line2D([0], [0], color=COLOR_PER_TEST["30_70"], linewidth=LINEWIDTH,
+               marker="o", markersize=MARKERSIZE - 1, label="Test 30/70"),
+        Line2D([0], [0], color="gray", marker="*", markersize=MARKERSIZE + 4,
+               linestyle="None", markeredgecolor="black", markeredgewidth=0.8,
+               label="Best ckpt only"),
+    ]
+    # Recall legend (col 2)
+    recall_handles = [
+        Line2D([0], [0], color=ACCR_COLOR, linewidth=LINEWIDTH - 0.5,
+               marker="s", markersize=MARKERSIZE - 3, label="Accept Recall"),
+        Line2D([0], [0], color=REJR_COLOR, linewidth=LINEWIDTH - 0.5,
+               marker="^", markersize=MARKERSIZE - 3, label="Reject Recall"),
+    ]
+
+    # Column-center x-positions in figure coordinates.
+    # Width ratios are [1.0, 1.1, 1.0, 1.1] = total 4.2.
+    # Approx panel centers given matplotlib's default left/right padding.
+    # Using bbox_to_anchor in figure coordinates.
+    legend_y = 0.965  # just below the suptitle
+    col_centers = [0.155, 0.395, 0.625, 0.855]
+    legend_kwargs = dict(
+        loc="upper center",
+        ncol=4,
+        fontsize=legendsize - 1,
+        framealpha=0.95,
+        handletextpad=0.5,
+        columnspacing=1.0,
+        borderaxespad=0.2,
+    )
+
+    # Col 1 (Test Acc): test-ratio legend
+    fig.legend(handles=test_handles,
+               bbox_to_anchor=(col_centers[1], legend_y),
+               bbox_transform=fig.transFigure, **legend_kwargs)
+    # Col 2 (Recall mini-stack): recall legend
+    fig.legend(handles=recall_handles,
+               bbox_to_anchor=(col_centers[2], legend_y),
+               bbox_transform=fig.transFigure,
+               **{**legend_kwargs, "ncol": 2})
+    # Col 3 (AUC): test-ratio legend (same as col 1)
+    fig.legend(handles=test_handles,
+               bbox_to_anchor=(col_centers[3], legend_y),
+               bbox_transform=fig.transFigure, **legend_kwargs)
+
+    # Make room above subplots for the legends
+    fig.subplots_adjust(top=0.91)
 
     out = OUTPUT_DIR / out_basename
     plt.savefig(f"{out}.pdf", dpi=200, bbox_inches="tight", pad_inches=0.2)
