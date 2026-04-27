@@ -31,6 +31,11 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 
+try:
+    from sklearn.metrics import roc_auc_score
+except ImportError:
+    roc_auc_score = None
+
 # ---------------------------------------------------------------------------
 # Style (matches existing tmp_latex_dir scripts)
 # ---------------------------------------------------------------------------
@@ -143,11 +148,63 @@ def extract_pred(text: str) -> str:
     return "unknown"
 
 
-def acc_2526(jsonl: Path, test_data_path: Path) -> tuple[float | None, int]:
+def _score_logodds(row: dict) -> float | None:
+    """Log-odds for Accept (matches tier1_auc_bars.py logic).
+
+    Preferred: lp_accept - lp_reject at the decision step where the chosen
+    token's logprob == max(lp_accept, lp_reject).
+    Fallback: derive from min(token_logprobs) and the chosen class.
+    """
+    predict = row.get("predict", "")
+    if "\\boxed{Accept}" in predict:
+        chosen = 1
+    elif "\\boxed{Reject}" in predict:
+        chosen = 0
+    else:
+        return None
+
+    la = row.get("logprob_accept") or []
+    lr = row.get("logprob_reject") or []
+    tl = row.get("token_logprobs") or []
+
+    for k in range(min(len(tl), len(la), len(lr))):
+        if la[k] is not None and lr[k] is not None and tl[k] is not None:
+            a, r = la[k], lr[k]
+            if math.isclose(tl[k], max(a, r), abs_tol=1e-3):
+                return a - r
+
+    # Fallback
+    if not tl:
+        return 6.0 if chosen == 1 else -6.0
+    valid_lp = [x for x in tl if x is not None]
+    if not valid_lp:
+        return 6.0 if chosen == 1 else -6.0
+    min_lp = min(valid_lp)
+    p_chosen = max(min(math.exp(min_lp), 1 - 1e-6), 1e-6)
+    p_accept = p_chosen if chosen == 1 else 1.0 - p_chosen
+    p_accept = max(min(p_accept, 1 - 1e-6), 1e-6)
+    score = math.log(p_accept / (1.0 - p_accept))
+    if chosen == 1:
+        score = max(score, 1e-3)
+    else:
+        score = min(score, -1e-3)
+    return score
+
+
+def metrics_2526(jsonl: Path, test_data_path: Path) -> dict:
+    """Compute accuracy, accept recall, reject recall, AUC on 25/26 subset.
+
+    Returns dict with keys: acc, accr, rejr, auc, n. Values may be None
+    if computation isn't possible. acc/accr/rejr are percentages.
+    """
+    out = {"acc": None, "accr": None, "rejr": None, "auc": None, "n": 0}
     if not jsonl.exists() or not test_data_path.exists():
-        return None, 0
+        return out
     test_meta = json.loads(test_data_path.read_text())
-    ok = miss = 0
+
+    tp = tn = fp = fn = 0
+    y_true: list[int] = []
+    y_score: list[float] = []
     with jsonl.open() as f:
         for i, line in enumerate(f):
             if i >= len(test_meta):
@@ -159,16 +216,39 @@ def acc_2526(jsonl: Path, test_data_path: Path) -> tuple[float | None, int]:
             p = extract_pred(r.get("predict", ""))
             g = extract_pred(r.get("label", ""))
             if p == "unknown" or g == "unknown":
-                miss += 1
                 continue
-            if p == g:
-                ok += 1
-            else:
-                miss += 1
-    n = ok + miss
+            if p == "accept" and g == "accept":
+                tp += 1
+            elif p == "reject" and g == "reject":
+                tn += 1
+            elif p == "accept" and g == "reject":
+                fp += 1
+            elif p == "reject" and g == "accept":
+                fn += 1
+            sc = _score_logodds(r)
+            if sc is not None:
+                y_true.append(1 if g == "accept" else 0)
+                y_score.append(sc)
+
+    n = tp + tn + fp + fn
     if n == 0:
-        return None, 0
-    return ok / n * 100.0, n
+        return out
+    out["n"] = n
+    out["acc"] = (tp + tn) / n * 100.0
+    out["accr"] = (tp / (tp + fn) * 100.0) if (tp + fn) > 0 else None
+    out["rejr"] = (tn / (tn + fp) * 100.0) if (tn + fp) > 0 else None
+    if roc_auc_score is not None and len(set(y_true)) > 1:
+        try:
+            out["auc"] = float(roc_auc_score(y_true, y_score))
+        except Exception:
+            out["auc"] = None
+    return out
+
+
+def acc_2526(jsonl: Path, test_data_path: Path) -> tuple[float | None, int]:
+    """Backward-compat thin wrapper."""
+    m = metrics_2526(jsonl, test_data_path)
+    return m["acc"], m["n"]
 
 
 def epoch_for_step(epochs: np.ndarray, steps: np.ndarray, target_step: int) -> float:
@@ -212,23 +292,33 @@ def panel_train_loss(ax, steps, epochs, losses, ratio_label):
         spine.set_linewidth(1.2)
 
 
-def panel_test_acc(ax, modality, train_ratio, short, ckpts, save_path,
-                   test_datasets):
-    steps, epochs, losses = load_train_loss(save_path)
-
-    # Plot one line per test ratio
-    all_acc = []
+def _collect_metrics(modality, train_ratio, short, ckpts, test_data, save_path):
+    """For each test ratio, collect (epochs, [metrics dict per ckpt])."""
+    steps, epochs, _ = load_train_loss(save_path)
+    out: dict[str, dict] = {}
     for test_ratio in ("50_50", "40_60", "30_70"):
-        xs, ys, ns = [], [], []
+        xs, metrics = [], []
         for ckpt in ckpts:
             jsonl = jsonl_for(modality, train_ratio, short, test_ratio, ckpt)
             if jsonl is None:
                 continue
-            acc, n = acc_2526(jsonl, test_datasets[test_ratio])
-            if acc is None:
+            m = metrics_2526(jsonl, test_data[test_ratio])
+            if m["n"] == 0:
                 continue
-            ep = epoch_for_step(epochs, steps, ckpt)
-            xs.append(ep); ys.append(acc); ns.append(n)
+            xs.append(epoch_for_step(epochs, steps, ckpt))
+            metrics.append(m)
+        out[test_ratio] = {"xs": xs, "metrics": metrics}
+    return out
+
+
+def panel_test_acc(ax, modality, train_ratio, short, ckpts, save_path,
+                   test_datasets):
+    metric_data = _collect_metrics(modality, train_ratio, short, ckpts, test_datasets, save_path)
+
+    all_acc = []
+    for test_ratio in ("50_50", "40_60", "30_70"):
+        xs = metric_data[test_ratio]["xs"]
+        ys = [m["acc"] for m in metric_data[test_ratio]["metrics"]]
         if not xs:
             continue
         all_acc.extend(ys)
@@ -237,7 +327,6 @@ def panel_test_acc(ax, modality, train_ratio, short, ckpts, save_path,
             ax.plot(xs, ys, "-o", color=color, linewidth=LINEWIDTH,
                     markersize=MARKERSIZE, label=TEST_LABEL[test_ratio], zorder=3)
         else:
-            # single point — render as a star marker
             ax.plot(xs, ys, "*", color=color, markersize=MARKERSIZE + 6,
                     markeredgecolor="black", markeredgewidth=0.8,
                     label=TEST_LABEL[test_ratio] + " (best ckpt)", zorder=4, linestyle="None")
@@ -261,12 +350,134 @@ def panel_test_acc(ax, modality, train_ratio, short, ckpts, save_path,
 
 
 # ---------------------------------------------------------------------------
+# New columns: recall mini-stack + AUC
+# ---------------------------------------------------------------------------
+
+ACCR_COLOR = "#2CA02C"   # green for accept recall
+REJR_COLOR = "#D62728"   # red for reject recall
+
+
+def panel_recall_minis(fig, outer_spec, modality, train_ratio, short, ckpts,
+                       save_path, test_datasets):
+    """Inside one outer cell, draw 3 vertically-stacked mini panels (one per
+    test ratio), each plotting accept_recall + reject_recall vs epoch."""
+    metric_data = _collect_metrics(modality, train_ratio, short, ckpts, test_datasets, save_path)
+
+    inner = outer_spec.subgridspec(3, 1, hspace=0.05)
+    sub_axes = []
+    all_vals: list[float] = []
+    for sub_row, test_ratio in enumerate(("50_50", "40_60", "30_70")):
+        ax = fig.add_subplot(inner[sub_row])
+        sub_axes.append(ax)
+        xs = metric_data[test_ratio]["xs"]
+        accrs = [m["accr"] for m in metric_data[test_ratio]["metrics"] if m["accr"] is not None]
+        rejrs = [m["rejr"] for m in metric_data[test_ratio]["metrics"] if m["rejr"] is not None]
+        valid_xs = [x for x, m in zip(xs, metric_data[test_ratio]["metrics"]) if m["accr"] is not None]
+
+        if valid_xs:
+            all_vals.extend(accrs); all_vals.extend(rejrs)
+            if len(valid_xs) > 1:
+                ax.plot(valid_xs, accrs, "-s", color=ACCR_COLOR,
+                        linewidth=LINEWIDTH - 0.5, markersize=MARKERSIZE - 3,
+                        label="Acc Rec", zorder=3)
+                ax.plot(valid_xs, rejrs, "-^", color=REJR_COLOR,
+                        linewidth=LINEWIDTH - 0.5, markersize=MARKERSIZE - 3,
+                        label="Rej Rec", zorder=3)
+            else:
+                ax.plot(valid_xs, accrs, "s", color=ACCR_COLOR,
+                        markersize=MARKERSIZE - 1, markeredgecolor="black",
+                        markeredgewidth=0.5, label="Acc Rec", zorder=4)
+                ax.plot(valid_xs, rejrs, "^", color=REJR_COLOR,
+                        markersize=MARKERSIZE - 1, markeredgecolor="black",
+                        markeredgewidth=0.5, label="Rej Rec", zorder=4)
+
+        # Mini-panel cosmetics
+        ax.tick_params(axis="both", labelsize=ticksize - 6)
+        ax.grid(True, axis="y", linestyle=":", alpha=0.3)
+        # Tag with test ratio (small inset text, top-left)
+        ax.text(0.02, 0.92, TEST_LABEL[test_ratio], transform=ax.transAxes,
+                fontsize=ticksize - 4, fontweight="bold",
+                color=COLOR_PER_TEST[test_ratio],
+                ha="left", va="top",
+                bbox=dict(facecolor="white", alpha=0.85, edgecolor="none", pad=1.5))
+        # Hide x-tick labels except on bottom
+        if sub_row < 2:
+            ax.set_xticklabels([])
+        else:
+            ax.set_xlabel("Epoch", fontsize=labelsize - 4)
+        for spine in ax.spines.values():
+            spine.set_visible(True)
+            spine.set_linewidth(1.0)
+
+    # Shared y-range across the three minis (so visual height differences = real differences)
+    if all_vals:
+        lo, hi = min(all_vals), max(all_vals)
+        span = max(hi - lo, 5.0)
+        ylim = (lo - 0.15 * span, hi + 0.25 * span)
+        for ax in sub_axes:
+            ax.set_ylim(*ylim)
+
+    # Single shared y-label on the leftmost (top mini); single legend on top mini
+    sub_axes[0].set_ylabel("Recall (%)", fontsize=labelsize - 4)
+    sub_axes[0].legend(fontsize=legendsize - 4, loc="lower right",
+                       framealpha=0.95, ncol=2, handlelength=1.2)
+
+    return sub_axes
+
+
+def panel_auc(ax, modality, train_ratio, short, ckpts, save_path, test_datasets):
+    """Single panel: AUC vs epoch with one line per test ratio."""
+    metric_data = _collect_metrics(modality, train_ratio, short, ckpts, test_datasets, save_path)
+
+    all_aucs: list[float] = []
+    for test_ratio in ("50_50", "40_60", "30_70"):
+        xs = metric_data[test_ratio]["xs"]
+        aucs = [m["auc"] for m in metric_data[test_ratio]["metrics"]]
+        valid = [(x, a) for x, a in zip(xs, aucs) if a is not None]
+        if not valid:
+            continue
+        vx, vy = zip(*valid)
+        all_aucs.extend(vy)
+        color = COLOR_PER_TEST[test_ratio]
+        if len(vx) > 1:
+            ax.plot(vx, vy, "-o", color=color, linewidth=LINEWIDTH,
+                    markersize=MARKERSIZE, label=TEST_LABEL[test_ratio], zorder=3)
+        else:
+            ax.plot(vx, vy, "*", color=color, markersize=MARKERSIZE + 6,
+                    markeredgecolor="black", markeredgewidth=0.8,
+                    label=TEST_LABEL[test_ratio] + " (best ckpt)", zorder=4, linestyle="None")
+        for x, y in zip(vx, vy):
+            ax.annotate(f"{y:.3f}", (x, y), xytext=(0, 8),
+                        textcoords="offset points", ha="center",
+                        fontsize=ticksize - 4, color=color)
+
+    ax.set_xlabel("Epoch", fontsize=labelsize - 2)
+    ax.set_ylabel("ROC-AUC (25/26)", fontsize=labelsize)
+    ax.tick_params(axis="both", labelsize=ticksize)
+    ax.grid(True, axis="y", linestyle=":", alpha=0.4)
+    if all_aucs:
+        lo, hi = min(all_aucs), max(all_aucs)
+        span = max(hi - lo, 0.04)
+        ax.set_ylim(lo - 0.2 * span, hi + 0.4 * span)
+    ax.legend(fontsize=legendsize, loc="lower right", framealpha=0.95, ncol=1)
+    for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_linewidth(1.2)
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 def make_figure(modality: str, runs, test_data: dict, out_basename: str):
     nrows = len(runs)
-    fig, axes = plt.subplots(nrows, 2, figsize=(14, 4.5 * nrows))
+    # 4 cols: train loss | test acc | recall mini-stack | AUC
+    fig = plt.figure(figsize=(26, 5.5 * nrows))
+    outer = fig.add_gridspec(
+        nrows, 4,
+        width_ratios=[1.0, 1.1, 1.0, 1.1],
+        wspace=0.32, hspace=0.55,
+    )
 
     print(f"\n=== {modality.upper()} ===")
     for row, (ratio_label, short, ckpts) in enumerate(runs):
@@ -276,16 +487,31 @@ def make_figure(modality: str, runs, test_data: dict, out_basename: str):
         n_log = len(losses)
         print(f"Train {ratio_disp}: {short}  log entries={n_log}  final epoch={epochs[-1] if n_log else 0:.2f}")
 
-        # Col 1: train loss
-        panel_train_loss(axes[row, 0], steps, epochs, losses, ratio_label)
-        axes[row, 0].set_title(f"Train Loss — {ratio_disp}", fontsize=titlesize - 4, pad=8)
+        # Col 0: train loss
+        ax_loss = fig.add_subplot(outer[row, 0])
+        panel_train_loss(ax_loss, steps, epochs, losses, ratio_label)
+        ax_loss.set_title(f"Train Loss — {ratio_disp}", fontsize=titlesize - 4, pad=8)
 
-        # Col 2: test acc on 25/26 across 3 test ratios
-        panel_test_acc(axes[row, 1], modality, ratio_label, short, ckpts, save_path, test_data)
-        axes[row, 1].set_title(f"Test Acc 25/26 — {ratio_disp}", fontsize=titlesize - 4, pad=8)
+        # Col 1: test accuracy on 25/26
+        ax_acc = fig.add_subplot(outer[row, 1])
+        panel_test_acc(ax_acc, modality, ratio_label, short, ckpts, save_path, test_data)
+        ax_acc.set_title(f"Test Acc 25/26 — {ratio_disp}", fontsize=titlesize - 4, pad=8)
 
-    fig.suptitle(f"Ratio Sweep — {modality.title()}", fontsize=titlesize + 2, y=1.005, fontweight="bold")
-    plt.tight_layout()
+        # Col 2: recall mini-stack (3 sub-rows)
+        sub_axes = panel_recall_minis(fig, outer[row, 2], modality, ratio_label,
+                                       short, ckpts, save_path, test_data)
+        # Title above the top mini
+        sub_axes[0].set_title(f"Acc/Rej Recall 25/26 — {ratio_disp}",
+                               fontsize=titlesize - 4, pad=8)
+
+        # Col 3: AUC
+        ax_auc = fig.add_subplot(outer[row, 3])
+        panel_auc(ax_auc, modality, ratio_label, short, ckpts, save_path, test_data)
+        ax_auc.set_title(f"ROC-AUC 25/26 — {ratio_disp}",
+                         fontsize=titlesize - 4, pad=8)
+
+    fig.suptitle(f"Ratio Sweep — {modality.title()}",
+                 fontsize=titlesize + 4, y=0.995, fontweight="bold")
 
     out = OUTPUT_DIR / out_basename
     plt.savefig(f"{out}.pdf", dpi=200, bbox_inches="tight", pad_inches=0.2)
