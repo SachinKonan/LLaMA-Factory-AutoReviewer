@@ -477,7 +477,9 @@ def panel_recall_minis(fig, outer_spec, modality, train_ratio, short, ckpts,
 
 
 def _cross_conf_jsonl(short: str, ckpt: int, conference: str) -> Path:
-    return RESULTS_ROOT / "cross_conference" / short / f"{conference}_eval" / f"finetuned-ckpt-{ckpt}.jsonl"
+    # Cross-conf results live at results/cross_conference/... (top-level, NOT under
+    # the optim_search_2026 RESULTS_ROOT path used for the rest of the figure).
+    return ROOT / "results" / "cross_conference" / short / f"{conference}_eval" / f"finetuned-ckpt-{ckpt}.jsonl"
 
 
 def _epoch2_ckpt(modality: str, train_ratio: str, ckpts: list[int]) -> int:
