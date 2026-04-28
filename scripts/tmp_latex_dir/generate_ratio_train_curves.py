@@ -94,6 +94,18 @@ VISION_TEST_DATA = {
     "30_70": DATA_ROOT / "iclr_2020_2023_2025_2026_30_70_original_vision_v7_filtered_test/data.json",
 }
 
+# Cross-conference eval datasets (no year filtering — full eval split used)
+TEXT_XCONF_DATA = {
+    "nips":      DATA_ROOT / "nips_2021_2025_original_text_v7_noref_eval500/data.json",
+    "icml_colm": DATA_ROOT / "icml_colm_2024_2025_clean_binary_noref_eval350/data.json",
+}
+VISION_XCONF_DATA = {
+    "nips":      DATA_ROOT / "nips_2021_2025_original_vision_v7_eval500/data.json",
+    "icml_colm": DATA_ROOT / "icml_colm_2024_2025_vision_binary_eval350/data.json",
+}
+XCONF_LABEL = {"iclr": "ICLR 25/26", "nips": "NeurIPS", "icml_colm": "ICML+COLM"}
+XCONF_COLOR = {"iclr": "#6098FF", "nips": "#FF8C42", "icml_colm": "#9B5DE5"}
+
 # Save dirs differ for ratio_sweep vs the 50/50 baseline
 def save_dir(modality: str, train_ratio: str, short: str) -> Path:
     if train_ratio == "50_50":
@@ -249,6 +261,49 @@ def acc_2526(jsonl: Path, test_data_path: Path) -> tuple[float | None, int]:
     """Backward-compat thin wrapper."""
     m = metrics_2526(jsonl, test_data_path)
     return m["acc"], m["n"]
+
+
+def metrics_full(jsonl: Path, test_data_path: Path) -> dict:
+    """Like metrics_2526 but no year filter — full eval split. For cross-conf."""
+    out = {"acc": None, "accr": None, "rejr": None, "auc": None, "n": 0}
+    if not jsonl.exists() or not test_data_path.exists():
+        return out
+    test_meta = json.loads(test_data_path.read_text())
+
+    tp = tn = fp = fn = 0
+    y_true: list[int] = []
+    y_score: list[float] = []
+    with jsonl.open() as f:
+        for i, line in enumerate(f):
+            if i >= len(test_meta):
+                break
+            r = json.loads(line)
+            p = extract_pred(r.get("predict", ""))
+            g = extract_pred(r.get("label", ""))
+            if p == "unknown" or g == "unknown":
+                continue
+            if p == "accept" and g == "accept": tp += 1
+            elif p == "reject" and g == "reject": tn += 1
+            elif p == "accept" and g == "reject": fp += 1
+            elif p == "reject" and g == "accept": fn += 1
+            sc = _score_logodds(r)
+            if sc is not None:
+                y_true.append(1 if g == "accept" else 0)
+                y_score.append(sc)
+
+    n = tp + tn + fp + fn
+    if n == 0:
+        return out
+    out["n"] = n
+    out["acc"] = (tp + tn) / n * 100.0
+    out["accr"] = (tp / (tp + fn) * 100.0) if (tp + fn) > 0 else None
+    out["rejr"] = (tn / (tn + fp) * 100.0) if (tn + fp) > 0 else None
+    if roc_auc_score is not None and len(set(y_true)) > 1:
+        try:
+            out["auc"] = float(roc_auc_score(y_true, y_score))
+        except Exception:
+            out["auc"] = None
+    return out
 
 
 def epoch_for_step(epochs: np.ndarray, steps: np.ndarray, target_step: int) -> float:
@@ -421,6 +476,85 @@ def panel_recall_minis(fig, outer_spec, modality, train_ratio, short, ckpts,
     return sub_axes
 
 
+def _cross_conf_jsonl(short: str, ckpt: int, conference: str) -> Path:
+    return RESULTS_ROOT / "cross_conference" / short / f"{conference}_eval" / f"finetuned-ckpt-{ckpt}.jsonl"
+
+
+def _epoch2_ckpt(modality: str, train_ratio: str, ckpts: list[int]) -> int:
+    """Return the epoch-2 checkpoint step for each (modality, train_ratio)."""
+    if modality == "text":
+        return 1322
+    # vision: 50/50 ckpt-2648, ratios use 2642
+    return 2648 if train_ratio == "50_50" else 2642
+
+
+def _gather_xconf_metrics(modality, train_ratio, short, ckpts, test_datasets, xconf_data):
+    """Return {'iclr': metrics_dict, 'nips': metrics_dict, 'icml_colm': metrics_dict} at epoch 2."""
+    ckpt = _epoch2_ckpt(modality, train_ratio, ckpts)
+    out = {}
+
+    # In-distribution ICLR (model's own training ratio test set, filtered to 25/26)
+    iclr_jsonl = jsonl_for(modality, train_ratio, short, train_ratio, ckpt)
+    if iclr_jsonl is not None:
+        out["iclr"] = metrics_2526(iclr_jsonl, test_datasets[train_ratio])
+    else:
+        out["iclr"] = {"auc": None, "accr": None, "rejr": None, "acc": None, "n": 0}
+
+    # Cross-conference (no year filter)
+    for conf in ("nips", "icml_colm"):
+        jp = _cross_conf_jsonl(short, ckpt, conf)
+        out[conf] = metrics_full(jp, xconf_data[conf])
+    return out
+
+
+def panel_xconf_bars(ax, xconf, metric_key, ylabel, ylim_pad=(0.15, 0.3), is_pct=True):
+    """Bar chart of one metric across ICLR/NIPS/ICML+COLM."""
+    confs = ["iclr", "nips", "icml_colm"]
+    xs = list(range(len(confs)))
+    vals = []
+    for c in confs:
+        v = xconf[c].get(metric_key)
+        if v is None:
+            vals.append(np.nan)
+        elif is_pct and metric_key != "auc":
+            vals.append(v)  # already in %
+        else:
+            vals.append(v)
+
+    colors = [XCONF_COLOR[c] for c in confs]
+    bars = ax.bar(xs, vals, color=colors, edgecolor="black", linewidth=0.7, width=0.7)
+    for b, v in zip(bars, vals):
+        if not np.isnan(v):
+            label = f"{v:.3f}" if metric_key == "auc" else f"{v:.1f}"
+            ax.text(b.get_x() + b.get_width() / 2,
+                    b.get_height() + (0.01 if metric_key == "auc" else 1.5),
+                    label, ha="center", va="bottom",
+                    fontsize=ticksize - 4, fontweight="bold")
+
+    ax.set_xticks(xs)
+    ax.set_xticklabels([XCONF_LABEL[c] for c in confs],
+                       fontsize=ticksize - 3, rotation=0)
+    ax.set_ylabel(ylabel, fontsize=labelsize - 2)
+    ax.tick_params(axis="y", labelsize=ticksize)
+    ax.grid(True, axis="y", linestyle=":", alpha=0.4)
+
+    valid = [v for v in vals if not np.isnan(v)]
+    if valid:
+        if metric_key == "auc":
+            lo, hi = min(valid), max(valid)
+            span = max(hi - lo, 0.05)
+            ax.set_ylim(max(0.4, lo - ylim_pad[0] * span),
+                        min(1.02, hi + ylim_pad[1] * span))
+        else:
+            lo, hi = min(valid), max(valid)
+            span = max(hi - lo, 5.0)
+            ax.set_ylim(max(0, lo - ylim_pad[0] * span),
+                        min(105, hi + ylim_pad[1] * span))
+    for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_linewidth(1.2)
+
+
 def panel_auc(ax, modality, train_ratio, short, ckpts, save_path, test_datasets):
     """Single panel: AUC vs epoch with one line per test ratio."""
     metric_data = _collect_metrics(modality, train_ratio, short, ckpts, test_datasets, save_path)
@@ -465,13 +599,14 @@ def panel_auc(ax, modality, train_ratio, short, ckpts, save_path, test_datasets)
 # ---------------------------------------------------------------------------
 
 def make_figure(modality: str, runs, test_data: dict, out_basename: str):
+    xconf_data = TEXT_XCONF_DATA if modality == "text" else VISION_XCONF_DATA
     nrows = len(runs)
-    # 4 cols: train loss | test acc | recall mini-stack | AUC
-    fig = plt.figure(figsize=(26, 5.5 * nrows))
+    # 6 cols: train loss | test acc | recall mini-stack | AUC | xconf-AUC | xconf-AccR
+    fig = plt.figure(figsize=(34, 5.5 * nrows))
     outer = fig.add_gridspec(
-        nrows, 4,
-        width_ratios=[1.0, 1.1, 1.0, 1.1],
-        wspace=0.32, hspace=0.55,
+        nrows, 6,
+        width_ratios=[1.0, 1.1, 1.0, 1.1, 0.85, 0.85],
+        wspace=0.34, hspace=0.55,
     )
 
     print(f"\n=== {modality.upper()} ===")
@@ -495,7 +630,6 @@ def make_figure(modality: str, runs, test_data: dict, out_basename: str):
         # Col 2: recall mini-stack (3 sub-rows)
         sub_axes = panel_recall_minis(fig, outer[row, 2], modality, ratio_label,
                                        short, ckpts, save_path, test_data)
-        # Title above the top mini
         sub_axes[0].set_title(f"Acc/Rej Recall 25/26 — {ratio_disp}",
                                fontsize=titlesize - 4, pad=8)
 
@@ -504,6 +638,18 @@ def make_figure(modality: str, runs, test_data: dict, out_basename: str):
         panel_auc(ax_auc, modality, ratio_label, short, ckpts, save_path, test_data)
         ax_auc.set_title(f"ROC-AUC 25/26 — {ratio_disp}",
                          fontsize=titlesize - 4, pad=8)
+
+        # Cols 4-5: cross-conference comparison (epoch-2 ckpt)
+        xconf = _gather_xconf_metrics(modality, ratio_label, short, ckpts, test_data, xconf_data)
+        ax_xauc = fig.add_subplot(outer[row, 4])
+        panel_xconf_bars(ax_xauc, xconf, "auc", "ROC-AUC")
+        ax_xauc.set_title(f"X-Conf AUC — {ratio_disp}",
+                           fontsize=titlesize - 4, pad=8)
+
+        ax_xaccr = fig.add_subplot(outer[row, 5])
+        panel_xconf_bars(ax_xaccr, xconf, "accr", "Accept Recall (%)")
+        ax_xaccr.set_title(f"X-Conf Accept Recall — {ratio_disp}",
+                            fontsize=titlesize - 4, pad=8)
 
     fig.suptitle(f"Ratio Sweep — {modality.title()}",
                  fontsize=titlesize + 4, y=0.995, fontweight="bold")
@@ -531,12 +677,20 @@ def make_figure(modality: str, runs, test_data: dict, out_basename: str):
                marker="^", markersize=MARKERSIZE - 3, label="Reject Recall"),
     ]
 
-    # Column-center x-positions in figure coordinates.
-    # Width ratios are [1.0, 1.1, 1.0, 1.1] = total 4.2.
-    # Approx panel centers given matplotlib's default left/right padding.
-    # Using bbox_to_anchor in figure coordinates.
-    legend_y = 0.965  # just below the suptitle
-    col_centers = [0.155, 0.395, 0.625, 0.855]
+    # Cross-conference legend (cols 5-6)
+    xconf_handles = [
+        Line2D([0], [0], color=XCONF_COLOR["iclr"], marker="s", linestyle="None",
+               markersize=MARKERSIZE, label=XCONF_LABEL["iclr"]),
+        Line2D([0], [0], color=XCONF_COLOR["nips"], marker="s", linestyle="None",
+               markersize=MARKERSIZE, label=XCONF_LABEL["nips"]),
+        Line2D([0], [0], color=XCONF_COLOR["icml_colm"], marker="s", linestyle="None",
+               markersize=MARKERSIZE, label=XCONF_LABEL["icml_colm"]),
+    ]
+
+    # Width ratios [1.0, 1.1, 1.0, 1.1, 0.85, 0.85] = total 5.9
+    # Approx panel x-centers (in figure coords) given matplotlib padding (~0.05 left/right margin).
+    legend_y = 0.965
+    col_centers = [0.105, 0.275, 0.430, 0.585, 0.745, 0.875]
     legend_kwargs = dict(
         loc="upper center",
         ncol=4,
@@ -547,19 +701,23 @@ def make_figure(modality: str, runs, test_data: dict, out_basename: str):
         borderaxespad=0.2,
     )
 
-    # Col 1 (Test Acc): test-ratio legend
+    # Col 1 (Test Acc) + Col 3 (AUC): test-ratio legend
     fig.legend(handles=test_handles,
                bbox_to_anchor=(col_centers[1], legend_y),
                bbox_transform=fig.transFigure, **legend_kwargs)
-    # Col 2 (Recall mini-stack): recall legend
+    fig.legend(handles=test_handles,
+               bbox_to_anchor=(col_centers[3], legend_y),
+               bbox_transform=fig.transFigure, **legend_kwargs)
+    # Col 2: recall legend
     fig.legend(handles=recall_handles,
                bbox_to_anchor=(col_centers[2], legend_y),
                bbox_transform=fig.transFigure,
                **{**legend_kwargs, "ncol": 2})
-    # Col 3 (AUC): test-ratio legend (same as col 1)
-    fig.legend(handles=test_handles,
-               bbox_to_anchor=(col_centers[3], legend_y),
-               bbox_transform=fig.transFigure, **legend_kwargs)
+    # Cols 4 + 5: cross-conference legend (single one spanning both)
+    fig.legend(handles=xconf_handles,
+               bbox_to_anchor=((col_centers[4] + col_centers[5]) / 2, legend_y),
+               bbox_transform=fig.transFigure,
+               **{**legend_kwargs, "ncol": 3})
 
     # Make room above subplots for the legends
     fig.subplots_adjust(top=0.91)
