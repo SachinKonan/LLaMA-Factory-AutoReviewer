@@ -507,27 +507,48 @@ def _gather_xconf_metrics(modality, train_ratio, short, ckpts, test_datasets, xc
     return out
 
 
-def panel_xconf_bars(ax, xconf, metric_key, ylabel, ylim_pad=(0.15, 0.3), is_pct=True):
-    """Bar chart of one metric across ICLR/NIPS/ICML+COLM."""
+def panel_xconf_bars(ax, xconf, metric_key, ylabel):
+    """Bar chart of one metric across ICLR/NIPS/ICML+COLM with fixed y-limits.
+
+    Bars are drawn from the natural baseline (0 for percentages, 0.5 for AUC)
+    so they always render at full size; auto-zoomed y-limits caused the bars
+    to appear clipped or invisible.
+    """
     confs = ["iclr", "nips", "icml_colm"]
     xs = list(range(len(confs)))
     vals = []
     for c in confs:
         v = xconf[c].get(metric_key)
-        if v is None:
-            vals.append(np.nan)
-        elif is_pct and metric_key != "auc":
-            vals.append(v)  # already in %
-        else:
-            vals.append(v)
+        vals.append(np.nan if v is None else v)
 
     colors = [XCONF_COLOR[c] for c in confs]
-    bars = ax.bar(xs, vals, color=colors, edgecolor="black", linewidth=0.7, width=0.7)
+    is_auc = (metric_key == "auc")
+    baseline = 0.5 if is_auc else 0.0
+    bars = ax.bar(
+        xs, [(v - baseline) if not np.isnan(v) else 0 for v in vals],
+        bottom=baseline, color=colors, edgecolor="black", linewidth=0.8, width=0.7,
+    )
+    # Mark the baseline (0.5 random AUC line) clearly when relevant
+    if is_auc:
+        ax.axhline(y=0.5, color="grey", linestyle="--", linewidth=1.0, alpha=0.6, zorder=0)
+
+    # Annotate each bar
     for b, v in zip(bars, vals):
-        if not np.isnan(v):
-            label = f"{v:.3f}" if metric_key == "auc" else f"{v:.1f}"
-            ax.text(b.get_x() + b.get_width() / 2,
-                    b.get_height() + (0.01 if metric_key == "auc" else 1.5),
+        if np.isnan(v):
+            ax.text(b.get_x() + b.get_width() / 2, baseline + 0.02 if is_auc else 2,
+                    "N/A", ha="center", va="bottom",
+                    fontsize=ticksize - 4, color="gray")
+            continue
+        label = f"{v:.3f}" if is_auc else f"{v:.1f}"
+        offset = 0.012 if is_auc else 1.5
+        # If the bar is very short (<2% of range), put label inside top of bar
+        bar_height_frac = (v - baseline) / (1.0 - baseline) if is_auc else v / 100.0
+        if bar_height_frac < 0.05 and bar_height_frac > 0:
+            ax.text(b.get_x() + b.get_width() / 2, v + offset,
+                    label, ha="center", va="bottom",
+                    fontsize=ticksize - 4, fontweight="bold", color="black")
+        else:
+            ax.text(b.get_x() + b.get_width() / 2, v + offset,
                     label, ha="center", va="bottom",
                     fontsize=ticksize - 4, fontweight="bold")
 
@@ -538,18 +559,11 @@ def panel_xconf_bars(ax, xconf, metric_key, ylabel, ylim_pad=(0.15, 0.3), is_pct
     ax.tick_params(axis="y", labelsize=ticksize)
     ax.grid(True, axis="y", linestyle=":", alpha=0.4)
 
-    valid = [v for v in vals if not np.isnan(v)]
-    if valid:
-        if metric_key == "auc":
-            lo, hi = min(valid), max(valid)
-            span = max(hi - lo, 0.05)
-            ax.set_ylim(max(0.4, lo - ylim_pad[0] * span),
-                        min(1.02, hi + ylim_pad[1] * span))
-        else:
-            lo, hi = min(valid), max(valid)
-            span = max(hi - lo, 5.0)
-            ax.set_ylim(max(0, lo - ylim_pad[0] * span),
-                        min(105, hi + ylim_pad[1] * span))
+    if is_auc:
+        ax.set_ylim(0.45, 1.0)
+    else:
+        ax.set_ylim(0, 105)
+
     for spine in ax.spines.values():
         spine.set_visible(True)
         spine.set_linewidth(1.2)
