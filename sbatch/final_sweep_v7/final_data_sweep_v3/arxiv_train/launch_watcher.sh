@@ -2,17 +2,23 @@
 # Launch the auto-inference watcher for ONE arxiv-train cell.
 # Runs `nohup python scripts/auto_infer_watcher.py ...` in the background;
 # the watcher polls saves/.../arxiv_train/<size>/<short>/ for new
-# checkpoints and submits inference to PLI under the invoking user's
-# account (sk7524). The training itself runs separately on ailab from a
-# collaborator's account; this script is for sk7524 to run on login.
+# checkpoints and submits ONE PLI inference job per checkpoint, which
+# internally runs vLLM TWICE (arxiv_y24up + iclr_y25up) -- via the override
+# sbatch sbatch/inference/arxiv_train_dual_eval.sbatch.
+#
+# Single-test mode (--test_dataset, not --test_datasets) so the watcher
+# submits exactly one sbatch per checkpoint. The DATASET env var the
+# watcher passes is a placeholder; the override sbatch ignores it and
+# runs both hardcoded test sets.
+#
+# Submitted under the invoking user's account (sk7524 on login). Training
+# itself runs separately on ailab from the collaborator's account.
 #
 # Usage:
 #   bash launch_watcher.sh <cell>
 #
 # <cell> is one of:
 #   small_text   small_vision   large_text   large_vision
-#
-# Each watcher writes its own log under logs/auto_inference/.
 
 set -e
 cd /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer
@@ -21,8 +27,8 @@ mkdir -p logs/auto_inference
 
 CELL="${1:?usage: launch_watcher.sh <small_text|small_vision|large_text|large_vision>}"
 
-ICLR_TEXT_TEST="iclr_2020_2023_2025_2026_85_5_10_balanced_original_text_labelfix_v7_filtered_test"
-ICLR_VISION_TEST="iclr_2020_2023_2025_2026_85_5_10_balanced_original_vision_labelfix_v7_filtered_filtered24480_test"
+# Test pair (just used as the placeholder --test_dataset arg; real datasets
+# are hardcoded inside arxiv_train_dual_eval.sbatch)
 ARXIV_TEXT_Y24UP="arxiv_50_50_21k_text_wmetadata_filtered24480_y24up_test"
 ARXIV_VISION_Y24UP="arxiv_50_50_21k_vision_wmetadata_filtered24480_y24up_test"
 
@@ -32,7 +38,7 @@ small_text)
     TEMPLATE=qwen
     SIZE=small
     DATASET=arxiv_50_50_21k_text_wmetadata_filtered24480_train
-    TESTS="${ARXIV_TEXT_Y24UP}:arxiv_y24up,${ICLR_TEXT_TEST}:iclr_2526"
+    PLACEHOLDER_TEST=$ARXIV_TEXT_Y24UP
     IMG_ARGS=()
     ;;
 small_vision)
@@ -40,7 +46,7 @@ small_vision)
     TEMPLATE=qwen2_vl
     SIZE=small
     DATASET=arxiv_50_50_21k_vision_wmetadata_filtered24480_train
-    TESTS="${ARXIV_VISION_Y24UP}:arxiv_y24up,${ICLR_VISION_TEST}:iclr_2526"
+    PLACEHOLDER_TEST=$ARXIV_VISION_Y24UP
     IMG_ARGS=(--image_min_pixels 784 --image_max_pixels 1003520)
     ;;
 large_text)
@@ -48,7 +54,7 @@ large_text)
     TEMPLATE=qwen
     SIZE=large
     DATASET=arxiv_50_50_balanced_per_venue_text_wmetadata_train
-    TESTS="${ARXIV_TEXT_Y24UP}:arxiv_y24up,${ICLR_TEXT_TEST}:iclr_2526"
+    PLACEHOLDER_TEST=$ARXIV_TEXT_Y24UP
     IMG_ARGS=()
     ;;
 large_vision)
@@ -56,7 +62,7 @@ large_vision)
     TEMPLATE=qwen2_vl
     SIZE=large
     DATASET=arxiv_50_50_balanced_per_venue_vision_wmetadata_train
-    TESTS="${ARXIV_VISION_Y24UP}:arxiv_y24up,${ICLR_VISION_TEST}:iclr_2526"
+    PLACEHOLDER_TEST=$ARXIV_VISION_Y24UP
     IMG_ARGS=(--image_min_pixels 784 --image_max_pixels 1003520)
     ;;
 *)
@@ -76,14 +82,16 @@ echo "Starting watcher for cell=${CELL}"
 echo "  save_dir:    ${SAVE_DIR}"
 echo "  results_dir: ${RES_DIR}"
 echo "  template:    ${TEMPLATE}"
-echo "  tests:       ${TESTS}"
+echo "  override sbatch: sbatch/inference/arxiv_train_dual_eval.sbatch"
+echo "    (will run both arxiv_y24up + iclr_y25up vLLM in one PLI allocation)"
 echo "  log:         ${LOG_FILE}"
 
 nohup python scripts/auto_infer_watcher.py \
     --save_dir "$SAVE_DIR" \
     --results_dir "$RES_DIR" \
     --dataset "$DATASET" \
-    --test_datasets "$TESTS" \
+    --test_dataset "$PLACEHOLDER_TEST" \
+    --inference_sbatch "sbatch/inference/arxiv_train_dual_eval.sbatch" \
     --template "$TEMPLATE" \
     --cutoff_len 24480 \
     --max_new_tokens 1280 \
