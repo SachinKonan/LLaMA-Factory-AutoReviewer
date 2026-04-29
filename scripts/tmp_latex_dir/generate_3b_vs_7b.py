@@ -186,6 +186,7 @@ def style_axis(ax, title, ylabel):
 
 
 def plot_loss(ax, modality):
+    all_losses: list[float] = []
     for size, sd, _, _, _ in CONFIGS[modality]:
         steps, epochs, losses = load_train_loss(sd)
         if len(losses) == 0: continue
@@ -196,9 +197,17 @@ def plot_loss(ax, modality):
             offset = (len(losses) - len(ys)) // 2
             xs = epochs[offset:offset + len(ys)]
             ax.plot(xs, ys, color=c, linewidth=LINEWIDTH, label=f"{size}")
+            all_losses.extend(ys.tolist())
         else:
             ax.plot(epochs, losses, color=c, linewidth=LINEWIDTH, label=f"{size}")
+            all_losses.extend(losses.tolist())
     ax.set_yscale("log")
+    # Zoom: cap top at 10^0 = 1.0; keep bottom at the actual minimum (with tiny pad).
+    if all_losses:
+        positives = [v for v in all_losses if v > 0]
+        if positives:
+            lo = min(positives) * 0.85
+            ax.set_ylim(lo, 1.0)
     style_axis(ax, f"{modality.title()} — Train Loss", "Loss (log)")
 
 
