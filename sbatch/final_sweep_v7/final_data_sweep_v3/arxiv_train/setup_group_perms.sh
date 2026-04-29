@@ -26,6 +26,14 @@ if [ ! -d "$ROOT" ]; then
     exit 1
 fi
 
+# IMPORTANT: parent dir /scratch/gpfs/ZHUANGL/sk7524 also needs group=zhuangl
+# (default is the user's personal group, e.g. `cs`) so collaborators can
+# `cd` through it. We don't change perms there (--x for group is already
+# enough), just the group ownership of that single dir.
+PARENT=/scratch/gpfs/ZHUANGL/sk7524
+echo "[0/4] Re-group parent $PARENT to zhuangl (so group can traverse) ..."
+chgrp zhuangl "$PARENT" 2>/dev/null || echo "    (skip: not owner of $PARENT)"
+
 echo "[1/4] Repo-wide read + traverse (g+rX) on $ROOT ..."
 chmod -R g+rX "$ROOT"
 
