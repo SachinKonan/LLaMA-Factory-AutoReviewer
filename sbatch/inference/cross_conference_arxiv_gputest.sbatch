@@ -1,23 +1,22 @@
 #!/bin/bash
-#SBATCH --job-name=xconf_arxiv_natrate
+#SBATCH --job-name=xconf_arxiv_y24up
 #SBATCH --time=1:00:00
 #SBATCH --cpus-per-task=10
 #SBATCH --mem=200G
 #SBATCH --gres=gpu:1
 #SBATCH --constraint="gpu80"
 #SBATCH --partition=gpu-test
-#SBATCH --output=logs/auto_inference/xconf_arxiv_natrate_%j.out
-#SBATCH --error=logs/auto_inference/xconf_arxiv_natrate_%j.err
+#SBATCH --output=logs/auto_inference/xconf_arxiv_y24up_%j.out
+#SBATCH --error=logs/auto_inference/xconf_arxiv_y24up_%j.err
 
-# Cross-conference inference on the arxiv NATRATE y24up text subset (~1.4k
-# samples, conference_year >= 2024, with per-venue rates matching natural
-# acceptance rates). Mirror of cross_conference_arxiv_gputest.sbatch but
-# pointed at the natrate variant.
+# Cross-conference arxiv inference on the y24up text subset (1,415 samples,
+# conference_year >= 2024). Designed for the gputest partition for fast
+# turnaround vs. the full filtered24480 PLI runs.
 #
 # Required env:
 #   CHECKPOINT_DIR  - path to checkpoint
-#   CKPT_STEP       - step number
-#   TEMPLATE        - "qwen" (text); vision uses different sbatch
+#   CKPT_STEP       - step number (used in output filenames)
+#   TEMPLATE        - "qwen" (text); vision unsupported here (no images dataset yet)
 #   SHORT_NAME      - short identifier for output dir layout
 
 set -e
@@ -42,10 +41,10 @@ SPLIT=${SPLIT:-test}   # test | validation
 # Pick dataset by template + split
 if [ "$TEMPLATE" = "qwen2_vl" ]; then
     if [ "$SPLIT" = "validation" ]; then
-        ARXIV_DS="arxiv_natrate_21k_vision_wmetadata_filtered24480_y24up_validation"
+        ARXIV_DS="arxiv_50_50_21k_vision_wmetadata_filtered24480_y24up_validation"
         OUT_SUBDIR="arxiv_val"
     else
-        ARXIV_DS="arxiv_natrate_21k_vision_wmetadata_filtered24480_y24up_test"
+        ARXIV_DS="arxiv_50_50_21k_vision_wmetadata_filtered24480_y24up_test"
         OUT_SUBDIR="arxiv_eval"
     fi
     IMAGE_MIN_PIXELS=${IMAGE_MIN_PIXELS:-784}
@@ -53,22 +52,21 @@ if [ "$TEMPLATE" = "qwen2_vl" ]; then
     IMAGE_ARGS="--image_min_pixels ${IMAGE_MIN_PIXELS} --image_max_pixels ${IMAGE_MAX_PIXELS}"
 else
     if [ "$SPLIT" = "validation" ]; then
-        ARXIV_DS="arxiv_natrate_21k_text_wmetadata_filtered24480_y24up_validation"
+        ARXIV_DS="arxiv_50_50_21k_text_wmetadata_filtered24480_y24up_validation"
         OUT_SUBDIR="arxiv_val"
     else
-        ARXIV_DS="arxiv_natrate_21k_text_wmetadata_filtered24480_y24up_test"
+        ARXIV_DS="arxiv_50_50_21k_text_wmetadata_filtered24480_y24up_test"
         OUT_SUBDIR="arxiv_eval"
     fi
     IMAGE_ARGS=""
 fi
 
-OUT_BASE="results/cross_conference_arxiv_natrate_y24up/${SHORT_NAME}"
+OUT_BASE="results/cross_conference_arxiv_y24up/${SHORT_NAME}"
 mkdir -p "${OUT_BASE}/${OUT_SUBDIR}"
-
 ARXIV_OUT="${OUT_BASE}/${OUT_SUBDIR}/finetuned-ckpt-${CKPT_STEP}.jsonl"
 
 echo "=============================================="
-echo "Cross-Conference (arxiv natrate y24up) Inference"
+echo "Cross-Conference (arxiv y24up) Inference"
 echo "  Job ID:     $SLURM_JOB_ID"
 echo "  Node:       $(hostname)"
 echo "  Checkpoint: ${CHECKPOINT_DIR}"
