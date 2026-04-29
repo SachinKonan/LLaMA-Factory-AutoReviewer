@@ -26,13 +26,15 @@ if [ ! -d "$ROOT" ]; then
     exit 1
 fi
 
-# IMPORTANT: parent dir /scratch/gpfs/ZHUANGL/sk7524 also needs group=zhuangl
-# (default is the user's personal group, e.g. `cs`) so collaborators can
-# `cd` through it. We don't change perms there (--x for group is already
-# enough), just the group ownership of that single dir.
+# IMPORTANT: parent dir /scratch/gpfs/ZHUANGL/sk7524 has a POSIX ACL whose
+# `group::` entry is empty (no perms). Standard `chmod g+x` only touches the
+# mask, not the group entry. We need an explicit ACL entry for the zhuangl
+# group so members can traverse INTO sk7524's dir to reach the project.
+# Without this they hit "Permission denied" on cd.
 PARENT=/scratch/gpfs/ZHUANGL/sk7524
-echo "[0/4] Re-group parent $PARENT to zhuangl (so group can traverse) ..."
-chgrp zhuangl "$PARENT" 2>/dev/null || echo "    (skip: not owner of $PARENT)"
+echo "[0/4] Parent $PARENT: chgrp zhuangl + setfacl g:zhuangl:--x ..."
+chgrp zhuangl "$PARENT" 2>/dev/null || echo "    (skip chgrp: not owner of $PARENT)"
+setfacl -m g:zhuangl:--x "$PARENT" 2>/dev/null || echo "    (skip setfacl: $PARENT)"
 
 echo "[1/4] Repo-wide read + traverse (g+rX) on $ROOT ..."
 chmod -R g+rX "$ROOT"
