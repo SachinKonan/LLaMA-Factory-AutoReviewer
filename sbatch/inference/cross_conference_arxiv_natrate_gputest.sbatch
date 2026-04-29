@@ -37,14 +37,21 @@ done
 
 CUTOFF_LEN=${CUTOFF_LEN:-24480}
 MAX_NEW_TOKENS=${MAX_NEW_TOKENS:-1280}
+SPLIT=${SPLIT:-test}   # test | validation
 
-ARXIV_DS="arxiv_natrate_21k_text_wmetadata_filtered24480_y24up_test"
+if [ "$SPLIT" = "validation" ]; then
+    ARXIV_DS="arxiv_natrate_21k_text_wmetadata_filtered24480_y24up_validation"
+    OUT_SUBDIR="arxiv_val"
+else
+    ARXIV_DS="arxiv_natrate_21k_text_wmetadata_filtered24480_y24up_test"
+    OUT_SUBDIR="arxiv_eval"
+fi
 IMAGE_ARGS=""
 
 OUT_BASE="results/cross_conference_arxiv_natrate_y24up/${SHORT_NAME}"
-mkdir -p "${OUT_BASE}/arxiv_eval"
+mkdir -p "${OUT_BASE}/${OUT_SUBDIR}"
 
-ARXIV_OUT="${OUT_BASE}/arxiv_eval/finetuned-ckpt-${CKPT_STEP}.jsonl"
+ARXIV_OUT="${OUT_BASE}/${OUT_SUBDIR}/finetuned-ckpt-${CKPT_STEP}.jsonl"
 
 echo "=============================================="
 echo "Cross-Conference (arxiv natrate y24up) Inference"
