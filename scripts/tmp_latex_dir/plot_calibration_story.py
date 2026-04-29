@@ -230,83 +230,145 @@ def fig1_test_results():
             ax_n[i, j] = n
     ax_delta = ax_cal - ax_raw
 
-    # ---------- Figure layout ----------
-    fig = plt.figure(figsize=(20, 14))
-    gs = fig.add_gridspec(2, 3,
-                          height_ratios=[1.0, 1.5],  # arxiv row taller (more venues)
-                          hspace=0.30, wspace=0.32)
+    # ---------- Arxiv OVERALL (rolled up across all venues) ----------
+    ovr_raw = np.zeros((1, 3)); ovr_cal = np.zeros((1, 3)); ovr_auc = np.zeros((1, 3))
+    ovr_n = np.zeros((1, 3), dtype=int)
+    for j, ratio in enumerate(RATIOS):
+        all_pairs = []
+        n_calib_correct = 0
+        for v, tp in arxiv[ratio]["test_by_v"].items():
+            tau, _ = arxiv[ratio]["thr"][v]
+            n_calib_correct += sum(1 for s,g in tp if (s>tau)==(g==1))
+            all_pairs.extend(tp)
+        n = len(all_pairs)
+        if n == 0: continue
+        ovr_raw[0, j] = sum(1 for s,g in all_pairs if (s>0)==(g==1)) / n * 100
+        ovr_cal[0, j] = n_calib_correct / n * 100
+        scores = [s for s,_ in all_pairs]; gold = [g for _,g in all_pairs]
+        ovr_auc[0, j] = auc(scores, gold)
+        ovr_n[0, j] = n
 
-    def draw_iclr(ax, mat, vmin, vmax, cmap, title, txt_fn, cbar_label):
-        im = ax.imshow(mat, cmap=cmap, vmin=vmin, vmax=vmax, aspect="auto")
-        ax.set_xticks(range(3)); ax.set_xticklabels([LBL[r] for r in RATIOS], fontsize=TICK)
-        ax.set_yticks(range(3)); ax.set_yticklabels([LBL[r] for r in RATIOS], fontsize=TICK)
-        ax.set_xlabel("Test ratio", fontsize=LSIZE - 2)
-        ax.set_ylabel("Train ratio", fontsize=LSIZE - 2)
+    # ---------- Figure layout (3 rows, single viridis colormap) ----------
+    fig = plt.figure(figsize=(20, 18))
+    gs = fig.add_gridspec(3, 3,
+                          height_ratios=[1.0, 2.0, 0.35],  # iclr / arxiv-perven / overall
+                          hspace=0.32, wspace=0.32)
+
+    def draw_heatmap(ax, mat, vmin, vmax, title, cbar_label,
+                     row_labels=None, col_labels=None,
+                     row_axis_label=None, col_axis_label=None,
+                     cell_text_fn=None, txt_fontsize=TICK):
+        im = ax.imshow(mat, cmap="viridis", vmin=vmin, vmax=vmax, aspect="auto")
+        if col_labels is not None:
+            ax.set_xticks(range(len(col_labels)))
+            ax.set_xticklabels(col_labels, fontsize=TICK)
+        if row_labels is not None:
+            ax.set_yticks(range(len(row_labels)))
+            ax.set_yticklabels(row_labels, fontsize=TICK - 2)
+        if col_axis_label: ax.set_xlabel(col_axis_label, fontsize=LSIZE - 2)
+        if row_axis_label: ax.set_ylabel(row_axis_label, fontsize=LSIZE - 2)
         ax.set_title(title, fontsize=TSIZE - 2, pad=10)
-        for i, t in enumerate(RATIOS):
-            for j, e in enumerate(RATIOS):
-                ax.text(j, i, txt_fn(cells[(t, e)]), ha="center", va="center",
-                        fontsize=TICK - 2, color="black", linespacing=1.0)
+        if cell_text_fn is not None:
+            for i in range(mat.shape[0]):
+                for j in range(mat.shape[1]):
+                    txt = cell_text_fn(i, j)
+                    if txt is None: continue
+                    # high contrast text: white if cell is dark
+                    val = mat[i, j]
+                    if not np.isnan(val):
+                        norm = (val - vmin) / max(vmax - vmin, 1e-9)
+                        color = "white" if norm < 0.5 else "black"
+                    else:
+                        color = "black"
+                    ax.text(j, i, txt, ha="center", va="center",
+                            fontsize=txt_fontsize, color=color, linespacing=1.0)
         cb = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
         cb.set_label(cbar_label, fontsize=TICK - 1)
         cb.ax.tick_params(labelsize=TICK - 2)
 
-    def draw_arxiv(ax, mat, vmin, vmax, cmap, title, raw_or_cal, cbar_label):
-        im = ax.imshow(mat, cmap=cmap, vmin=vmin, vmax=vmax, aspect="auto")
-        ax.set_xticks(range(3)); ax.set_xticklabels([LBL[r] for r in RATIOS], fontsize=TICK)
-        ax.set_yticks(range(nv)); ax.set_yticklabels(venues, fontsize=TICK - 2)
-        ax.set_xlabel("Train ratio", fontsize=LSIZE - 2)
-        ax.set_title(title, fontsize=TSIZE - 2, pad=10)
-        for i in range(nv):
-            for j in range(3):
-                if np.isnan(mat[i, j]): continue
-                if raw_or_cal == "auc":
-                    txt = f"{mat[i, j]:.3f}\n(n={ax_n[i, j]})"
-                else:
-                    # show raw acc and calib acc both
-                    raw = ax_raw[i, j]; cal = ax_cal[i, j]
-                    txt = f"{raw:.0f}/{cal:.0f}"
-                ax.text(j, i, txt, ha="center", va="center",
-                        fontsize=TICK - 4, color="black", linespacing=0.95)
-        cb = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        cb.set_label(cbar_label, fontsize=TICK - 1)
-        cb.ax.tick_params(labelsize=TICK - 2)
+    # ===== Row 1: ICLR 3x3 (cell text = "25 / 26", color = avg) =====
+    R = [LBL[r] for r in RATIOS]
+    iclr_all_acc = np.concatenate([iclr_raw.flatten(), iclr_cal.flatten()])
+    acc_vmin = iclr_all_acc.min() - 1
+    acc_vmax = iclr_all_acc.max() + 1
 
-    # Row 1: ICLR (3x3 heatmaps)
     ax = fig.add_subplot(gs[0, 0])
-    draw_iclr(ax, iclr_raw, iclr_raw.min() - 1, iclr_raw.max() + 1, "YlGnBu",
-              "ICLR Raw ACC (25/26 stacked)",
-              lambda c: f"{c[2025]['acc_raw']:.1f}\n{c[2026]['acc_raw']:.1f}",
-              "Avg ACC (25/26)")
-    dmax = max(abs(iclr_delta.min()), abs(iclr_delta.max()))
+    draw_heatmap(ax, iclr_raw, acc_vmin, acc_vmax,
+                 "ICLR Raw ACC", "ACC (%)", R, R, "Train ratio", "Test ratio",
+                 lambda i, j: f"{cells[(RATIOS[i], RATIOS[j])][2025]['acc_raw']:.1f}\n"
+                              f"{cells[(RATIOS[i], RATIOS[j])][2026]['acc_raw']:.1f}",
+                 txt_fontsize=TICK - 1)
+    def iclr_cal_text(i, j):
+        c = cells[(RATIOS[i], RATIOS[j])]
+        d25 = c[2025]['acc_cal'] - c[2025]['acc_raw']
+        d26 = c[2026]['acc_cal'] - c[2026]['acc_raw']
+        return (f"{c[2025]['acc_cal']:.1f}({d25:+.1f})\n"
+                f"{c[2026]['acc_cal']:.1f}({d26:+.1f})")
     ax = fig.add_subplot(gs[0, 1])
-    draw_iclr(ax, iclr_delta, -dmax, dmax, "RdBu_r",
-              "ICLR Calib ACC  (color = Δ from raw)",
-              lambda c: f"{c[2025]['acc_cal']:.1f}\n{c[2026]['acc_cal']:.1f}",
-              "Δ ACC (calib − raw)")
+    draw_heatmap(ax, iclr_cal, acc_vmin, acc_vmax,
+                 "ICLR Calibrated ACC  [calib(Δ)]", "ACC (%)",
+                 R, R, "Train ratio", "Test ratio",
+                 iclr_cal_text, txt_fontsize=TICK - 3)
+    auc_vmin = iclr_auc.min() - 0.01; auc_vmax = max(iclr_auc.max(), ax_auc[~np.isnan(ax_auc)].max()) + 0.01 if (~np.isnan(ax_auc)).any() else iclr_auc.max() + 0.01
     ax = fig.add_subplot(gs[0, 2])
-    draw_iclr(ax, iclr_auc, iclr_auc.min() - 0.01, iclr_auc.max() + 0.01, "viridis",
-              "ICLR ROC-AUC",
-              lambda c: f"{c[2025]['auc']:.3f}\n{c[2026]['auc']:.3f}",
-              "Avg AUC (25/26)")
+    draw_heatmap(ax, iclr_auc, auc_vmin, auc_vmax,
+                 "ICLR ROC-AUC", "AUC", R, R, "Train ratio", "Test ratio",
+                 lambda i, j: f"{cells[(RATIOS[i], RATIOS[j])][2025]['auc']:.3f}\n"
+                              f"{cells[(RATIOS[i], RATIOS[j])][2026]['auc']:.3f}",
+                 txt_fontsize=TICK - 1)
 
-    # Row 2: Arxiv (per-venue × ratios)
+    # ===== Row 2: Arxiv per-venue (single number per panel, single viridis) =====
+    valid_acc = np.concatenate([ax_raw[~np.isnan(ax_raw)], ax_cal[~np.isnan(ax_cal)]])
+    arx_acc_vmin = valid_acc.min() - 1; arx_acc_vmax = valid_acc.max() + 1
+
     ax = fig.add_subplot(gs[1, 0])
-    valid = ax_raw[~np.isnan(ax_raw)]
-    draw_arxiv(ax, ax_raw, valid.min() - 1, valid.max() + 1, "YlGnBu",
-               "Arxiv Raw ACC (cell = raw/calib)", "raw", "Raw ACC (%)")
-    valid = ax_delta[~np.isnan(ax_delta)]
-    dmax2 = max(abs(valid.min()), abs(valid.max())) if valid.size else 1.0
+    draw_heatmap(ax, ax_raw, arx_acc_vmin, arx_acc_vmax,
+                 "Arxiv Raw ACC (per venue)", "ACC (%)",
+                 venues, R, None, "Train ratio",
+                 lambda i, j: (f"{ax_raw[i,j]:.0f}" if not np.isnan(ax_raw[i,j]) else None),
+                 txt_fontsize=TICK - 2)
+    def arx_cal_text(i, j):
+        if np.isnan(ax_cal[i, j]): return None
+        d = ax_cal[i, j] - ax_raw[i, j]
+        return f"{ax_cal[i,j]:.0f}({d:+.0f})"
     ax = fig.add_subplot(gs[1, 1])
-    draw_arxiv(ax, ax_delta, -dmax2, dmax2, "RdBu_r",
-               "Arxiv Calib ACC  (color = Δ from raw)", "cal", "Δ ACC (calib − raw)")
-    valid = ax_auc[~np.isnan(ax_auc)]
+    draw_heatmap(ax, ax_cal, arx_acc_vmin, arx_acc_vmax,
+                 "Arxiv Calibrated ACC (per venue)  [calib(Δ)]", "ACC (%)",
+                 venues, R, None, "Train ratio",
+                 arx_cal_text, txt_fontsize=TICK - 3)
+    valid_auc = ax_auc[~np.isnan(ax_auc)]
+    arx_auc_vmin = valid_auc.min() - 0.01; arx_auc_vmax = valid_auc.max() + 0.01
     ax = fig.add_subplot(gs[1, 2])
-    draw_arxiv(ax, ax_auc, valid.min() - 0.01, valid.max() + 0.01, "viridis",
-               "Arxiv ROC-AUC", "auc", "AUC")
+    draw_heatmap(ax, ax_auc, arx_auc_vmin, arx_auc_vmax,
+                 "Arxiv ROC-AUC (per venue)", "AUC",
+                 venues, R, None, "Train ratio",
+                 lambda i, j: (f"{ax_auc[i,j]:.3f}\n(n={ax_n[i,j]})"
+                               if not np.isnan(ax_auc[i,j]) else None),
+                 txt_fontsize=TICK - 4)
+
+    # ===== Row 3: Arxiv OVERALL (rolled up across all venues) =====
+    ax = fig.add_subplot(gs[2, 0])
+    draw_heatmap(ax, ovr_raw, arx_acc_vmin, arx_acc_vmax,
+                 "Arxiv Raw ACC (overall)", "ACC (%)",
+                 ["overall"], R, None, "Train ratio",
+                 lambda i, j: f"{ovr_raw[0,j]:.1f}\n(n={ovr_n[0,j]})",
+                 txt_fontsize=TICK - 1)
+    ax = fig.add_subplot(gs[2, 1])
+    draw_heatmap(ax, ovr_cal, arx_acc_vmin, arx_acc_vmax,
+                 "Arxiv Calib ACC (overall)  [calib(Δ)]", "ACC (%)",
+                 ["overall"], R, None, "Train ratio",
+                 lambda i, j: f"{ovr_cal[0,j]:.1f}({ovr_cal[0,j]-ovr_raw[0,j]:+.1f})\n(n={ovr_n[0,j]})",
+                 txt_fontsize=TICK - 1)
+    ax = fig.add_subplot(gs[2, 2])
+    draw_heatmap(ax, ovr_auc, arx_auc_vmin, arx_auc_vmax,
+                 "Arxiv ROC-AUC (overall)", "AUC",
+                 ["overall"], R, None, "Train ratio",
+                 lambda i, j: f"{ovr_auc[0,j]:.3f}\n(n={ovr_n[0,j]})",
+                 txt_fontsize=TICK - 1)
 
     fig.suptitle(
-        "Cross-eval test results — ICLR (top, 25/26) and Arxiv y24up per-venue (bottom)",
+        "Cross-eval test results — ICLR (top, [25/26] per cell), "
+        "Arxiv y24up per-venue (middle), Arxiv overall (bottom)",
         fontsize=TSIZE + 1, y=0.995, fontweight="bold")
     out_pdf = OUT / "fig_iclr_crosseval.pdf"
     out_png = OUT / "fig_iclr_crosseval.png"
