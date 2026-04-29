@@ -53,28 +53,31 @@ CONFIGS = {
     "text": [
         ("3B",  SAVES / "scaling/bz32_lr1e-6_text_3b",
                 RES   / "scaling/bz32_lr1e-6_text_3b",
-                [661, 1322, 1983, 2644],
+                [661, 1322],
                 [TEXT_TEST_LABELFIX, TEXT_TEST_NOLF]),
         ("7B",  SAVES / "bz32_lr1e-6_text",
                 RES   / "bz32_lr1e-6_text",
-                [661, 1322, 1983, 2644],
+                [661, 1322],
                 [TEXT_TEST_NOLF, TEXT_TEST_LABELFIX]),
         ("14B", SAVES / "scaling/bz32_lr1e-6_text_14b",
                 RES   / "scaling/bz32_lr1e-6_text_14b",
-                [661, 1322],   # training timed out; only 2 ckpts
+                [661, 1322],
                 [TEXT_TEST_LABELFIX, TEXT_TEST_NOLF]),
     ],
     "vision": [
         ("3B", SAVES / "scaling/bz16_lr1e-6_vision_3b",
                RES   / "scaling/bz16_lr1e-6_vision_3b",
-               [1324, 2648, 3972, 5296],
+               [1324, 2648],
                [VIS_TEST_LABELFIX, VIS_TEST_NOLF]),
         ("7B", SAVES / "bz16_lr1e-6_vision",
                RES   / "bz16_lr1e-6_vision",
-               [1324, 2648, 3972, 5296],
+               [1324, 2648],
                [VIS_TEST_LABELFIX, VIS_TEST_NOLF]),
     ],
 }
+
+# X-axis epoch cap (matching the 2-epoch scope above)
+EPOCH_CAP = 2.05
 
 EVAL_YEARS = {2025, 2026}
 
@@ -190,6 +193,11 @@ def plot_loss(ax, modality):
     for size, sd, _, _, _ in CONFIGS[modality]:
         steps, epochs, losses = load_train_loss(sd)
         if len(losses) == 0: continue
+        # Clip to first EPOCH_CAP epochs
+        mask = epochs <= EPOCH_CAP
+        epochs = epochs[mask]
+        losses = losses[mask]
+        if len(losses) == 0: continue
         c = COLOR[(modality, size)]
         ax.plot(epochs, losses, color=c, linewidth=0.8, alpha=0.25)
         if len(losses) >= 10:
@@ -202,12 +210,12 @@ def plot_loss(ax, modality):
             ax.plot(epochs, losses, color=c, linewidth=LINEWIDTH, label=f"{size}")
             all_losses.extend(losses.tolist())
     ax.set_yscale("log")
-    # Zoom: cap top at 10^0 = 1.0; keep bottom at the actual minimum (with tiny pad).
     if all_losses:
         positives = [v for v in all_losses if v > 0]
         if positives:
             lo = min(positives) * 0.85
             ax.set_ylim(lo, 1.0)
+    ax.set_xlim(0, EPOCH_CAP)
     style_axis(ax, f"{modality.title()} — Train Loss", "Loss (log)")
 
 
@@ -284,7 +292,7 @@ def main():
         axes[row, 0].legend(fontsize=legendsize, loc="upper right",
                             framealpha=0.95)
 
-    fig.suptitle("Model Scaling — Text (3B/7B/14B) and Vision (3B/7B) over Epochs",
+    fig.suptitle("Model Scaling — Text (3B/7B/14B) and Vision (3B/7B) over First 2 Epochs",
                  fontsize=titlesize + 4, fontweight="bold", y=1.005)
     plt.tight_layout()
 
