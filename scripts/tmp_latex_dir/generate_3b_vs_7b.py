@@ -51,14 +51,18 @@ VIS_TEST_NOLF     = DATA / "iclr_2020_2023_2025_2026_85_5_10_balanced_original_v
 
 CONFIGS = {
     "text": [
-        ("3B", SAVES / "scaling/bz32_lr1e-6_text_3b",
-               RES   / "scaling/bz32_lr1e-6_text_3b",
-               [661, 1322, 1983, 2644],
-               [TEXT_TEST_LABELFIX, TEXT_TEST_NOLF]),
-        ("7B", SAVES / "bz32_lr1e-6_text",
-               RES   / "bz32_lr1e-6_text",
-               [661, 1322, 1983, 2644],
-               [TEXT_TEST_NOLF, TEXT_TEST_LABELFIX]),
+        ("3B",  SAVES / "scaling/bz32_lr1e-6_text_3b",
+                RES   / "scaling/bz32_lr1e-6_text_3b",
+                [661, 1322, 1983, 2644],
+                [TEXT_TEST_LABELFIX, TEXT_TEST_NOLF]),
+        ("7B",  SAVES / "bz32_lr1e-6_text",
+                RES   / "bz32_lr1e-6_text",
+                [661, 1322, 1983, 2644],
+                [TEXT_TEST_NOLF, TEXT_TEST_LABELFIX]),
+        ("14B", SAVES / "scaling/bz32_lr1e-6_text_14b",
+                RES   / "scaling/bz32_lr1e-6_text_14b",
+                [661, 1322],   # training timed out; only 2 ckpts
+                [TEXT_TEST_LABELFIX, TEXT_TEST_NOLF]),
     ],
     "vision": [
         ("3B", SAVES / "scaling/bz16_lr1e-6_vision_3b",
@@ -74,12 +78,14 @@ CONFIGS = {
 
 EVAL_YEARS = {2025, 2026}
 
-# Colors per (modality, size) — pairs that are visually distinct
+# Colors per (modality, size) — pairs/triples that are visually distinct
+# Text uses a blues ramp, vision uses an oranges ramp.
 COLOR = {
-    ("text", "3B"):   "#9ECAE1",
-    ("text", "7B"):   "#08519C",
-    ("vision", "3B"): "#FDAE6B",
-    ("vision", "7B"): "#A63603",
+    ("text", "3B"):    "#9ECAE1",
+    ("text", "7B"):    "#3182BD",
+    ("text", "14B"):   "#08306B",
+    ("vision", "3B"):  "#FDAE6B",
+    ("vision", "7B"):  "#A63603",
 }
 
 
@@ -269,7 +275,7 @@ def main():
         axes[row, 0].legend(fontsize=legendsize, loc="upper right",
                             framealpha=0.95)
 
-    fig.suptitle("3B vs 7B — Text and Vision over Epochs",
+    fig.suptitle("Model Scaling — Text (3B/7B/14B) and Vision (3B/7B) over Epochs",
                  fontsize=titlesize + 4, fontweight="bold", y=1.005)
     plt.tight_layout()
 
@@ -288,9 +294,12 @@ def main():
             ta = load_train_acc(rd, epoch2)
             ta_pct = ta * 100 if ta is not None else None
             acc, accr, rejr, n = test_metrics_2526(jp, td)
-            print(f"  {modality:<7} {size}: trainAcc={ta_pct:.1f}%  testAcc={acc:.1f}%  "
-                  f"AccR={accr:.1f}%  RejR={rejr:.1f}%  (n={n})"
-                  if ta_pct and acc else f"  {modality:<7} {size}: missing data")
+            ta_s = f"{ta_pct:.1f}%" if ta_pct is not None else " N/A "
+            acc_s = f"{acc:.1f}%" if acc is not None else " N/A"
+            accr_s = f"{accr:.1f}%" if accr is not None else " N/A"
+            rejr_s = f"{rejr:.1f}%" if rejr is not None else " N/A"
+            print(f"  {modality:<7} {size:<4}: trainAcc={ta_s:>7}  testAcc={acc_s:>6}  "
+                  f"AccR={accr_s:>6}  RejR={rejr_s:>6}  (n={n})")
 
 
 if __name__ == "__main__":
