@@ -15,6 +15,8 @@ set -e
 cd /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer
 source .venv/bin/activate
 export TRANSFORMERS_OFFLINE=1
+export HF_HUB_OFFLINE=1
+export HF_HOME=/scratch/gpfs/ZHUANGL/sk7524/hf
 
 # BZ=16: 4 GPUs, per_device=4, grad_accum=1 -> batch = 16 (matches ratio_clean).
 LR="1e-6"

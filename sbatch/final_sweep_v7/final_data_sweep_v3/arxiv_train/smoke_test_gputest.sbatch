@@ -23,6 +23,8 @@ set -e
 cd /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer
 source .venv/bin/activate
 export TRANSFORMERS_OFFLINE=1
+export HF_HUB_OFFLINE=1
+export HF_HOME=/scratch/gpfs/ZHUANGL/sk7524/hf
 export PYTHONUNBUFFERED=1
 
 SMOKE_DIR="saves/final_sweep_v7_datasweepv3/final_data_sweep_v3/arxiv_train/_smoke/${SLURM_JOB_ID}"
