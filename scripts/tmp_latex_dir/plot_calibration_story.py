@@ -286,20 +286,28 @@ def fig1_test_results():
         cb.set_label(cbar_label, fontsize=TICK - 1)
         cb.ax.tick_params(labelsize=TICK - 2)
 
-    # ===== Row 1: ICLR 3x3 (cell text = "25 / 26", color = avg) =====
+    # ===== Row 1: ICLR 3x3 (TRAIN ratio on x, TEST ratio on y, matching arxiv rows) =====
+    # Transpose: rows now = test ratio, cols = train ratio.
+    iclr_raw = iclr_raw.T
+    iclr_cal = iclr_cal.T
+    iclr_auc = iclr_auc.T
+
     R = [LBL[r] for r in RATIOS]
     iclr_all_acc = np.concatenate([iclr_raw.flatten(), iclr_cal.flatten()])
     acc_vmin = iclr_all_acc.min() - 1
     acc_vmax = iclr_all_acc.max() + 1
 
+    # NB: i = test ratio idx (row), j = train ratio idx (col)
+    def cell_t(i, j): return RATIOS[j], RATIOS[i]   # (train, test) tuple key
     ax = fig.add_subplot(gs[0, 0])
     draw_heatmap(ax, iclr_raw, acc_vmin, acc_vmax,
-                 "ICLR Raw ACC", "ACC (%)", R, R, "Train ratio", "Test ratio",
-                 lambda i, j: f"{cells[(RATIOS[i], RATIOS[j])][2025]['acc_raw']:.1f}\n"
-                              f"{cells[(RATIOS[i], RATIOS[j])][2026]['acc_raw']:.1f}",
+                 "ICLR Raw ACC", "ACC (%)",
+                 R, R, "Test ratio", "Train ratio",
+                 lambda i, j: f"{cells[cell_t(i,j)][2025]['acc_raw']:.1f}\n"
+                              f"{cells[cell_t(i,j)][2026]['acc_raw']:.1f}",
                  txt_fontsize=TICK - 1)
     def iclr_cal_text(i, j):
-        c = cells[(RATIOS[i], RATIOS[j])]
+        c = cells[cell_t(i, j)]
         d25 = c[2025]['acc_cal'] - c[2025]['acc_raw']
         d26 = c[2026]['acc_cal'] - c[2026]['acc_raw']
         return (f"{c[2025]['acc_cal']:.1f}({d25:+.1f})\n"
@@ -307,14 +315,14 @@ def fig1_test_results():
     ax = fig.add_subplot(gs[0, 1])
     draw_heatmap(ax, iclr_cal, acc_vmin, acc_vmax,
                  "ICLR Calibrated ACC  [calib(Δ)]", "ACC (%)",
-                 R, R, "Train ratio", "Test ratio",
+                 R, R, "Test ratio", "Train ratio",
                  iclr_cal_text, txt_fontsize=TICK - 3)
     auc_vmin = iclr_auc.min() - 0.01; auc_vmax = max(iclr_auc.max(), ax_auc[~np.isnan(ax_auc)].max()) + 0.01 if (~np.isnan(ax_auc)).any() else iclr_auc.max() + 0.01
     ax = fig.add_subplot(gs[0, 2])
     draw_heatmap(ax, iclr_auc, auc_vmin, auc_vmax,
-                 "ICLR ROC-AUC", "AUC", R, R, "Train ratio", "Test ratio",
-                 lambda i, j: f"{cells[(RATIOS[i], RATIOS[j])][2025]['auc']:.3f}\n"
-                              f"{cells[(RATIOS[i], RATIOS[j])][2026]['auc']:.3f}",
+                 "ICLR ROC-AUC", "AUC", R, R, "Test ratio", "Train ratio",
+                 lambda i, j: f"{cells[cell_t(i,j)][2025]['auc']:.3f}\n"
+                              f"{cells[cell_t(i,j)][2026]['auc']:.3f}",
                  txt_fontsize=TICK - 1)
 
     # ===== Row 2: Arxiv per-venue (single number per panel, single viridis) =====
