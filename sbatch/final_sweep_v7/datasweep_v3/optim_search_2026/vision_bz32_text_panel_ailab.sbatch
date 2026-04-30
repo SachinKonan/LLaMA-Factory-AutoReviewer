@@ -80,6 +80,8 @@ accelerate launch \
     per_device_train_batch_size="${PER_DEVICE_BATCH}" \
     gradient_accumulation_steps="${GRAD_ACCUM}" \
     cutoff_len="${CUTOFF_LEN}" \
+    image_min_pixels="${IMAGE_MIN_PIXELS}" \
+    image_max_pixels="${IMAGE_MAX_PIXELS}" \
     learning_rate="${LR}" \
     num_train_epochs=4.0 \
     lr_scheduler_type=cosine \
