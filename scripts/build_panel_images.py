@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""Build the panel-image vision dataset.
+"""Build the panel-image vision dataset from existing page screenshots.
 
-For each paper in the text labelfix v7 filtered dataset (train/val/test),
-typeset its markdown (pandoc + xelatex + Roboto), rasterize the first 10
-PDF pages, and compose them into a 2240 x 1148 PNG (5 cols x 2 rows of
-448 x 574 px panels). Output is written flat to data/images_panel/<sid>.png.
+For each paper in the vision labelfix v7 filtered24480 dataset
+(train/val/test), take its existing page PNGs (already rendered to
+data/images/<sid>/page_N_noreferences_original.png by an earlier
+extraction pass) and compose the first 10 of them into a single
+2240 x 1148 PNG (5 cols x 2 rows of 448 x 574 px panels).
 
-Run on srun with many workers (xelatex is single-threaded but parallelizes
-well across processes). Skip-if-exists makes the job fully resumable.
+Output is flat: data/images_panel/<sid>.png (one file per paper,
+~24,888 total). Sized so Qwen2.5-VL smart_resize is a no-op at
+max_pixels=4014080 (3,280 vision tokens / paper).
+
+Run on srun with many workers; skip-if-exists makes the run resumable.
 
 Usage:
     uv run python scripts/build_panel_images.py --workers 32
@@ -19,16 +23,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 import time
 from multiprocessing import Pool
 from pathlib import Path
 
 from PIL import Image
-
-# Reuse helpers from the single-paper viewer
-sys.path.insert(0, str(Path(__file__).resolve().parent / "tmp_latex_dir"))
-from visualize_paper_text import md_to_pdf_pages, extract_markdown  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 PANEL_DIR = ROOT / "data" / "images_panel"
@@ -36,45 +35,50 @@ PANEL_DIR = ROOT / "data" / "images_panel"
 TARGET_W, TARGET_H = 2240, 1148  # Qwen2.5-VL smart_resize no-op @ max_pixels=4014080
 ROWS, COLS = 2, 5
 PANEL_W, PANEL_H = TARGET_W // COLS, TARGET_H // ROWS  # 448 x 574
+MAX_PAGES = ROWS * COLS  # 10
 
-BASE = "iclr_2020_2023_2025_2026_85_5_10_balanced_original_text_labelfix_v7_filtered"
+# Vision dataset whose `images` lists already point at per-page PNGs
+VISION_BASE = "iclr_2020_2023_2025_2026_85_5_10_balanced_original_vision_labelfix_v7_filtered_filtered24480"
 SPLIT_DATASETS = {
-    "train": f"{BASE}_train",
-    "validation": f"{BASE}_validation",
-    "test": f"{BASE}_test",
+    "train": f"{VISION_BASE}_train",
+    "validation": f"{VISION_BASE}_validation",
+    "test": f"{VISION_BASE}_test",
 }
 
 
-def compose_panel(pages: list[Image.Image]) -> Image.Image:
-    """Assemble up to ROWS*COLS pages into a TARGET_W x TARGET_H white canvas."""
+def compose_panel(page_paths: list[Path]) -> Image.Image:
+    """Resize each page PNG to PANEL_W x PANEL_H and paste into the canvas."""
     canvas = Image.new("RGB", (TARGET_W, TARGET_H), "white")
-    for i, page in enumerate(pages[: ROWS * COLS]):
+    for i, p in enumerate(page_paths[:MAX_PAGES]):
+        with Image.open(p) as src:
+            src = src.convert("RGB")
+            thumb = src.resize((PANEL_W, PANEL_H), Image.LANCZOS)
         row, col = divmod(i, COLS)
-        thumb = page.resize((PANEL_W, PANEL_H), Image.LANCZOS)
         canvas.paste(thumb, (col * PANEL_W, row * PANEL_H))
     return canvas
 
 
-def render_one(args: tuple[str, dict, Path]) -> tuple[str, str]:
-    sid, entry, dst = args
+def render_one(args: tuple[str, list[str], Path]) -> tuple[str, str]:
+    sid, image_rels, dst = args
     if dst.exists():
         return sid, "skipped"
     try:
-        md = extract_markdown(entry)
-        pages = md_to_pdf_pages(md)
-        if not pages:
-            return sid, "FAIL: pandoc produced 0 pages"
-        img = compose_panel(pages)
+        page_paths = [ROOT / r for r in image_rels[:MAX_PAGES]]
+        missing = [p for p in page_paths if not p.exists()]
+        if missing:
+            return sid, f"FAIL: missing pages: {[str(m.name) for m in missing[:3]]}"
+        img = compose_panel(page_paths)
         tmp = dst.with_suffix(".png.tmp")
         img.save(tmp, "PNG", optimize=True, compress_level=6)
         os.rename(tmp, dst)
         return sid, "ok"
-    except Exception as e:  # noqa: BLE001 — we deliberately swallow per-paper failures
+    except Exception as e:  # noqa: BLE001
         return sid, f"FAIL: {type(e).__name__}: {e}"
 
 
-def collect_tasks(splits: list[str], limit: int | None) -> list[tuple[str, dict, Path]]:
-    tasks: list[tuple[str, dict, Path]] = []
+def collect_tasks(splits: list[str], limit: int | None) -> list[tuple[str, list[str], Path]]:
+    tasks: list[tuple[str, list[str], Path]] = []
+    seen: set[str] = set()
     for split in splits:
         ds_path = ROOT / "data" / SPLIT_DATASETS[split] / "data.json"
         entries = json.loads(ds_path.read_text())
@@ -82,7 +86,10 @@ def collect_tasks(splits: list[str], limit: int | None) -> list[tuple[str, dict,
             entries = entries[:limit]
         for entry in entries:
             sid = entry["_metadata"]["submission_id"]
-            tasks.append((sid, entry, PANEL_DIR / f"{sid}.png"))
+            if sid in seen:
+                continue
+            seen.add(sid)
+            tasks.append((sid, entry["images"], PANEL_DIR / f"{sid}.png"))
     return tasks
 
 
@@ -97,11 +104,12 @@ def main() -> None:
 
     PANEL_DIR.mkdir(parents=True, exist_ok=True)
     tasks = collect_tasks(args.splits, args.limit)
-    print(f"{len(tasks)} papers across {args.splits}; workers={args.workers}")
+    print(f"{len(tasks)} unique papers across {args.splits}; workers={args.workers}")
 
     fails: list[tuple[str, str]] = []
     started_at = time.time()
     skipped = ok = 0
+    pool = None
     if args.workers <= 1:
         results_iter = (render_one(t) for t in tasks)
     else:
@@ -115,14 +123,14 @@ def main() -> None:
             skipped += 1
         else:
             fails.append((sid, status))
-        if i % 200 == 0 or i == len(tasks):
+        if i % 500 == 0 or i == len(tasks):
             elapsed = time.time() - started_at
             rate = i / elapsed if elapsed > 0 else 0
             eta = (len(tasks) - i) / rate if rate > 0 else 0
             print(f"  {i}/{len(tasks)}  ok={ok} skipped={skipped} fail={len(fails)}  "
                   f"rate={rate:.2f}/s  eta={eta/60:.1f}min")
 
-    if args.workers > 1:
+    if pool is not None:
         pool.close()
         pool.join()
 
