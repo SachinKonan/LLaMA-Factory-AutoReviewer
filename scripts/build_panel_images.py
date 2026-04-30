@@ -27,7 +27,7 @@ import time
 from multiprocessing import Pool
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageChops
 
 ROOT = Path(__file__).resolve().parents[1]
 PANEL_DIR = ROOT / "data" / "images_panel"
@@ -46,13 +46,29 @@ SPLIT_DATASETS = {
 }
 
 
+def trim_white_margins(im: Image.Image, tol: int = 8) -> Image.Image:
+    """Crop solid-white margins from the page.
+
+    Uses ImageChops.difference vs a pure-white background, thresholds
+    near-white pixels (anti-aliased text edges) at `tol`, then takes
+    the bounding box of the remaining content.
+    """
+    rgb = im.convert("RGB")
+    bg = Image.new("RGB", rgb.size, (255, 255, 255))
+    diff = ImageChops.difference(rgb, bg).convert("L")
+    if tol > 0:
+        diff = diff.point(lambda p: 255 if p > tol else 0)
+    bbox = diff.getbbox()
+    return rgb.crop(bbox) if bbox else rgb
+
+
 def compose_panel(page_paths: list[Path]) -> Image.Image:
-    """Resize each page PNG to PANEL_W x PANEL_H and paste into the canvas."""
+    """Trim each page PNG, resize to PANEL_W x PANEL_H, paste into the canvas."""
     canvas = Image.new("RGB", (TARGET_W, TARGET_H), "white")
     for i, p in enumerate(page_paths[:MAX_PAGES]):
         with Image.open(p) as src:
-            src = src.convert("RGB")
-            thumb = src.resize((PANEL_W, PANEL_H), Image.LANCZOS)
+            trimmed = trim_white_margins(src)
+        thumb = trimmed.resize((PANEL_W, PANEL_H), Image.LANCZOS)
         row, col = divmod(i, COLS)
         canvas.paste(thumb, (col * PANEL_W, row * PANEL_H))
     return canvas
