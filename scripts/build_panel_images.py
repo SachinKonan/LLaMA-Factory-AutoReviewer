@@ -32,7 +32,7 @@ from PIL import Image, ImageChops
 ROOT = Path(__file__).resolve().parents[1]
 PANEL_DIR = ROOT / "data" / "images_panel"
 
-TARGET_W, TARGET_H = 2240, 1148  # Qwen2.5-VL smart_resize no-op @ max_pixels=4014080
+TARGET_W, TARGET_H = 1820, 1344  # cell aspect 0.542 ~ ICLR trimmed-content aspect 0.55
 ROWS, COLS = 2, 5
 PANEL_W, PANEL_H = TARGET_W // COLS, TARGET_H // ROWS  # 448 x 574
 MAX_PAGES = ROWS * COLS  # 10
