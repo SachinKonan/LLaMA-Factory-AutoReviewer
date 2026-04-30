@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,12 +38,24 @@ def panel_image_relpath(sid: str) -> str:
     return f"data/images_panel/{sid}.png"
 
 
+_IMAGE_RUN = re.compile(r"(?:<image>\s*)+")
+
+
+def collapse_image_tokens(text: str) -> str:
+    """Collapse any consecutive run of <image> tokens (with whitespace) to one <image>."""
+    return _IMAGE_RUN.sub("<image>", text)
+
+
 def transform_entry(entry: dict) -> dict | None:
     sid = entry["_metadata"]["submission_id"]
     panel_path = PANEL_DIR / f"{sid}.png"
     if not panel_path.exists():
         return None
     out = dict(entry)
+    out["conversations"] = [
+        {**c, "value": collapse_image_tokens(c["value"])} if c["from"] == "human" else c
+        for c in entry["conversations"]
+    ]
     out["images"] = [panel_image_relpath(sid)]
     return out
 
