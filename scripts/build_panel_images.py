@@ -32,7 +32,7 @@ from PIL import Image, ImageChops
 ROOT = Path(__file__).resolve().parents[1]
 PANEL_DIR = ROOT / "data" / "images_panel"
 
-TARGET_W, TARGET_H = 2100, 1344  # cell aspect 0.625; ~12% horizontal margin vs ICLR content (0.55)
+TARGET_W, TARGET_H = 2380, 1512  # cell aspect 0.630; ~14% horizontal margin vs ICLR content (0.55)
 ROWS, COLS = 2, 5
 PANEL_W, PANEL_H = TARGET_W // COLS, TARGET_H // ROWS  # 448 x 574
 MAX_PAGES = ROWS * COLS  # 10
