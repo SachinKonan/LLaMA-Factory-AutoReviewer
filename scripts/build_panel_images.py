@@ -62,15 +62,26 @@ def trim_white_margins(im: Image.Image, tol: int = 8) -> Image.Image:
     return rgb.crop(bbox) if bbox else rgb
 
 
+def fit_into_cell(im: Image.Image, cell_w: int, cell_h: int) -> Image.Image:
+    """Resize `im` to fit inside (cell_w, cell_h) preserving aspect, on white."""
+    cw, ch = im.size
+    scale = min(cell_w / cw, cell_h / ch)
+    new_w, new_h = max(1, int(round(cw * scale))), max(1, int(round(ch * scale)))
+    thumb = im.resize((new_w, new_h), Image.LANCZOS)
+    out = Image.new("RGB", (cell_w, cell_h), "white")
+    out.paste(thumb, ((cell_w - new_w) // 2, (cell_h - new_h) // 2))
+    return out
+
+
 def compose_panel(page_paths: list[Path]) -> Image.Image:
-    """Trim each page PNG, resize to PANEL_W x PANEL_H, paste into the canvas."""
+    """Trim each page, fit into PANEL_W x PANEL_H preserving aspect, tile."""
     canvas = Image.new("RGB", (TARGET_W, TARGET_H), "white")
     for i, p in enumerate(page_paths[:MAX_PAGES]):
         with Image.open(p) as src:
             trimmed = trim_white_margins(src)
-        thumb = trimmed.resize((PANEL_W, PANEL_H), Image.LANCZOS)
+        cell = fit_into_cell(trimmed, PANEL_W, PANEL_H)
         row, col = divmod(i, COLS)
-        canvas.paste(thumb, (col * PANEL_W, row * PANEL_H))
+        canvas.paste(cell, (col * PANEL_W, row * PANEL_H))
     return canvas
 
 
