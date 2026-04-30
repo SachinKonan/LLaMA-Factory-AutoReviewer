@@ -34,9 +34,8 @@ PANEL_DIR = ROOT / "data" / "images_panel"
 
 TARGET_W, TARGET_H = 2100, 1344  # cell aspect 0.625; ~12% horizontal margin vs ICLR content (0.55)
 ROWS, COLS = 2, 5
-PANEL_W, PANEL_H = TARGET_W // COLS, TARGET_H // ROWS  # 420 x 672
+PANEL_W, PANEL_H = TARGET_W // COLS, TARGET_H // ROWS  # 448 x 574
 MAX_PAGES = ROWS * COLS  # 10
-CELL_PADDING = 18  # px of white space on every side of each cell -> visible gutter between pages
 
 # Vision dataset whose `images` lists already point at per-page PNGs
 VISION_BASE = "iclr_2020_2023_2025_2026_85_5_10_balanced_original_vision_labelfix_v7_filtered_filtered24480"
@@ -75,18 +74,14 @@ def fit_into_cell(im: Image.Image, cell_w: int, cell_h: int) -> Image.Image:
 
 
 def compose_panel(page_paths: list[Path]) -> Image.Image:
-    """Trim each page, fit into the inner cell area (with CELL_PADDING gutters), tile."""
+    """Trim each page, fit into PANEL_W x PANEL_H preserving aspect, tile."""
     canvas = Image.new("RGB", (TARGET_W, TARGET_H), "white")
-    inner_w = PANEL_W - 2 * CELL_PADDING
-    inner_h = PANEL_H - 2 * CELL_PADDING
     for i, p in enumerate(page_paths[:MAX_PAGES]):
         with Image.open(p) as src:
             trimmed = trim_white_margins(src)
-        cell = fit_into_cell(trimmed, inner_w, inner_h)
+        cell = fit_into_cell(trimmed, PANEL_W, PANEL_H)
         row, col = divmod(i, COLS)
-        x = col * PANEL_W + CELL_PADDING
-        y = row * PANEL_H + CELL_PADDING
-        canvas.paste(cell, (x, y))
+        canvas.paste(cell, (col * PANEL_W, row * PANEL_H))
     return canvas
 
 
