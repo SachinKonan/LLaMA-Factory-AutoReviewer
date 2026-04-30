@@ -1,45 +1,40 @@
 #!/bin/bash
-#SBATCH --job-name=o26_panel
+#SBATCH --job-name=o26_txtpan
 #SBATCH --time=14:00:00
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=200G
-#SBATCH --gres=gpu:2
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=350G
+#SBATCH --gres=gpu:4
 #SBATCH --partition=ailab
-#SBATCH --array=0-1
-#SBATCH --output=logs/final_sweep_v7_datasweepv3/optim_search_2026/vision_bz32_panel/%A_%a.out
-#SBATCH --error=logs/final_sweep_v7_datasweepv3/optim_search_2026/vision_bz32_panel/%A_%a.err
+#SBATCH --output=logs/final_sweep_v7_datasweepv3/optim_search_2026/vision_bz32_text_panel/%j.out
+#SBATCH --error=logs/final_sweep_v7_datasweepv3/optim_search_2026/vision_bz32_text_panel/%j.err
 
 set -e
 cd /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer
 source .venv/bin/activate
 export TRANSFORMERS_OFFLINE=1
 
-# BZ=32: 2 GPUs, per_device=2, grad_accum=8 → batch = 2*2*8 = 32
-# Each sample is 1 panel image (~3,280 vision tokens) + ~1k text tokens
-# LR grid: [1e-6, 2e-6]
-LRS=("1e-6" "2e-6")
-SHORT_NAMES=("bz32_lr1e-6_panel" "bz32_lr2e-6_panel")
+# BZ=32 (canonical text — text+panel is mostly text): 4 GPUs, per_device=4, grad_accum=2 → 4*4*2 = 32
+# Each sample is full paper text (~24,480 tokens) + 1 panel image (~3,280 vision tokens)
+LR="1e-6"
+SHORT_NAME="bz32_lr1e-6_text_panel"
 
-LR="${LRS[$SLURM_ARRAY_TASK_ID]}"
-SHORT_NAME="${SHORT_NAMES[$SLURM_ARRAY_TASK_ID]}"
-
-DATASET="iclr_2020_2023_2025_2026_85_5_10_balanced_original_vision_labelfix_v7_filtered_filtered24480_panel"
+DATASET="iclr_2020_2023_2025_2026_85_5_10_balanced_original_text_panel_v7_filtered"
 CONFIG_FILE="configs/final_sweep_v7_vision.yaml"
 TEMPLATE="qwen2_vl"
-CUTOFF_LEN=8192       # plenty for ~1k text + 3,280 image tokens
+CUTOFF_LEN=28000           # ~24,480 text + 3,280 image + slack
 IMAGE_MIN_PIXELS=784
-IMAGE_MAX_PIXELS=4014080  # smart_resize no-op @ panel 2240x1148
+IMAGE_MAX_PIXELS=4014080   # smart_resize no-op @ panel 2240x1148
 
-PER_DEVICE_BATCH=2
-GRAD_ACCUM=8
-NUM_GPUS=2
+PER_DEVICE_BATCH=4
+GRAD_ACCUM=2
+NUM_GPUS=4
 
 MODEL_DIR="saves/final_sweep_v7_datasweepv3/optim_search_2026/${SHORT_NAME}"
 RESULTS_DIR="results/final_sweep_v7_datasweepv3/optim_search_2026/${SHORT_NAME}"
-MASTER_PORT=$((29800 + SLURM_ARRAY_TASK_ID))
+MASTER_PORT=29900
 
 echo "=============================================="
-echo "Job: $SLURM_JOB_ID, Task: $SLURM_ARRAY_TASK_ID"
+echo "Job: $SLURM_JOB_ID"
 echo "Dataset: ${DATASET}"
 echo "Short Name: ${SHORT_NAME}"
 echo "LR: ${LR}"
@@ -49,7 +44,7 @@ echo "Cutoff len: ${CUTOFF_LEN}"
 echo "Image max_pixels: ${IMAGE_MAX_PIXELS}"
 echo "=============================================="
 
-mkdir -p logs/final_sweep_v7_datasweepv3/optim_search_2026/vision_bz32_panel "${MODEL_DIR}" "${RESULTS_DIR}"
+mkdir -p logs/final_sweep_v7_datasweepv3/optim_search_2026/vision_bz32_text_panel "${MODEL_DIR}" "${RESULTS_DIR}"
 echo "${SLURM_JOB_ID}" > "${MODEL_DIR}/.trainjob.touch"
 
 python scripts/auto_infer_watcher.py \
@@ -75,7 +70,7 @@ echo "=== PHASE 1: TRAINING ==="
 echo ""
 
 accelerate launch \
-    --config_file configs/fsdp2_2gpu_config.yaml \
+    --config_file configs/fsdp2_4gpu_config.yaml \
     --main_process_port "${MASTER_PORT}" \
     src/train.py "${CONFIG_FILE}" \
     dataset="${DATASET}_train" \
