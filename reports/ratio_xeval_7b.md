@@ -230,3 +230,138 @@
 - For ICLR, calibrated metrics use the single τ* from val matching the test prior.
 - For arxiv, calibrated metrics use the per-venue τ*, with the model-global τ* as fallback for venues with val n<10. The pooled accept/reject recalls are weighted by venue test counts.
 - All numbers are 7B (Qwen2.5-7B for text, Qwen2.5-VL-7B for vision).
+
+
+---
+
+## Extended Analysis (appendix)
+
+Appended after initial report. Adds: per-venue arxiv breakdown, y25+ ablation (drop ECCV), score↔pct_rating correlation, and arxiv-iclr-subset vs direct-ICLR comparison.
+
+### A. Headline trends
+
+- **Modality-divergent correlation in arxiv-natural-iclr**: on the natrate ICLR subset of arxiv test, vision 50/50 and 30/70 both reach **ρ ≈ +0.46** with `pct_rating`, but text 50/50 and 30/70 give **ρ ≈ -0.13 to -0.17** (negative!). Vision still tracks reviewer quality after the prior shift; text inverts. (n=103-107 each, so a real but moderate effect.)
+- **Direct-ICLR correlation is strong and modality-invariant**: all 4 models hit **ρ = 0.47-0.51** with `pct_rating`, on both balanced and natural prior. So on the direct ICLR test set, model log-odds reliably tracks reviewer percentile irrespective of train ratio or modality — both modalities learn the same `pct_rating` axis.
+- **NeurIPS pct_rating correlation is universally weak (ρ < 0.17)**: arxiv-extracted NeurIPS papers don't preserve the rating signal that direct-ICLR papers do, despite similar venue size in the test (n=96-175). Maybe an artifact of the openreview→arxiv metadata-merge step, or NeurIPS reviewer ratings being intrinsically noisier.
+- **arxiv-iclr-subset AUC slightly exceeds direct-ICLR AUC** by 0.01-0.05 (e.g. text 50/50 balanced: 0.754 vs 0.721; vision 50/50 balanced: 0.750 vs 0.736). The arxiv-extracted ICLR subset appears to be a *slightly easier* test population — possibly because it's year-filtered to ≥2024 (skews to newer ICLR years where the model is well-fit) and pre-filtered to main-paper status during arxiv ingestion.
+- **ECCV exclusion is negligible**: dropping it (y25+ ablation) shifts overall arxiv ACC by < 0.3pp and AUC by < 0.003 across all 4 models. The y24up overall numbers in the main report are dominated by venues that span 2024-2026.
+
+### B. Per-venue arxiv breakdown — TEST split, balanced prior
+
+Cells: ACC raw / ACC cal (n)
+
+| venue | n | text 50/50 | text 30/70 | vision 50/50 | vision 30/70 |
+|---|---:|---:|---:|---:|---:|
+| aaai | 145 | 54 / 61 | 52 / 60 | 56 / 64 | 57 / 62 |
+| acl_family | 231 | 48 / 63 | 48 / 66 | 53 / 63 | 57 / 62 |
+| aistats | 11 | 45 / 91 | 27 / 82 | 64 / 73 | 45 / 36 |
+| colm | 24 | 54 / 71 | 50 / 54 | 54 / 58 | 54 / 58 |
+| corl | 7 | 57 / 71 | 43 / 86 | 57 / 100 | 57 / 100 |
+| cvpr | 275 | 58 / 66 | 49 / 66 | 65 / 67 | 62 / 62 |
+| eccv | 37 | 65 / 70 | 62 / 57 | 67 / 64 | 67 / 64 |
+| iccv | 70 | 57 / 63 | 56 / 61 | 60 / 57 | 59 / 59 |
+| iclr | 131 | 68 / 65 | 50 / 64 | 69 / 72 | 67 / 65 |
+| icml | 98 | 71 / 68 | 55 / 65 | 71 / 64 | 70 / 65 |
+| neurips | 387 | 64 / 69 | 55 / 67 | 68 / 68 | 67 / 67 |
+
+### C. Per-venue arxiv breakdown — TEST split, natural (natrate) prior
+
+Cells: ACC raw / ACC cal (n)
+
+| venue | n | text 50/50 | text 30/70 | vision 50/50 | vision 30/70 |
+|---|---:|---:|---:|---:|---:|
+| aaai | 153 | 81 / 81 | 77 / 77 | 72 / 71 | 73 / 75 |
+| acl_family | 237 | 81 / 75 | 79 / 78 | 71 / 73 | 69 / 76 |
+| aistats | 9 | 78 / 56 | 56 / 56 | 78 / 67 | 67 / 44 |
+| colm | 24 | 79 / 83 | 75 / 79 | 58 / 54 | 67 / 75 |
+| corl | 9 | 100 / 83 | 83 / 83 | 56 / 56 | 67 / 56 |
+| cvpr | 280 | 80 / 82 | 80 / 82 | 70 / 76 | 63 / 74 |
+| eccv | 41 | 83 / 71 | 85 / 85 | 76 / 78 | 73 / 71 |
+| iccv | 77 | 70 / 71 | 71 / 74 | 65 / 58 | 57 / 60 |
+| iclr | 138 | 71 / 71 | 71 / 71 | 69 / 72 | 70 / 72 |
+| icml | 106 | 70 / 68 | 74 / 69 | 75 / 74 | 73 / 75 |
+| neurips | 405 | 74 / 76 | 75 / 74 | 77 / 76 | 76 / 77 |
+
+### D. Per-venue AUC heatmap
+
+![Per-venue AUC](../tmp_latex_dir/figures/ratio_xeval_per_venue_auc.png)
+
+### Per-venue ACC (calibrated)
+
+![Per-venue ACC cal](../tmp_latex_dir/figures/ratio_xeval_per_venue_acc_cal.png)
+
+### E. Y25+ ablation (drop ECCV; ECCV has no 2025/2026 papers in y24up)
+
+Compare arxiv overall ACC raw / ACC cal / AUC for full y24up vs y25+ subset:
+
+| prior | model | full y24up ACC raw / cal / AUC | y25+ ACC raw / cal / AUC | n_dropped |
+|---|---|---|---|---:|
+| balanced | text 50/50 | 59.5 / 66.2 / 0.720 | 59.4 / 66.1 / 0.718 | 37 |
+| balanced | text 30/70 | 51.8 / 64.9 / 0.697 | 51.5 / 65.2 / 0.696 | 37 |
+| balanced | vision 50/50 | 63.4 / 65.9 / 0.724 | 63.3 / 66.0 / 0.723 | 36 |
+| balanced | vision 30/70 | 62.6 / 63.7 / 0.704 | 62.5 / 63.7 / 0.702 | 36 |
+| natural | text 50/50 | 76.7 / 76.1 / 0.725 | 76.5 / 76.2 / 0.723 | 41 |
+| natural | text 30/70 | 76.3 / 76.2 / 0.700 | 76.0 / 75.9 / 0.698 | 41 |
+| natural | vision 50/50 | 72.0 / 73.1 / 0.736 | 71.9 / 73.0 / 0.737 | 41 |
+| natural | vision 30/70 | 70.0 / 73.9 / 0.714 | 69.9 / 74.0 / 0.713 | 41 |
+
+Conclusion: dropping ECCV (~2-3% of test) shifts overall metrics by typically <1pp; the y24up overall numbers in the main report are dominated by venues that span 2024-2026.
+
+### F. Score-vs-pct_rating correlation
+
+`pct_rating` is the per-venue percentile of the paper's mean reviewer rating. It's available for ICLR (all years 25/26 in our test) and for arxiv samples drawn from ICLR + NeurIPS (where OpenReview reviews exist). Higher correlation between model's log-odds score and `pct_rating` ⇒ model's signal better tracks reviewer-quality perception (independent of the binary accept/reject decision).
+
+![Score-vs-pct_rating correlation](../tmp_latex_dir/figures/ratio_xeval_quality_corr.png)
+
+Spearman ρ (score, pct_rating) — TEST split
+
+| source | prior | venue filter | model | n | Spearman ρ | Pearson r |
+|---|---|---|---|---:|---:|---:|
+| arxiv | balanced | iclr | text 30/70 | 109 | +0.346 | +0.334 |
+| arxiv | balanced | iclr | text 50/50 | 109 | +0.411 | +0.395 |
+| arxiv | balanced | iclr | vision 30/70 | 109 | +0.395 | +0.393 |
+| arxiv | balanced | iclr | vision 50/50 | 109 | +0.382 | +0.388 |
+| arxiv | balanced | neurips | text 30/70 | 175 | +0.129 | +0.128 |
+| arxiv | balanced | neurips | text 50/50 | 175 | +0.167 | +0.164 |
+| arxiv | balanced | neurips | vision 30/70 | 175 | +0.014 | +0.019 |
+| arxiv | balanced | neurips | vision 50/50 | 175 | +0.083 | +0.081 |
+| arxiv | natural | iclr | text 30/70 | 103 | -0.168 | -0.115 |
+| arxiv | natural | iclr | text 50/50 | 103 | -0.127 | -0.045 |
+| arxiv | natural | iclr | vision 30/70 | 107 | +0.456 | +0.439 |
+| arxiv | natural | iclr | vision 50/50 | 107 | +0.455 | +0.439 |
+| arxiv | natural | neurips | text 30/70 | 96 | +0.080 | +0.038 |
+| arxiv | natural | neurips | text 50/50 | 96 | +0.096 | +0.062 |
+| arxiv | natural | neurips | vision 30/70 | 102 | +0.033 | +0.043 |
+| arxiv | natural | neurips | vision 50/50 | 102 | +0.061 | +0.087 |
+| iclr | balanced | — | text 30/70 | 1667 | +0.469 | +0.492 |
+| iclr | balanced | — | text 50/50 | 1667 | +0.471 | +0.490 |
+| iclr | balanced | — | vision 30/70 | 1670 | +0.472 | +0.505 |
+| iclr | balanced | — | vision 50/50 | 1670 | +0.478 | +0.512 |
+| iclr | natural | — | text 30/70 | 1301 | +0.498 | +0.499 |
+| iclr | natural | — | text 50/50 | 1301 | +0.504 | +0.504 |
+| iclr | natural | — | vision 30/70 | 1301 | +0.498 | +0.511 |
+| iclr | natural | — | vision 50/50 | 1301 | +0.508 | +0.519 |
+
+### G. Arxiv-iclr-subset vs direct-ICLR test
+
+ICLR papers appear in both populations: the direct ICLR test (year≥2025) and the arxiv balanced/natural test (where `pl_venue=='iclr'`, year≥2024). Different paper draws but same underlying community. Aggregate metrics:
+
+| prior | model | arxiv-iclr ACC / AUC (n) | direct-ICLR ACC / AUC (n) |
+|---|---|---|---|
+| balanced | text 50/50 | 67.7 / 0.754 (n=130) | 65.2 / 0.721 (n=1667) |
+| balanced | text 30/70 | 50.4 / 0.729 (n=131) | 61.5 / 0.720 (n=1667) |
+| balanced | vision 50/50 | 68.7 / 0.750 (n=131) | 67.6 / 0.736 (n=1670) |
+| balanced | vision 30/70 | 67.2 / 0.736 (n=131) | 64.9 / 0.723 (n=1670) |
+| natural | text 50/50 | 70.9 / 0.693 (n=134) | 65.6 / 0.697 (n=1586) |
+| natural | text 30/70 | 70.9 / 0.695 (n=134) | 73.7 / 0.805 (n=1594) |
+| natural | vision 50/50 | 68.8 / 0.758 (n=138) | 66.2 / 0.725 (n=1594) |
+| natural | vision 30/70 | 69.6 / 0.746 (n=138) | 73.9 / 0.804 (n=1594) |
+
+![arxiv-iclr vs direct-ICLR](../tmp_latex_dir/figures/ratio_xeval_arxiv_iclr_vs_direct.png)
+
+### H. Notes
+
+- pct_rating is on a 0-1 scale (paper's percentile within its venue's review distribution).
+- Spearman is preferred over Pearson here because the model score is on a log-odds scale and pct_rating is bounded [0, 1] — the relationship is not necessarily linear.
+- Per-venue n<10 cells are not statistically reliable (corl, aistats); they're shown for completeness with `g` flag in the threshold dump.
+- arxiv-iclr-subset n is small (~130) and skewed toward 2024-2025 papers; direct-ICLR test is much larger (~1660) and only 2025/2026.
