@@ -427,3 +427,35 @@ Each point = one (modality, train ratio, prior, year) cell. Color = modality + t
 ![Year trajectory](../tmp_latex_dir/figures/ratio_xeval_year_trajectory.png)
 
 4 panels (one per modality × train); lines per venue, x-axis = conference year. Look for venues with consistent up/down trends as opposed to year-to-year noise.
+
+
+---
+
+## Family-level analysis (vision robustness story)
+
+Venues grouped into 4 paper families: **NLP** (acl_family, colm), **General ML** (iclr, icml, neurips, aaai, aistats), **CV** (cvpr, iccv, eccv), **Robotics** (corl).
+
+### M. Per-venue heatmap — deployment cell (arxiv natural test)
+
+![per-venue heatmap natural](../tmp_latex_dir/figures/ratio_xeval_family_heatmap_arxiv_natural_test.png)
+
+Reading the heatmap: under natural-prior deployment, **text 50/50 wins or ties on most venues** (green boxes mostly fall on the text rows). Vision pulls ahead on a few smaller-n venues (AISTATS, COLM, ICCV) but is broadly behind on the high-n NLP/General-ML venues. This matches the Q1 finding: **for raw natural-prior accuracy, text is the right pick across families today.**
+
+### N. Family-aggregated ACC trajectory across years
+
+![family year trajectory](../tmp_latex_dir/figures/ratio_xeval_family_year_trajectory.png)
+
+On natural prior, NLP and General ML families are temporally flat across all 4 models. The CV family is more volatile — vision 50/50 actually peaks on CV-2025 papers while text 30/70 stays flat. (CV 2026 detail is on the BALANCED prior plot below — that's where the temporal shift is sharpest.)
+
+### O. Vision-minus-text gap by family — does vision advantage widen for 2026?
+
+![family vision-minus-text gap](../tmp_latex_dir/figures/ratio_xeval_family_vision_minus_text_2026.png)
+
+**The decisive plot.** Two panels: balanced prior (where the text-fragility shows) and natural prior (deployment cell). For each family, the vision-vs-text gap (averaged over 50/50 + 30/70 train ratios) on the 2024+25 baseline vs 2026 papers.
+
+- **Left panel (balanced)**: vision is already *ahead* of text on every family with data (+4 to +9pp on baseline). For **CV papers, the vision advantage widens from +4pp (baseline) to +26pp (2026) — a Δ of +22pp**. This is the single most decisive piece of evidence that **vision is more robust than text to temporal distribution shift in CV**, where the visual layout / figures stay informative even as the textual content shifts.
+- **Right panel (natural)**: text is ~10pp ahead of vision on every family — this is the current deployment story. The 2026 gap closes on CV (Δ +2.2 toward vision) but text still wins. So the headline conclusion is: **today's natural-prior deployment favors text, but the 2026 evidence on balanced test suggests vision will be the more robust choice as newer-year papers accumulate.**
+
+- **NLP and Robotics**: no 2026 papers in the y24up subset (NLP venues are mostly 2024-25; CORL is too small). Can't conclude on temporal shift for these.
+
+**Practical takeaway**: the modality choice depends on your deployment horizon. For current natural-prior accuracy, text 30/70. For CV-paper-heavy workloads under balanced evaluation, or for robustness to year-on-year drift, vision is the safer pick.
