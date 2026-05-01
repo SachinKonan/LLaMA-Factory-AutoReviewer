@@ -1,21 +1,38 @@
 # 7B Ratio Cross-Eval — Consolidated Report
 
-**Scope:** 4 model configs (text/vision × 50/50/30/70 train) × ICLR + arxiv × balanced/natural test priors × test+val splits.
+**One-paragraph TL;DR.** We trained Qwen2.5-7B (text) and Qwen2.5-VL-7B (vision) at two accept/reject ratios (50/50 and 30/70) and evaluated them on ICLR (year 25/26) and arxiv (y24up) test sets, each at *balanced* (50/50) and *natural* (~30% accept) test priors. **For accuracy under natural-prior deployment, train at 30/70**: text 30/70 hits **76.3%** raw on arxiv-natural and **73.7%** on ICLR-natural without calibration. Vision is 2-4pp behind on accuracy but **vision is more robust to temporal shift** (text models drop −20pp on CVPR-2026 papers; vision drops only −6pp or improves). **AUC and quality-correlation (ρ vs `pct_rating`) are positively correlated (ρ = +0.50 across 24 cells)** but they decouple: text on arxiv-natural-iclr has decent AUC (~0.72) but *negative* ρ with reviewer ratings, while vision on the same papers stays positive (ρ = +0.46) — an evidence-backed argument that vision tracks underlying quality more reliably than text under prior shift.
 
-- ICLR test+val are filtered to year ∈ {2025, 2026}.
-- Arxiv test+val are y24up (conference_year ≥ 2024).
-- For ICLR "natural" prior: test ratio = 30/70 (matches ICLR's ~30% accept rate).
-- For arxiv "natural" prior: per-conference natural acceptance rates (natrate; openaccept.org 5-year averages).
-- Score: log-odds = lp_accept[k] - lp_reject[k] at the decision step.
-- Calibration: τ* learned on val.
-  - ICLR: single τ* per (modality, train, test_prior) cell.
-  - Arxiv: per-(modality, train, eval_set, venue) τ* (sparse venues, val n<10, fall back to model-global τ*).
+## Two questions, two answers
 
-## Headline
+### Q1 — Which model is best for accuracy under natural-prior deployment?
 
-- **AUC**: vision 50/50 is the most *consistent* recipe (≈0.72-0.74 across all 4 test cells). On the matched-prior ICLR-natural (test=30/70) cell, *30/70-trained* models hit a much higher AUC (~0.80) for both modalities — suggests test-population drift between the balanced and 30/70 ICLR test sets, not just a prior difference.
-- **ACC** (depends on test prior): on natural-prior tests (ICLR 30/70, arxiv natrate), the matched-prior train recipe wins raw. On balanced tests, calibration converges all 4 (modality × ratio) cells to a tighter 64-68% band.
-- **Reject-recall** is the diagnostic for bias: 30/70-trained models on balanced tests have extreme reject-recall (~80-100%) at τ=0; calibration trades reject-recall for accept-recall to recover ACC — the biggest single calibration lift is **text 30/70 on arxiv balanced: +13.1pp**.
+![Q1 figure](../tmp_latex_dir/figures/ratio_xeval_summary_natural_acc.png)
+
+**Recipe-level answers (TEST split, calibrated unless noted):**
+- **ICLR natural** (test 30/70): **text 30/70** wins raw (73.7%); vision 30/70 is essentially tied (73.9%). Calibration **hurts** here (matched-prior models are already near-optimal).
+- **Arxiv natural** (natrate y24up): **text 50/50** wins raw (76.7%); text 30/70 is tied at 76.3%. Vision is ~3-4pp behind (72.0–70.0%).
+- **Single-recipe deployment** (one model serving both ICLR-style and arxiv-style natural-prior workloads): **text 30/70 raw** is the most consistent — within 1pp of the per-cell winner on both. Calibration is unnecessary for this recipe.
+
+### Q2 — Does AUC actually track quality?
+
+![Q2 figure](../tmp_latex_dir/figures/ratio_xeval_summary_auc_vs_quality.png)
+
+**Across 24 (model × test-population) cells: ρ(AUC, ρ_quality) = +0.50.**
+- AUC partially tracks ρ(score, `pct_rating`) — but they *decouple* in important cases.
+- **Most striking decoupling**: on `arxiv-natural-iclr`, text models reach AUC ≈ 0.72 but score *anti-correlates* with `pct_rating` (ρ = −0.13 to −0.17). Vision on the same papers stays AUC ≈ 0.75 with ρ = **+0.46**. **Same papers, same labels — text rejects high-quality papers and accepts low-quality ones under natural-prior shift; vision doesn't.**
+- **Practical implication**: AUC is a *necessary but not sufficient* signal of model quality. If you want a model that *ranks papers by underlying quality* (not just labels), verify with `ρ(score, pct_rating)` — it can be near-zero even with AUC > 0.7.
+
+### Calibration trade-off (raw → calibrated)
+
+![Recall arrows](../tmp_latex_dir/figures/ratio_xeval_summary_recall_arrows.png)
+
+Each model's raw (open) → calibrated (filled) movement on the (accept-recall, reject-recall) plane. Calibration trades reject-recall for accept-recall to maximize overall ACC; iso-accuracy diagonals show the trade. Bias-heavy models (e.g. text 30/70 on balanced priors) move the most.
+
+---
+
+Below: full per-cell tables, threshold dump, and the granular extended/temporal analyses. The headline figures above are the recommended summary for a 1-slide presentation.
+
+## Detailed numbers (full per-cell tables)
 
 ## Figures
 
