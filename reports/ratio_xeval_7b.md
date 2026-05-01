@@ -365,3 +365,48 @@ ICLR papers appear in both populations: the direct ICLR test (year≥2025) and t
 - Spearman is preferred over Pearson here because the model score is on a log-odds scale and pct_rating is bounded [0, 1] — the relationship is not necessarily linear.
 - Per-venue n<10 cells are not statistically reliable (corl, aistats); they're shown for completeness with `g` flag in the threshold dump.
 - arxiv-iclr-subset n is small (~130) and skewed toward 2024-2025 papers; direct-ICLR test is much larger (~1660) and only 2025/2026.
+
+---
+
+## Temporal & Cross-Test Analysis
+
+### I. Headline trends (this section)
+
+- **Text models collapse on CVPR 2026** (the most striking finding): text 50/50 drops **−20.8pp** (63 → 42), text 30/70 drops **−23.3pp** (55 → 31, *below random*) on 2026 papers vs the 2024+25 baseline. Vision is far more robust on the same papers: vision 50/50 −6pp, vision 30/70 actually *+4pp*. Conclusion: **CVPR 2026 papers are out-of-distribution for text but stay in-distribution for vision** — the visual layout / figures stay informative when the text-only signal fails.
+- **Text 30/70 has a +30pp swing on ICLR 2026**, but starting from a 36% baseline on 2024+25 — the baseline is already worse-than-random, so the "improvement" is a small-n regression to the mean rather than a true gain. The other (model × venue) cells have |Δ_2026| ≤ 7pp.
+- **AAAI is the most temporally stable venue**: |Δ_2026| ≤ 6pp across all 4 models.
+- **Direct-ICLR ↔ arxiv-iclr cross-test correlation**: ACC tracks decently (ρ = +0.59, r = +0.48 across 16 cells) but **AUC tracks weakly** (ρ = +0.25, r = +0.26). Because AUC is normally *more* invariant than ACC, the weaker AUC correlation suggests the two ICLR test populations *order* papers somewhat differently — likely a year-mix artifact (direct-ICLR is 25/26 only; arxiv-iclr-y24up includes 24/25/26).
+
+### J. Direct-ICLR vs arxiv-iclr per-cell agreement
+
+![ICLR-direct vs arxiv-iclr scatter](../tmp_latex_dir/figures/ratio_xeval_iclr_vs_arxiv_iclr.png)
+
+Each point = one (modality, train ratio, prior, year) cell. Color = modality + train; marker = balanced (○) / natural (□); open marker = 2025, filled = 2026. Diagonal = y=x. Linear fit shown.
+
+- ACC: ρ = +0.59, r = +0.48, n = 16
+- AUC: ρ = +0.25, r = +0.26, n = 16
+
+### K. 2026 vs 2024+25 baseline (arxiv balanced)
+
+![2026 surprise](../tmp_latex_dir/figures/ratio_xeval_2026_surprise.png)
+
+| venue | model | 2024+25 ACC | 2026 ACC | Δ | n_baseline | n_2026 |
+|---|---|---:|---:|---:|---:|---:|
+| aaai | text 30/70 | 50.7 | 52.9 | +2.2 | 75 | 70 |
+| aaai | text 50/50 | 52.0 | 55.7 | +3.7 ⬆ | 75 | 70 |
+| aaai | vision 30/70 | 56.0 | 57.1 | +1.1 | 75 | 70 |
+| aaai | vision 50/50 | 58.7 | 52.9 | -5.8 ⬇ | 75 | 70 |
+| cvpr | text 30/70 | 54.5 | 31.2 | -23.3 ⬇ | 211 | 64 |
+| cvpr | text 50/50 | 63.0 | 42.2 | -20.8 ⬇ | 211 | 64 |
+| cvpr | vision 30/70 | 60.7 | 65.1 | +4.4 ⬆ | 211 | 63 |
+| cvpr | vision 50/50 | 66.4 | 60.3 | -6.0 ⬇ | 211 | 63 |
+| iclr | text 30/70 | 36.2 | 66.1 | +29.9 ⬆ | 69 | 62 |
+| iclr | text 50/50 | 71.0 | 63.9 | -7.1 ⬇ | 69 | 61 |
+| iclr | vision 30/70 | 65.2 | 69.4 | +4.1 ⬆ | 69 | 62 |
+| iclr | vision 50/50 | 69.6 | 67.7 | -1.8 | 69 | 62 |
+
+### L. Per-venue ACC trajectory across years
+
+![Year trajectory](../tmp_latex_dir/figures/ratio_xeval_year_trajectory.png)
+
+4 panels (one per modality × train); lines per venue, x-axis = conference year. Look for venues with consistent up/down trends as opposed to year-to-year noise.
