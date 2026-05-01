@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +35,17 @@ def panel_relpath(sid: str) -> str:
     return f"data/images_panel/{sid}.png"
 
 
+# qwen2_vl's MM plugin scans the user message for <image>/<audio>/<video> and tries
+# to bind each tag to a media file. The paper markdown body occasionally contains
+# bare instances of these tags (HTML-derived papers, code blocks). Scrub them to a
+# bracketed form so the loader doesn't trip on stray tags before our terminal <image>.
+_STRAY_MM_TAG = re.compile(r"<(image|audio|video)>", re.IGNORECASE)
+
+
+def scrub_stray_mm_tags(text: str) -> str:
+    return _STRAY_MM_TAG.sub(lambda m: f"[{m.group(1).lower()}]", text)
+
+
 def transform_entry(entry: dict) -> dict | None:
     sid = entry["_metadata"]["submission_id"]
     panel_path = PANEL_DIR / f"{sid}.png"
@@ -49,7 +61,8 @@ def transform_entry(entry: dict) -> dict | None:
         return None
     for i, c in enumerate(entry["conversations"]):
         if i == last_human_idx:
-            new_convs.append({**c, "value": c["value"].rstrip() + "\n\n<image>"})
+            cleaned = scrub_stray_mm_tags(c["value"]).rstrip()
+            new_convs.append({**c, "value": cleaned + "\n\n<image>"})
         else:
             new_convs.append(c)
     out["conversations"] = new_convs
