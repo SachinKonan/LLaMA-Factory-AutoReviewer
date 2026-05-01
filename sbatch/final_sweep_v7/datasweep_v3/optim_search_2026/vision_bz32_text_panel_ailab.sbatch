@@ -5,8 +5,8 @@
 #SBATCH --mem=350G
 #SBATCH --gres=gpu:4
 #SBATCH --partition=ailab
-#SBATCH --output=logs/final_sweep_v7_datasweepv3/optim_search_2026/vision_bz32_text_panel/%j.out
-#SBATCH --error=logs/final_sweep_v7_datasweepv3/optim_search_2026/vision_bz32_text_panel/%j.err
+#SBATCH --output=/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/logs/final_sweep_v7_datasweepv3/optim_search_2026/vision_bz32_text_panel/%j.out
+#SBATCH --error=/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/logs/final_sweep_v7_datasweepv3/optim_search_2026/vision_bz32_text_panel/%j.err
 
 set -e
 cd /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer
