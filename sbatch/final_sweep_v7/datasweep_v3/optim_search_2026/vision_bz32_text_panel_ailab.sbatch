@@ -21,7 +21,7 @@ SHORT_NAME="bz32_lr1e-6_text_panel"
 DATASET="iclr_2020_2023_2025_2026_85_5_10_balanced_original_text_panel_v7_filtered"
 CONFIG_FILE="configs/final_sweep_v7_vision.yaml"
 TEMPLATE="qwen2_vl"
-CUTOFF_LEN=28000           # ~24,480 text + 3,280 image + slack
+CUTOFF_LEN=30000           # ~24,480 text + 3,280 image + qwen2_vl template overhead
 IMAGE_MIN_PIXELS=784
 IMAGE_MAX_PIXELS=4014080   # smart_resize no-op @ panel 2240x1148
 
