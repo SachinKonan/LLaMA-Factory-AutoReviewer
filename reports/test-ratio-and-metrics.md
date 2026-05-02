@@ -111,6 +111,39 @@ So in principle, **a single balanced test set suffices for every metric we care 
 
 ---
 
+## 5b. Aside — does AUC track quality better than balanced ACC?
+
+A reasonable intuition: AUC is rank-based (`P(score(accept) > score(reject))`) and `ρ(score, pct_rating)` is also rank-based (Spearman). Both operate on the score ordering, so they *should* correlate strongly — perhaps more strongly than balanced ACC (which is threshold-based at τ=0).
+
+**Empirically, in our data, balanced ACC tracks ρ_quality better than AUC does.** Apples-to-apples on the same 24 (model × test-population) subsets where pct_rating is available:
+
+| Predictor metric | Spearman ρ vs ρ_quality | Pearson r vs ρ_quality |
+|---|---:|---:|
+| AUC | +0.50 | +0.52 |
+| **balanced ACC** | **+0.66** | **+0.75** |
+
+Why? Two reasons specific to our data:
+
+1. **AUC compresses into a narrow band** (0.45 – 0.77 across 24 cells) — its discrimination between models is muted.
+2. **balanced ACC spreads more** (39.7 – 70.6) and the spread aligns with the ρ_quality spread.
+
+The cleanest illustration is the `arxiv-iclr-natural` cell (same papers, same labels):
+
+| Model | AUC | bACC | ρ_quality |
+|---|---:|---:|---:|
+| text 50/50 | 0.712 | 55.2 | **−0.127** |
+| text 30/70 | 0.719 | 50.0 | **−0.168** |
+| vision 50/50 | 0.759 | 67.1 | **+0.455** |
+| vision 30/70 | 0.747 | 66.3 | **+0.456** |
+
+Vision's AUC is only 0.04–0.05 higher than text's — but vision's bACC is 12–17pp higher and ρ_quality is **0.6 higher**. **bACC's sharper discrimination tracks the ρ_quality split; AUC's narrower spread doesn't.**
+
+**Deeper reason**: AUC measures whether the model *can* separate labeled accepts from labeled rejects at *some* threshold (an existence claim about the score's rank ordering). bACC measures whether the model's *natural* decision boundary (τ=0) aligns well with the labels. When a model's natural threshold is mis-placed (text 30/70's reject-bias), AUC stays high (the rank is fine) but bACC collapses (the threshold is wrong) — and that threshold-misalignment empirically turns out to correlate with quality-misalignment too.
+
+**So the bottom line for Axis-A measurement**: don't proxy `ρ(score, pct_rating)` with anything — measure it directly when you have a continuous quality signal. AUC is a partial proxy; bACC is a better one in our data; but neither is a substitute for the direct measurement.
+
+---
+
 ## 6. AUC consistency across train-ratio and modality
 
 **Within-cell AUC range** (how much do the 4 model configs disagree on each test cell?):
