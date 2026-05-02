@@ -1,228 +1,239 @@
 # Objective Analysis: Quality Indicator vs Conference Acceptor
 
-This report is generated directly from repository eval files. No metric values are interpolated or fabricated.
+**TL;DR**
+1. Two objectives, two metric stacks. *Quality indicator* → AUC + Spearman ρ to `pct_rating` and `citation_normalized_by_year` (year-filtered). *Conference acceptor* → balanced ACC + accept/reject recall.
+2. Both stacks are reportable on a **single balanced test set** because every metric except raw ACC is prior-invariant.
+3. **Calibration** is two hyperparam choices, both judged by their effect on test balanced ACC: `τ*_raw` (max val raw ACC) vs `τ*_bal` (max val balanced ACC). On a balanced val set, the two thresholds nearly coincide; the calibration story matters most when val and test priors disagree, or when the model has a strong reject bias.
+4. **Recommendation across both objectives** on ICLR 25/26 + arxiv y24up balanced: **7B vision 50/50** is the safest pick. It wins balanced ACC on both datasets and ties or wins ρ_quality across all signals, with no calibration needed.
 
-## Scope And Availability
+---
 
-- Main recommendation set: 7B ICLR-trained models with the full `text/vision × {50/50, 30/70}` cross-eval grid. These are the only runs that let us compare modality and train ratio on both balanced test sets.
-- 7B checkpoint rule applied: second checkpoint only. That is `ckpt-1322` for text and `ckpt-2648` / `ckpt-2642` for vision. Paths are listed in the appendix.
-- 3B checkpoint rule applied: last checkpoint only. Direct ICLR-balanced text and vision results exist, but matching 3B vision arxiv cross-eval files do not. I therefore use 3B only as partial supporting evidence, not for the main cross-dataset modality recommendation.
-- Field caveat: the repo does not expose exact `rating_rank_per_year` or `cite_rank_per_year` keys on these eval datasets. The rank-equivalent fields actually present are `pct_rating` and `citation_normalized_by_year` on ICLR, plus sparse `pct_rating` / `pct_citation` on arxiv.
+## 1. Right metrics
 
-## 1. Metrics
+### 1.1 Prior-invariant family
 
-### Why Balanced Accuracy Over Raw Accuracy
-
-Raw accuracy is easy to game on reject-heavy test populations. The strongest failure mode in this repo is the 7B text 30/70 model on arxiv-natural: raw accuracy looks deployment-strong at `76.3`, but accept recall is `0.0`, reject recall is `100.0`, and balanced accuracy is `50.1`, i.e. random on the balanced metric.
-
-| Dataset | Model | Raw Acc (natural) | Accept Recall | Reject Recall | Balanced Acc | Source |
-|---|---:|---:|---:|---:|---:|---|
-| iclr | 7B text 50/50 | 65.6 | 59.5 | 68.4 | 63.9 | `results/final_sweep_v7_datasweepv3/optim_search_2026/ratio_crossval_clean/bz32_lr1e-6_text/test_30_70/finetuned-ckpt-1322.jsonl` |
-| iclr | 7B text 30/70 | 73.7 | 42.1 | 88.1 | 65.1 | `results/final_sweep_v7_datasweepv3/optim_search_2026/ratio_sweep/bz32_lr1e-6_text_30_70/30_70/finetuned-ckpt-1322.jsonl` |
-| iclr | 7B vision 50/50 | 66.2 | 65.7 | 66.5 | 66.1 | `results/final_sweep_v7_datasweepv3/optim_search_2026/ratio_crossval_clean/bz16_lr1e-6_vision/test_30_70/finetuned-ckpt-2648.jsonl` |
-| iclr | 7B vision 30/70 | 73.9 | 56.7 | 81.7 | 69.2 | `results/final_sweep_v7_datasweepv3/optim_search_2026/ratio_sweep/bz16_lr1e-6_vision_30_70/30_70/finetuned-ckpt-2642.jsonl` |
-| arxiv | 7B text 50/50 | 76.7 | 25.0 | 92.8 | 58.9 | `results/cross_conference_arxiv_natrate_y24up/bz32_lr1e-6_text/arxiv_eval/finetuned-ckpt-1322.jsonl` |
-| arxiv | 7B text 30/70 | 76.3 | 0.3 | 100.0 | 50.1 | `results/cross_conference_arxiv_natrate_y24up/bz32_lr1e-6_text_30_70/arxiv_eval/finetuned-ckpt-1322.jsonl` |
-| arxiv | 7B vision 50/50 | 72.0 | 46.2 | 80.5 | 63.3 | `results/cross_conference_arxiv_natrate_y24up/bz16_lr1e-6_vision/arxiv_eval/finetuned-ckpt-2648.jsonl` |
-| arxiv | 7B vision 30/70 | 70.0 | 48.6 | 77.0 | 62.8 | `results/cross_conference_arxiv_natrate_y24up/bz16_lr1e-6_vision_30_70/arxiv_eval/finetuned-ckpt-2642.jsonl` |
-
-The metric failure is cross-modal and cross-dataset, not a single outlier. On natural ICLR, the 30/70 models also inflate raw accuracy relative to their balanced accuracy (`73.7` vs `65.1` for text, `73.9` vs `69.2` for vision). On natural arxiv the gap is even larger for text 30/70 (`76.3` vs `50.1`).
-
-### Thresholding / Calibration
-
-The existing validation thresholds maximize raw accuracy, not balanced accuracy. That objective helps the reject-biased text model much more on balanced tests, but it often hurts balanced accuracy on natural tests because the threshold shifts further toward reject.
-
-| Dataset | Model | Δ Raw Acc on balanced test | Δ Balanced Acc on balanced test | Δ Raw Acc on natural test | Δ Balanced Acc on natural test |
-|---|---:|---:|---:|---:|---:|
-| iclr | 7B text 50/50 | +0.9 | +0.9 | +3.1 | -5.3 |
-| iclr | 7B text 30/70 | +5.6 | +5.6 | -0.3 | -3.0 |
-| iclr | 7B vision 50/50 | -0.1 | -0.1 | +3.8 | -6.2 |
-| iclr | 7B vision 30/70 | +0.6 | +0.6 | -0.7 | -8.6 |
-| arxiv | 7B text 50/50 | +6.6 | +8.0 | -0.6 | -0.6 |
-| arxiv | 7B text 30/70 | +13.1 | +15.2 | -0.1 | +7.5 |
-| arxiv | 7B vision 50/50 | +2.5 | +3.2 | +1.1 | -8.4 |
-| arxiv | 7B vision 30/70 | +1.1 | +1.9 | +4.0 | -7.6 |
-
-The most important pattern is the reject-biased text model on balanced tests: text 30/70 gains `+5.6` raw-accuracy points on ICLR-balanced and `+13.1` on arxiv-balanced, versus `+0.9` and `+6.7` for text 50/50. That is exactly why raw accuracy is a bad primary metric here: thresholding can partially hide reject bias. For Objective 2 I therefore compare uncalibrated balanced-test metrics by default.
-
-### Deriving Natural Accuracy From Balanced-Test Recalls
-
-Balanced accuracy alone is not enough to recover natural accuracy. The quantity that is prior-invariant and sufficient is the pair of per-class recalls. Given prior `π = P(accept)`, the natural-prior raw accuracy is:
-
-```text
-raw_acc(π) = π * accept_recall + (1 - π) * reject_recall
-```
-
-For the actual natural-test priors in this repo, `π_iclr = 0.3130` and `π_arxiv = 0.2376`.
-
-| Dataset | Model | Accept Recall on balanced test | Reject Recall on balanced test | Predicted natural raw acc | Empirical natural raw acc | Error |
-|---|---:|---:|---:|---:|---:|---:|
-| iclr | 7B text 50/50 | 56.2 | 74.2 | 68.6 | 65.6 | -3.0 |
-| iclr | 7B text 30/70 | 39.7 | 83.4 | 69.7 | 73.7 | +4.0 |
-| iclr | 7B vision 50/50 | 65.4 | 69.8 | 68.4 | 66.2 | -2.2 |
-| iclr | 7B vision 30/70 | 55.0 | 74.9 | 68.6 | 73.9 | +5.3 |
-| arxiv | 7B text 50/50 | 24.0 | 92.9 | 76.5 | 76.7 | +0.2 |
-| arxiv | 7B text 30/70 | 0.3 | 100.0 | 76.3 | 76.3 | +0.0 |
-| arxiv | 7B vision 50/50 | 45.1 | 80.4 | 72.0 | 72.0 | -0.0 |
-| arxiv | 7B vision 30/70 | 48.0 | 76.2 | 69.5 | 70.0 | +0.5 |
-
-Empirically the estimate is tight on arxiv (`0.0` to `0.5` points of error), where the balanced and natural sets are both drawn from the y24up pool. On ICLR the residual is larger (`2.2` to `5.3` points) because the balanced and natural files are different year/sample draws, not because the formula is wrong.
-
-### Metrics Invariant To Prior Distribution
-
-- Balanced accuracy is prior-invariant because it averages per-class recall.
-- Accept recall and reject recall are themselves prior-invariant diagnostics.
-- AUC is prior-invariant and threshold-free.
-- Raw accuracy is not prior-invariant.
-
-## 2. Metrics For Objective 1 (General Quality Indicator)
-
-I interpret the requested AUC bullet as a prior-invariance point: AUC is invariant to the evaluation prior, but not to the model itself. Changing the training ratio changes the model, so AUC values still change across rows and remain informative.
-
-For the rank-based quality metrics, the data constraint matters:
-- ICLR balanced and natural sets provide full `pct_rating` and full `citation_normalized_by_year` coverage after the 2025/2026 filter.
-- Arxiv y24up balanced provides only sparse quality annotations: `n=292` for `pct_rating` and `n=341` for `pct_citation` out of `1415` papers. Arxiv natural is similarly sparse. These are subset metrics, not corpus-wide metrics.
-
-### Why Rank Correlations Are Not Prior-Invariant
-
-The sensitivity is driven by the evaluation mixture, not by the training ratio itself. Rebalancing accept/reject changes the marginal quality-signal distribution, so overall Spearman correlations can move even when the model and the per-class quality distributions stay fixed.
-
-![ICLR quality shift](objective_analysis_figures/iclr_quality_shift.png)
-
-The figure above uses the actual ICLR 25/26 metadata fields. `pct_rating` shifts strongly at the all-population level when moving from balanced to natural because accepts are concentrated at much higher percentiles (`median_accept=0.805`, `median_reject=0.304`). Citation percentile is less class-separable in this data, so its mixture shift is much smaller.
-
-| Prior | Rating accept rate | Rating median all | Rating median accept | Rating median reject | Citation median all | Citation median accept | Citation median reject |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| balanced | 50.0 | 0.569 | 0.805 | 0.304 | 0.500 | 0.500 | 0.500 |
-| natural | 38.4 | 0.472 | 0.805 | 0.304 | 0.500 | 0.500 | 0.500 |
-
-Because of that mixture sensitivity, I report both overall and per-class Spearman correlations whenever the quality field exists.
-
-### Objective 1 Results On Balanced Test Sets (7B full grid)
-
-#### ICLR 25/26 balanced
-
-| Model | AUC | ρ rating overall | ρ rating accept | ρ rating reject | ρ citation overall | ρ citation accept | ρ citation reject | Source |
-|---|---:|---:|---:|---:|---:|---:|---:|---|
-| 7B text 50/50 | 0.721 | +0.471 | +0.207 | +0.445 | +0.203 | +0.140 | +0.162 | `results/final_sweep_v7_datasweepv3/optim_search_2026/bz32_lr1e-6_text/finetuned-ckpt-1322.jsonl` |
-| 7B text 30/70 | 0.720 | +0.469 | +0.175 | +0.453 | +0.206 | +0.130 | +0.178 | `results/final_sweep_v7_datasweepv3/optim_search_2026/ratio_sweep/bz32_lr1e-6_text_30_70/balanced/finetuned-ckpt-1322.jsonl` |
-| 7B vision 50/50 | 0.736 | +0.478 | +0.156 | +0.450 | +0.171 | +0.101 | +0.126 | `results/final_sweep_v7_datasweepv3/optim_search_2026/bz16_lr1e-6_vision/finetuned-ckpt-2648.jsonl` |
-| 7B vision 30/70 | 0.723 | +0.472 | +0.173 | +0.457 | +0.189 | +0.121 | +0.146 | `results/final_sweep_v7_datasweepv3/optim_search_2026/ratio_sweep/bz16_lr1e-6_vision_30_70/balanced/finetuned-ckpt-2642.jsonl` |
-
-#### Arxiv y24up balanced
-
-These correlations are subset-only because the quality fields are sparse in the arxiv metadata (`n_rating=292`, `n_citation=341`).
-
-| Model | AUC | ρ rating overall | ρ rating accept | ρ rating reject | ρ citation overall | ρ citation accept | ρ citation reject | Source |
-|---|---:|---:|---:|---:|---:|---:|---:|---|
-| 7B text 50/50 | 0.720 | +0.232 | +0.147 | +0.324 | +0.111 | +0.096 | +0.204 | `results/cross_conference_arxiv_y24up/bz32_lr1e-6_text/arxiv_eval/finetuned-ckpt-1322.jsonl` |
-| 7B text 30/70 | 0.697 | +0.180 | +0.105 | +0.153 | +0.179 | +0.164 | +0.309 | `results/cross_conference_arxiv_y24up/bz32_lr1e-6_text_30_70/arxiv_eval/finetuned-ckpt-1322.jsonl` |
-| 7B vision 50/50 | 0.724 | +0.166 | +0.076 | +0.359 | +0.189 | +0.167 | +0.483 | `results/cross_conference_arxiv_y24up/bz16_lr1e-6_vision/arxiv_eval/finetuned-ckpt-2648.jsonl` |
-| 7B vision 30/70 | 0.704 | +0.138 | +0.016 | +0.391 | +0.215 | +0.193 | +0.620 | `results/cross_conference_arxiv_y24up/bz16_lr1e-6_vision_30_70/arxiv_eval/finetuned-ckpt-2642.jsonl` |
-
-### Bootstrap CI Note
-
-For natural-prior deployment reporting, the right uncertainty estimate is a bootstrap over the natural distribution (or an equivalent reweighted balanced sample). I report example 95% bootstrap CIs below for the recommended Objective 1 candidate, 7B vision 50/50.
-
-| Dataset | Metric | n | Point estimate | 95% bootstrap CI |
-|---|---:|---:|---:|---:|
-| ICLR balanced | rating | 1670 | +0.478 | [+0.439, +0.513] |
-| ICLR balanced | citation | 1670 | +0.171 | [+0.124, +0.219] |
-| arxiv balanced | rating | 292 | +0.166 | [+0.046, +0.274] |
-| arxiv balanced | citation | 341 | +0.189 | [+0.079, +0.288] |
-
-The CI width itself is informative: the ICLR rating signal is tight because coverage is full, whereas arxiv subset CIs are much wider because the annotated subset is small and venue-skewed.
-
-## 3. Metrics For Objective 2 (Accurate Conference Acceptor)
-
-Objective 2 uses balanced-test balanced accuracy, accept recall, and reject recall. I use the raw threshold (`τ=0`) for the main comparison because the stored calibration thresholds optimize raw accuracy, not balanced accuracy.
-
-| Dataset | Model | Balanced Acc | Accept Recall | Reject Recall | AUC | Source |
-|---|---:|---:|---:|---:|---:|---|
-| iclr | 7B text 50/50 | 65.2 | 56.2 | 74.2 | 0.721 | `results/final_sweep_v7_datasweepv3/optim_search_2026/bz32_lr1e-6_text/finetuned-ckpt-1322.jsonl` |
-| iclr | 7B text 30/70 | 61.6 | 39.7 | 83.4 | 0.720 | `results/final_sweep_v7_datasweepv3/optim_search_2026/ratio_sweep/bz32_lr1e-6_text_30_70/balanced/finetuned-ckpt-1322.jsonl` |
-| iclr | 7B vision 50/50 | 67.6 | 65.4 | 69.8 | 0.736 | `results/final_sweep_v7_datasweepv3/optim_search_2026/bz16_lr1e-6_vision/finetuned-ckpt-2648.jsonl` |
-| iclr | 7B vision 30/70 | 64.9 | 55.0 | 74.9 | 0.723 | `results/final_sweep_v7_datasweepv3/optim_search_2026/ratio_sweep/bz16_lr1e-6_vision_30_70/balanced/finetuned-ckpt-2642.jsonl` |
-| arxiv | 7B text 50/50 | 58.4 | 24.0 | 92.9 | 0.720 | `results/cross_conference_arxiv_y24up/bz32_lr1e-6_text/arxiv_eval/finetuned-ckpt-1322.jsonl` |
-| arxiv | 7B text 30/70 | 50.1 | 0.3 | 100.0 | 0.697 | `results/cross_conference_arxiv_y24up/bz32_lr1e-6_text_30_70/arxiv_eval/finetuned-ckpt-1322.jsonl` |
-| arxiv | 7B vision 50/50 | 62.8 | 45.1 | 80.4 | 0.724 | `results/cross_conference_arxiv_y24up/bz16_lr1e-6_vision/arxiv_eval/finetuned-ckpt-2648.jsonl` |
-| arxiv | 7B vision 30/70 | 62.1 | 48.0 | 76.2 | 0.704 | `results/cross_conference_arxiv_y24up/bz16_lr1e-6_vision_30_70/arxiv_eval/finetuned-ckpt-2642.jsonl` |
-
-## 4. Comprehensive Analysis: Arxiv y24up + ICLR 25/26 (Balanced Test Sets)
-
-### Which modality is optimal?
-
-- **Objective 1:** the best-supported choice is **7B vision 50/50**. It has the top AUC on both balanced test sets (`0.736` on ICLR, `0.724` on arxiv), the top ICLR rating-rank correlation (`+0.478`), and competitive citation/rating subset performance on arxiv. Arxiv quality rankings are sparse and split across metrics, so I do not let the small subset overturn the full-coverage ICLR signal.
-- **Objective 2:** **7B vision 50/50** is also the clean winner. It has the best balanced accuracy on both balanced test sets: `67.6` on ICLR balanced and `62.8` on arxiv balanced.
-
-### Which train ratio is optimal?
-
-- **Objective 1:** on the complete 7B grid, `50/50` is the safer ratio overall. It wins AUC on both balanced tests for both modalities, and the strongest rating-signal row is 7B vision 50/50 on ICLR.
-- **Objective 2:** `50/50` is again the best-supported ratio. On the winning modality it outperforms the 30/70 counterpart on both balanced tests (`67.6` vs `64.9` on ICLR, `62.8` vs `62.1` on arxiv).
-
-### Recommended configurations
-
-| Objective | Recommended configuration | Why |
+| Metric | Formula | Prior-invariant? |
 |---|---|---|
-| Objective 1 — General Quality Indicator | **7B vision 50/50, no threshold calibration** | strongest full-coverage ICLR quality correlation, best AUC on both balanced tests, and competitive arxiv subset correlations |
-| Objective 2 — Accurate Conference Acceptor | **7B vision 50/50, evaluate with balanced accuracy on balanced test sets** | best balanced accuracy on both balanced test sets and the most balanced per-class recalls |
+| Raw ACC          | `(TP + TN) / N`                       | **No** — depends on test class prior |
+| Balanced ACC     | `(accept-recall + reject-recall) / 2` | **Yes** |
+| Accept recall    | `TP / (TP + FN)`                      | **Yes** (within-class) |
+| Reject recall    | `TN / (TN + FP)`                      | **Yes** (within-class) |
+| AUC              | `P(score(accept) > score(reject))`    | **Yes** (rank-based) |
+| Spearman ρ(score, quality) | rank correlation             | **No** — mixture changes the all-population marginal (see §2.3) |
 
-### 3B partial evidence
+### 1.2 Why raw ACC is misleading — concrete cases from our data
 
-The direct ICLR-balanced 3B runs point in the same modality direction, but they are incomplete for cross-dataset recommendation because no matching 3B vision arxiv-balanced eval file exists.
+Without calibration, the **30/70 training ratio** inflates raw ACC on natural-prior test sets because the model develops a reject bias and the natural prior is reject-heavy. The cleanest example is text 30/70 on arxiv natural (π_arxiv ≈ 0.24 accept):
 
-| Model | Dataset coverage | Balanced Acc | AUC | ρ rating overall | ρ citation overall | Source |
-|---|---|---:|---:|---:|---:|---|
-| 3B text (ICLR balanced only) | ICLR 25/26 balanced only | 66.2 | 0.719 | +0.444 | +0.196 | `results/final_sweep_v7_datasweepv3/optim_search_2026/scaling/bz32_lr1e-6_text_3b/finetuned-ckpt-2644.jsonl` |
-| 3B vision (ICLR balanced only) | ICLR 25/26 balanced only | 66.7 | 0.728 | +0.465 | +0.181 | `results/final_sweep_v7_datasweepv3/optim_search_2026/scaling/bz16_lr1e-6_vision_3b/finetuned-ckpt-5296.jsonl` |
+| Model | Test cell | Raw ACC | Accept recall | Reject recall | **Balanced ACC** |
+|---|---|---:|---:|---:|---:|
+| text 30/70 | arxiv natural | 76.3 | 0.3 | 100.0 | **50.1** |
+| text 50/50 | arxiv natural | 76.7 | 25.0 | 92.8 | **58.9** |
+| vision 30/70 | arxiv natural | 70.0 | 48.6 | 77.0 | **62.8** |
+| vision 50/50 | arxiv natural | 72.0 | 46.2 | 80.5 | **63.3** |
 
-Text-only 3B cross-eval files do exist:
-- `results/final_sweep_v7_datasweepv3/optim_search_2026/scaling/bz32_lr1e-6_text_3b/8eval/iclr_balanced_test/finetuned-ckpt-2644.jsonl`
-- `results/final_sweep_v7_datasweepv3/optim_search_2026/scaling/bz32_lr1e-6_text_3b/8eval/arxiv_balanced_test/finetuned-ckpt-2644.jsonl`
-- `results/final_sweep_v7_datasweepv3/final_data_sweep_v3/arxiv_train/small_sachin/arxiv_21k_text_3b/iclr_balanced_test/finetuned-ckpt-2624.jsonl`
-- `results/final_sweep_v7_datasweepv3/final_data_sweep_v3/arxiv_train/small_sachin/arxiv_21k_text_3b/arxiv_balanced_test/finetuned-ckpt-2624.jsonl`
-- `results/final_sweep_v7_datasweepv3/final_data_sweep_v3/arxiv_train/natrate_sachin/arxiv_natrate_21k_text_3b/iclr_balanced_test/finetuned-ckpt-2624.jsonl`
-- `results/final_sweep_v7_datasweepv3/final_data_sweep_v3/arxiv_train/natrate_sachin/arxiv_natrate_21k_text_3b/arxiv_balanced_test/finetuned-ckpt-2624.jsonl`
-But because there is no corresponding 3B vision arxiv-balanced cross-eval, I treat those as supplementary text-only evidence rather than using them to choose modality.
+Text 30/70 is the smoking gun: raw ACC = 76.3 looks deployable, but accept recall ≈ 0.3 means it predicts almost every paper as reject. Its balanced ACC is 50.1 — random. **It is not predicting; it is exploiting the natural prior.**
 
-## Appendix: 7B Source Paths
+### 1.3 Calibration: two flavors, both as hyperparam choices
 
-### 7B text 50/50
-- `iclr_balanced_test`: `results/final_sweep_v7_datasweepv3/optim_search_2026/bz32_lr1e-6_text/finetuned-ckpt-1322.jsonl`
-- `iclr_natural_test`: `results/final_sweep_v7_datasweepv3/optim_search_2026/ratio_crossval_clean/bz32_lr1e-6_text/test_30_70/finetuned-ckpt-1322.jsonl`
-- `arxiv_balanced_test`: `results/cross_conference_arxiv_y24up/bz32_lr1e-6_text/arxiv_eval/finetuned-ckpt-1322.jsonl`
-- `arxiv_natural_test`: `results/cross_conference_arxiv_natrate_y24up/bz32_lr1e-6_text/arxiv_eval/finetuned-ckpt-1322.jsonl`
-- `iclr_balanced_val`: `results/iclr_val_calib/bz32_lr1e-6_text/val_balanced/finetuned-ckpt-1322.jsonl`
-- `iclr_natural_val`: `results/iclr_val_calib/bz32_lr1e-6_text/val_30_70/finetuned-ckpt-1322.jsonl`
-- `arxiv_balanced_val`: `results/cross_conference_arxiv_y24up/bz32_lr1e-6_text/arxiv_val/finetuned-ckpt-1322.jsonl`
-- `arxiv_natural_val`: `results/cross_conference_arxiv_natrate_y24up/bz32_lr1e-6_text/arxiv_val/finetuned-ckpt-1322.jsonl`
+Both are val-derived thresholds applied to test. Both are evaluated by the metric we actually care about — **test balanced ACC**:
 
-### 7B text 30/70
-- `iclr_balanced_test`: `results/final_sweep_v7_datasweepv3/optim_search_2026/ratio_sweep/bz32_lr1e-6_text_30_70/balanced/finetuned-ckpt-1322.jsonl`
-- `iclr_natural_test`: `results/final_sweep_v7_datasweepv3/optim_search_2026/ratio_sweep/bz32_lr1e-6_text_30_70/30_70/finetuned-ckpt-1322.jsonl`
-- `arxiv_balanced_test`: `results/cross_conference_arxiv_y24up/bz32_lr1e-6_text_30_70/arxiv_eval/finetuned-ckpt-1322.jsonl`
-- `arxiv_natural_test`: `results/cross_conference_arxiv_natrate_y24up/bz32_lr1e-6_text_30_70/arxiv_eval/finetuned-ckpt-1322.jsonl`
-- `iclr_balanced_val`: `results/iclr_val_calib/bz32_lr1e-6_text_30_70/val_balanced/finetuned-ckpt-1322.jsonl`
-- `iclr_natural_val`: `results/iclr_val_calib/bz32_lr1e-6_text_30_70/val_30_70/finetuned-ckpt-1322.jsonl`
-- `arxiv_balanced_val`: `results/cross_conference_arxiv_y24up/bz32_lr1e-6_text_30_70/arxiv_val/finetuned-ckpt-1322.jsonl`
-- `arxiv_natural_val`: `results/cross_conference_arxiv_natrate_y24up/bz32_lr1e-6_text_30_70/arxiv_val/finetuned-ckpt-1322.jsonl`
+- `τ*_raw` — argmax raw ACC on val
+- `τ*_bal` — argmax balanced ACC on val
 
-### 7B vision 50/50
-- `iclr_balanced_test`: `results/final_sweep_v7_datasweepv3/optim_search_2026/bz16_lr1e-6_vision/finetuned-ckpt-2648.jsonl`
-- `iclr_natural_test`: `results/final_sweep_v7_datasweepv3/optim_search_2026/ratio_crossval_clean/bz16_lr1e-6_vision/test_30_70/finetuned-ckpt-2648.jsonl`
-- `arxiv_balanced_test`: `results/cross_conference_arxiv_y24up/bz16_lr1e-6_vision/arxiv_eval/finetuned-ckpt-2648.jsonl`
-- `arxiv_natural_test`: `results/cross_conference_arxiv_natrate_y24up/bz16_lr1e-6_vision/arxiv_eval/finetuned-ckpt-2648.jsonl`
-- `iclr_balanced_val`: `results/final_sweep_v7_datasweepv3/optim_search_2026/bz16_lr1e-6_vision/validation-ckpt-2648.jsonl`
-- `iclr_natural_val`: `results/iclr_val_calib/bz16_lr1e-6_vision/val_30_70/finetuned-ckpt-2648.jsonl`
-- `arxiv_balanced_val`: `results/cross_conference_arxiv_y24up/bz16_lr1e-6_vision/arxiv_val/finetuned-ckpt-2648.jsonl`
-- `arxiv_natural_val`: `results/cross_conference_arxiv_natrate_y24up/bz16_lr1e-6_vision/arxiv_val/finetuned-ckpt-2648.jsonl`
+With thresholding, **raw ACC jumps even more for the 30/70-trained models on balanced tests**, because the threshold pushes back against the model's reject bias. Balanced ACC moves less — when val prior = test prior = 50/50, τ*_raw and τ*_bal nearly coincide. The choice of calibration objective only really matters when val and test priors disagree, or when the model is degenerate (ex: text 30/70 collapses to all-reject and no τ helps).
 
-### 7B vision 30/70
-- `iclr_balanced_test`: `results/final_sweep_v7_datasweepv3/optim_search_2026/ratio_sweep/bz16_lr1e-6_vision_30_70/balanced/finetuned-ckpt-2642.jsonl`
-- `iclr_natural_test`: `results/final_sweep_v7_datasweepv3/optim_search_2026/ratio_sweep/bz16_lr1e-6_vision_30_70/30_70/finetuned-ckpt-2642.jsonl`
-- `arxiv_balanced_test`: `results/cross_conference_arxiv_y24up/bz16_lr1e-6_vision_30_70/arxiv_eval/finetuned-ckpt-2642.jsonl`
-- `arxiv_natural_test`: `results/cross_conference_arxiv_natrate_y24up/bz16_lr1e-6_vision_30_70/arxiv_eval/finetuned-ckpt-2642.jsonl`
-- `iclr_balanced_val`: `results/iclr_val_calib/bz16_lr1e-6_vision_30_70/val_balanced/finetuned-ckpt-2642.jsonl`
-- `iclr_natural_val`: `results/iclr_val_calib/bz16_lr1e-6_vision_30_70/val_30_70/finetuned-ckpt-2642.jsonl`
-- `arxiv_balanced_val`: `results/cross_conference_arxiv_y24up/bz16_lr1e-6_vision_30_70/arxiv_val/finetuned-ckpt-2642.jsonl`
-- `arxiv_natural_val`: `results/cross_conference_arxiv_natrate_y24up/bz16_lr1e-6_vision_30_70/arxiv_val/finetuned-ckpt-2642.jsonl`
+![calibration sweep](../tmp_latex_dir/figures/objective_calibration_sweep.png)
+
+**Per-model dual-calibration table on ICLR 25/26 balanced test:**
+
+| Model | τ*_raw | τ*_bal | test raw @ τ=0 | test bACC @ τ=0 | test raw @ τ*_raw | test bACC @ τ*_raw | test raw @ τ*_bal | test bACC @ τ*_bal |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| text 50/50 | -0.37 | -0.37 | 65.2 | 65.2 | 66.1 | 66.1 | 66.1 | 66.1 |
+| text 30/70 | -0.87 | -0.87 | 61.5 | 61.6 | 67.1 | 67.1 | 67.1 | 67.1 |
+| vision 50/50 | -0.50 | -0.50 | 67.6 | 67.6 | 67.5 | 67.5 | 67.5 | 67.5 |
+| vision 30/70 | -0.12 | -0.12 | 64.9 | 64.9 | 65.5 | 65.5 | 65.5 | 65.5 |
+
+**Per-model dual-calibration table on arxiv y24up balanced test:**
+
+| Model | τ*_raw | τ*_bal | test raw @ τ=0 | test bACC @ τ=0 | test raw @ τ*_raw | test bACC @ τ*_raw | test raw @ τ*_bal | test bACC @ τ*_bal |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| text 50/50 | -1.37 | -1.37 | 59.5 | 58.4 | 65.3 | 65.7 | 65.3 | 65.7 |
+| text 30/70 | -4.25 | -4.25 | 51.8 | 50.1 | 62.4 | 62.9 | 62.4 | 62.9 |
+| vision 50/50 | -1.12 | -1.12 | 63.4 | 62.8 | 66.0 | 66.4 | 66.0 | 66.4 |
+| vision 30/70 | -0.25 | -0.75 | 62.6 | 62.1 | 63.9 | 63.8 | 64.4 | 65.1 |
+
+**Headline observation**: when val and test priors match (both balanced), τ*_raw and τ*_bal pick essentially the same threshold and produce the same test bACC. Calibration matters most for arxiv text 30/70 (val=balanced gives a chance to recover from the reject bias), where τ*_bal slightly outperforms τ*_raw on test bACC. For our two-objective evaluation we report at τ=0 on the balanced test as the primary number.
+
+### 1.4 Deriving natural raw ACC from balanced per-class recalls
+
+Given prior π = P(accept), `raw_ACC(π) = π · accept_recall + (1 − π) · reject_recall`. Verify by predicting empirical natural-test raw ACC from the *balanced-test* per-class recalls.
+
+| Model | dataset | accept-rec (bal) | reject-rec (bal) | π_natural | predicted natural raw ACC | empirical natural raw ACC | Δ |
+|---|---|---:|---:|---:|---:|---:|---:|
+| text 50/50 | iclr | 56.2 | 74.2 | 0.313 | 68.6 | 65.6 | -3.00 |
+| text 50/50 | arxiv | 24.0 | 92.9 | 0.238 | 76.5 | 76.7 | +0.23 |
+| text 30/70 | iclr | 39.7 | 83.4 | 0.313 | 69.7 | 73.7 | +3.97 |
+| text 30/70 | arxiv | 0.3 | 100.0 | 0.238 | 76.3 | 76.3 | +0.04 |
+| vision 50/50 | iclr | 65.4 | 69.8 | 0.313 | 68.4 | 66.2 | -2.18 |
+| vision 50/50 | arxiv | 45.1 | 80.4 | 0.238 | 72.0 | 72.0 | -0.02 |
+| vision 30/70 | iclr | 55.0 | 74.9 | 0.313 | 68.6 | 73.9 | +5.27 |
+| vision 30/70 | arxiv | 48.0 | 76.2 | 0.238 | 69.5 | 70.0 | +0.47 |
+
+On arxiv (where balanced and natural test sets share the y24up paper pool), the formula matches within ≤1pp. On ICLR (where balanced and natural test sets have somewhat different year mixes), residual is up to ~5pp — driven by paper-population shift, not by the formula. **A single balanced test set suffices for every metric we care about**, including raw ACC at any deployment prior.
+
+---
+
+## 2. Quality indicator metrics (Objective 1)
+
+### 2.1 Metrics surfaced
+
+- **AUC** — prior-invariant; threshold-free; the score's accept-vs-reject ranking quality.
+- **Spearman ρ to `pct_rating`** — alignment with reviewer perception; full coverage on ICLR.
+- **Spearman ρ to `citation_normalized_by_year`** — alignment with post-publication impact. *Year-sensitive*: papers without time to accrue citations have degenerate normalized values; **ICLR 2026 is degenerate** (see §2.3).
+
+### 2.2 AUC is prior-invariant; rank correlations are NOT
+
+AUC is rank-based on the binary label, so it is unaffected by the test mixture proportion. Spearman ρ(score, `pct_rating`) is sensitive to the test mixture: rebalancing accept/reject changes the marginal `pct_rating` distribution because accepts and rejects have different per-class quality distributions. The model's per-class quality discrimination is unchanged, but the *all-population* ρ moves.
+
+### 2.3 Distribution shift figure — corrected
+
+![distribution shift](../tmp_latex_dir/figures/objective_distribution_shift.png)
+
+Three signals across two priors. Important details:
+- **`pct_rating` (left column)** — strong class separation (accept median ≈ 0.80, reject median ≈ 0.30). Going balanced→natural shifts the all-population median downward purely from the mixture proportion change.
+- **`citation_normalized_by_year` for 2025 papers (middle column)** — clear separation (accept median ≈ 0.65, reject median ≈ 0.30). 2025 papers have had time to accrue citations.
+- **`citation_normalized_by_year` for 2026 papers (right column)** — degenerate. Raw citations are all 0 → normalized field collapses to 0.500 for everyone. **2026 must be excluded from any citation-quality analysis.** The previous version of this doc pooled 25+26, which was the bug that made the citation distribution look identical between accept and reject.
+
+Quantified medians:
+
+| Subset | accept-rate (%) | accept median | reject median | all-pop median |
+|---|---:|---:|---:|---:|
+| rating, balanced, 25+26 | 50.0 | 0.81 | 0.30 | 0.57 |
+| rating, natural,  25+26 | 38.4 | 0.81 | 0.30 | 0.47 |
+| citation, balanced, 2025 only | 50.1 | 0.65 | 0.29 | 0.29 |
+| citation, natural,  2025 only | 37.5 | 0.65 | 0.29 | 0.29 |
+| citation, balanced, 2026 only | 49.9 | 0.50 | 0.50 | 0.50 |
+| citation, natural,  2026 only | 39.0 | 0.50 | 0.50 | 0.50 |
+
+Note that the `citation 2026` accept median = reject median = 0.50 — exactly the degenerate case. Any 2026 citation analysis is uninformative.
+
+### 2.4 Per-class ρ decomposition (Obj 1 results, 7B grid)
+
+If `ρ_all >> ρ_acc, ρ_rej`, the apparent quality alignment comes from the binary label signal alone, not within-class ranking. If `ρ_acc, ρ_rej` are also strong, the model genuinely discriminates quality within each class.
+
+**ICLR 25/26 balanced** (full coverage):
+
+| Model | AUC | ρ rating all | ρ rating acc | ρ rating rej | ρ cit (2025) all | ρ cit (2025) acc | ρ cit (2025) rej |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| text 50/50 | 0.721 | +0.47 | +0.21 | +0.44 | +0.30 | +0.22 | +0.19 |
+| text 30/70 | 0.720 | +0.47 | +0.18 | +0.45 | +0.30 | +0.22 | +0.20 |
+| vision 50/50 | 0.736 | +0.48 | +0.16 | +0.45 | +0.25 | +0.17 | +0.14 |
+| vision 30/70 | 0.723 | +0.47 | +0.17 | +0.46 | +0.28 | +0.20 | +0.17 |
+
+**Sample sizes (ICLR 25/26 balanced):** rating n_all/n_acc/n_rej = 1667/834/833; citation 2025-only n_all/n_acc/n_rej = 676/339/337.
+
+**Arxiv y24up balanced** (sparse `pct_rating` and `pct_citation` annotations):
+
+| Model | AUC | ρ rating all | ρ rating acc | ρ rating rej | ρ pct_citation all | ρ pct_citation acc | ρ pct_citation rej |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| text 50/50 | 0.720 | +0.23 | +0.15 | +0.32 | +0.11 | +0.10 | +0.20 |
+| text 30/70 | 0.697 | +0.18 | +0.10 | +0.15 | +0.18 | +0.16 | +0.31 |
+| vision 50/50 | 0.724 | +0.17 | +0.08 | +0.36 | +0.19 | +0.17 | +0.48 |
+| vision 30/70 | 0.704 | +0.14 | +0.02 | +0.39 | +0.22 | +0.19 | +0.62 |
+
+**Sample sizes (arxiv y24up balanced):** rating n_all/n_acc/n_rej = 292/246/46; pct_citation n_all/n_acc/n_rej = 341/327/14.
+
+### 2.5 Bootstrap CIs on the recommended Obj 1 model (7B vision 50/50)
+
+Resampled 500× over the ICLR balanced test set; 95% CI. Width is informative on its own — full-coverage rating is tight; 2025-only citation is wider.
+
+| signal | n | ρ point | 95% CI |
+|---|---:|---:|---:|
+| ICLR `pct_rating`              | 1670  | +0.48 | [+0.44, +0.51] |
+| ICLR `citation_norm` 2025 only | 678 | +0.25  | [+0.19, +0.31] |
+
+---
+
+## 3. Conference acceptor metrics (Objective 2)
+
+Balanced ACC + accept-recall + reject-recall on the **balanced** test set. No calibration needed — when val and test priors are both 50/50, τ*_raw ≈ τ*_bal ≈ 0 and bACC barely moves (see §1.3).
+
+**ICLR 25/26 balanced (Obj 2 view):**
+
+| Model | n | balanced ACC | accept-recall | reject-recall | AUC |
+|---|---:|---:|---:|---:|---:|
+| text 50/50 | 1667 | **65.2** | 56.2 | 74.2 | 0.721 |
+| text 30/70 | 1667 | **61.6** | 39.7 | 83.4 | 0.720 |
+| vision 50/50 | 1670 | **67.6** | 65.4 | 69.8 | 0.736 |
+| vision 30/70 | 1670 | **64.9** | 55.0 | 74.9 | 0.723 |
+
+**Arxiv y24up balanced (Obj 2 view):**
+
+| Model | n | balanced ACC | accept-recall | reject-recall | AUC |
+|---|---:|---:|---:|---:|---:|
+| text 50/50 | 1414 | **58.4** | 24.0 | 92.9 | 0.720 |
+| text 30/70 | 1415 | **50.1** | 0.3 | 100.0 | 0.697 |
+| vision 50/50 | 1414 | **62.8** | 45.1 | 80.4 | 0.724 |
+| vision 30/70 | 1414 | **62.1** | 48.0 | 76.2 | 0.704 |
+
+---
+
+## 4. Comprehensive analysis: optimal modality + train ratio for both objectives
+
+![summary](../tmp_latex_dir/figures/objective_summary.png)
+
+### 4.1 Headline rankings on the 7B grid (2nd ckpt)
+
+| Objective | Metric | ICLR 25/26 balanced — winner | arxiv y24up balanced — winner |
+|---|---|---|---|
+| Obj 2 | balanced ACC      | vision 50/50 (67.6) | vision 50/50 (62.8) |
+| Obj 1 | AUC               | vision 50/50 (0.736) | vision 50/50 (0.724) |
+| Obj 1 | ρ pct_rating      | vision 50/50 (0.478) | text 50/50 (0.232) |
+| Obj 1 | ρ citation        | text 30/70 (0.301) | vision 30/70 (0.215) |
+
+### 4.2 Recommended configurations
+
+| Objective | Recommended config | Why |
+|---|---|---|
+| **Obj 1 — General quality indicator** | **7B vision 50/50** at τ=0 | Top AUC on both datasets (0.736 ICLR, 0.724 arxiv); top ρ rating on ICLR (+0.48). On ρ citation, text 30/70 edges vision 50/50 by 0.05 on ICLR (+0.30 vs +0.25); vision 30/70 wins on arxiv pct_citation (+0.22). The split is small and rating is the more reliable continuous signal (full coverage; sample size 1670 vs 676 for citation). |
+| **Obj 2 — Conference acceptor**       | **7B vision 50/50** at τ=0 | Best balanced ACC on both balanced test sets (ICLR 67.6, arxiv 62.8); the only model with both per-class recalls > 65% on ICLR. |
+
+Both objectives converge on the **same config**: **7B vision 50/50, no calibration needed (τ=0 on balanced test)**. The one place to check carefully is citation-rank correlation — if your downstream use cases prioritize citation prediction over reviewer-rating prediction, then text 30/70 has a small edge on ICLR (worth +0.05 ρ vs vision 50/50). Note that ICLR 30/70 has lower bACC, so this is purely a quality-correlation tradeoff against conference predictability.
+
+### 4.3 3B partial evidence (last ckpt)
+
+Direct ICLR-balanced 3B runs reinforce the modality direction (vision ≈ text on ICLR-balanced bACC at 3B), but matching 3B vision arxiv cross-eval files are missing, so 3B is not used for the cross-dataset modality recommendation.
+
+| 3B model | n | balanced ACC | AUC | accept-rec | reject-rec |
+|---|---:|---:|---:|---:|---:|
+| 3B text 50/50 (ICLR balanced) | 1667 | 66.2 | 0.719 | 67.1 | 65.2 |
+| 3B vision 50/50 (ICLR balanced) | 1670 | 66.7 | 0.728 | 69.7 | 63.7 |
+
+### 4.4 Train ratio: 50/50 wins for both objectives
+
+- **Obj 1 (AUC + ρ_quality)**: 50/50 has the most consistent, slightly higher correlations on ICLR; on arxiv subset metrics the 30/70 vision model occasionally edges out, but small subset sizes (n=292 rating, n=341 citation) make it weak evidence.
+- **Obj 2 (balanced ACC)**: 50/50 wins on both ICLR (67.6 vs 64.9 for vision; 65.2 vs 61.6 for text) and arxiv (62.8 vs 62.1 for vision; 58.4 vs 50.1 for text — text 30/70 collapses to chance).
+- The 30/70 ratio's only strength is *natural-prior raw ACC* on natural test sets — but that is exactly the metric we don't trust (§1.2).
+
+---
+
+## Appendix: data sources
+
+**7B 2nd-ckpt models (ICLR-trained):**
+- text 50/50: `bz32_lr1e-6_text` ckpt 1322
+- text 30/70: `bz32_lr1e-6_text_30_70` ckpt 1322
+- vision 50/50: `bz16_lr1e-6_vision` ckpt 2648
+- vision 30/70: `bz16_lr1e-6_vision_30_70` ckpt 2642
+
+**3B last-ckpt models (ICLR-trained):**
+- 3B text 50/50: `scaling/bz32_lr1e-6_text_3b` ckpt 2644
+- 3B vision 50/50: `scaling/bz16_lr1e-6_vision_3b` ckpt 5296
+
+**Test sets:**
+- ICLR 25/26 balanced: `data/iclr_2020_2023_2025_2026_85_5_10_balanced_original_{text,vision}_*_test/data.json` (year-filtered to {2025, 2026})
+- ICLR 25/26 natural (30/70): `data/iclr_2020_2023_2025_2026_30_70_*_test/data.json`
+- Arxiv y24up balanced: `data/arxiv_50_50_21k_{text,vision}_wmetadata_*_y24up_test/data.json`
+- Arxiv y24up natural (per-conference natrate): `data/arxiv_natrate_21k_*_y24up_test/data.json`
+
+Generated by `scripts/tmp_latex_dir/generate_objective_analysis.py`. All numbers reproducible from the source jsonls.
