@@ -24,15 +24,24 @@ and stop debating which test set to evaluate on.**
 | **A — Universal quality** | "Use the model's score to rank papers by quality" (review-assist, recommendation, citation prediction) | `Spearman ρ(score, quality_signal)` — for each available quality signal, plus **AUC as the no-quality-signal fallback** | Continuous quality alignment when you have a continuous label; binary separation otherwise |
 | **B — Conference predictor** | "Use the model to decide accept/reject per the venue" (deployable classifier) | `balanced ACC = (AccR + RejR) / 2`  *or*  `AUC` | Binary classification quality, weighted equally across classes |
 
-**Quality has multiple flavors.** In our ICLR data we have three continuous quality signals — and they only weakly agree with each other:
+**Quality has multiple flavors.** In our ICLR data we have three continuous quality signals — and they only weakly agree with each other. **Critical caveat: citation correlation is only meaningful on papers that have had time to accrue citations.** 2026 papers were just published; including them roughly halves the apparent citation correlation.
 
-| Signal | What it measures | ρ(score, signal) on ICLR balanced y25+ | Why it tracks (or doesn't) |
-|---|---|---:|---|
-| `pct_rating` | Percentile of mean reviewer rating within the conference | **+0.47 – +0.51** | Available at submission time; matches what the model trains on |
-| `citation_normalized_by_year` | Post-pub citation, time-corrected | +0.16 – +0.21 | 25/26 papers haven't had time to accrue citations |
-| `citation` (raw) | Raw citation count | +0.07 – +0.13 | Confounded by paper age — older papers have more citations regardless of merit |
+| Signal | Subset | ρ (Spearman) | r (Pearson) |
+|---|---|---:|---:|
+| `pct_rating` | ICLR 2025 only | text +0.54 / vision +0.52 | text +0.55 / vision +0.53 |
+| `pct_rating` | ICLR 2025+2026 | text +0.47 / vision +0.48 | text +0.49 / vision +0.51 |
+| `citation_normalized_by_year` | ICLR 2025 only | text **+0.30** / vision +0.25 | text **+0.30** / vision +0.25 |
+| `citation_normalized_by_year` | ICLR 2025+2026 | text +0.21 / vision +0.17 | text +0.20 / vision +0.13 |
+| `citation` (raw) | ICLR 2025+2026 | text +0.13 / vision +0.07 | confounded by age |
 
-And the signals themselves correlate only loosely: ρ(pct_rating, citation_normalized) = **+0.17** on 25/26 papers. So **"quality" isn't a single axis** — reviewer perception and post-pub impact are different things.
+And the signals themselves only loosely agree: in ICLR 2025+2026, ρ(pct_rating, citation_normalized) = **+0.17**. So **"quality" isn't a single axis** — reviewer perception and post-pub impact are different things.
+
+**A surprising takeaway from the citation correlations.** On ICLR 2025 (papers that have had time to accrue citations), reviewer `pct_rating` itself correlates with `citation_normalized` at r ≈ 0.26 — that's the "human upper bound" for predicting citations from rater scores. Text models hit r = 0.30 and vision r = 0.25 on the same prediction task. **Text quality estimates predict future citations as well as (or slightly better than) human reviewer ratings do** — the model's score already captures something orthogonal to reviewer perception that aligns with downstream impact.
+
+For our two-axes framing:
+- **rating** is the "submission-time perceived quality" axis
+- **citation** is the "post-pub impact" axis
+- They're partially independent — and the model's score happens to track both nontrivially. **Whichever signal you pick as "the" quality signal, report it explicitly + the year subset** (citation correlations are year-sensitive).
 
 **AUC as the no-quality-signal fallback.** When you don't have continuous quality labels (e.g., a new conference where pct_rating isn't available, or stale data where the model has been re-trained), AUC is still computable from binary labels alone. It's threshold-independent, so it doesn't need validation data for calibration. **High AUC = the model's score ordering separates accepts from rejects** — a necessary (but not sufficient) condition for quality alignment.
 
