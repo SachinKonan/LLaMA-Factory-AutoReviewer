@@ -21,10 +21,22 @@ and stop debating which test set to evaluate on.**
 
 | Axis | Goal | Right metric | What it measures |
 |---|---|---|---|
-| **A — Universal quality** | "Use the model's score to rank papers by quality" (review-assist, recommendation, citation prediction) | `Spearman ρ(score, pct_rating)` | Continuous quality alignment — does a higher score correspond to a higher reviewer percentile? |
+| **A — Universal quality** | "Use the model's score to rank papers by quality" (review-assist, recommendation, citation prediction) | `Spearman ρ(score, quality_signal)` — for each available quality signal, plus **AUC as the no-quality-signal fallback** | Continuous quality alignment when you have a continuous label; binary separation otherwise |
 | **B — Conference predictor** | "Use the model to decide accept/reject per the venue" (deployable classifier) | `balanced ACC = (AccR + RejR) / 2`  *or*  `AUC` | Binary classification quality, weighted equally across classes |
 
-These two axes are **correlated but not identical** (ρ across our 16 cells ≈ +0.82 between balanced ACC and ρ_quality). They decouple in important cases — e.g., text on `arxiv-natural-iclr` reaches balanced ACC ≈ 64% but ρ_quality ≈ −0.04, meaning the model passes the binary classifier test while completely failing the quality test. Vision on the same papers is ≈ 64% balanced ACC AND ρ ≈ +0.24 — the universal-quality model.
+**Quality has multiple flavors.** In our ICLR data we have three continuous quality signals — and they only weakly agree with each other:
+
+| Signal | What it measures | ρ(score, signal) on ICLR balanced y25+ | Why it tracks (or doesn't) |
+|---|---|---:|---|
+| `pct_rating` | Percentile of mean reviewer rating within the conference | **+0.47 – +0.51** | Available at submission time; matches what the model trains on |
+| `citation_normalized_by_year` | Post-pub citation, time-corrected | +0.16 – +0.21 | 25/26 papers haven't had time to accrue citations |
+| `citation` (raw) | Raw citation count | +0.07 – +0.13 | Confounded by paper age — older papers have more citations regardless of merit |
+
+And the signals themselves correlate only loosely: ρ(pct_rating, citation_normalized) = **+0.17** on 25/26 papers. So **"quality" isn't a single axis** — reviewer perception and post-pub impact are different things.
+
+**AUC as the no-quality-signal fallback.** When you don't have continuous quality labels (e.g., a new conference where pct_rating isn't available, or stale data where the model has been re-trained), AUC is still computable from binary labels alone. It's threshold-independent, so it doesn't need validation data for calibration. **High AUC = the model's score ordering separates accepts from rejects** — a necessary (but not sufficient) condition for quality alignment.
+
+These two axes are **correlated but not identical** (Spearman across 24 cells: ρ(AUC, ρ_pct_rating) = +0.50; ρ(balanced_ACC, ρ_pct_rating) = +0.66). They decouple in important cases — e.g., text on `arxiv-natural-iclr` reaches AUC ≈ 0.72 but ρ_quality ≈ −0.13 to −0.17, meaning the model passes the rank-discrimination test while completely failing the quality test. Vision on the same papers is AUC ≈ 0.75 AND ρ ≈ +0.46 — the universal-quality model.
 
 ---
 
