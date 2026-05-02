@@ -309,3 +309,47 @@ Verdict: predicted matches empirical within a few pp; **conclusion holds for arx
 ### Headline takeaway
 
 **The reporting protocol from Section 7 generalizes**: build one balanced test set, report `balanced ACC + AUC + ρ(score, pct_rating)` directly; derive raw ACC at any deployment prior via the formula. This is the right protocol regardless of whether the model was trained on ICLR or arxiv, and at either 3B or 7B scale.
+
+---
+
+## Per-(venue × year) quality correlation on arxiv balanced test
+
+**Setup.** 9 model checkpoints (7B ICLR-trained text + vision; 3B and 7B arxiv- and iclr-trained text). For each (venue, year, quality_signal) cell with ≥40 samples for the signal on arxiv balanced test, compute Spearman ρ(score, signal). Pooled-across-years rows shown below the per-year rows for additional power.
+
+**Cells with ≥40 samples** (verified earlier):
+- Rating: iclr 2026 (51), neurips 2024 (77), neurips 2025 (98)
+- Citation: cvpr 2024 (50), cvpr 2025 (47), neurips 2024 (77)
+- Pooled: iclr (109 rating, 55 citation), neurips (175 rating, 77 citation), cvpr (97 citation)
+
+![per-venue per-year quality heatmap](../tmp_latex_dir/figures/ratio_xeval_per_venue_year_quality.png)
+
+### Detailed table (Spearman ρ)
+
+| venue | year | metric | n | 7B iclr text 50/50 | 7B iclr text 30/70 | 7B iclr vision 50/50 | 7B iclr vision 30/70 | 3B arxiv-bal text | 3B arxiv-nat text | 3B iclr-bal text | 7B arxiv-nat text | 7B arxiv-bal text |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| iclr | 2026 | rating | 51 | +0.37 | +0.28 | +0.05 | +0.01 | +0.22 | +0.32 | +0.24 | +0.26 | +0.45 |
+| neurips | 2024 | rating | 77 | +0.20 | +0.22 | -0.04 | -0.11 | +0.09 | +0.10 | +0.31 | +0.00 | +0.01 |
+| neurips | 2025 | rating | 98 | +0.14 | +0.06 | +0.07 | +0.04 | +0.05 | +0.03 | +0.07 | +0.00 | +0.02 |
+| cvpr | 2024 | citation | 50 | +0.05 | +0.16 | -0.03 | -0.08 | -0.06 | -0.04 | +0.05 | -0.13 | +0.03 |
+| cvpr | 2025 | citation | 47 | +0.26 | +0.34 | -0.04 | -0.02 | +0.14 | +0.12 | +0.30 | +0.07 | -0.01 |
+| neurips | 2024 | citation | 77 | +0.02 | +0.08 | -0.15 | -0.17 | -0.11 | -0.12 | +0.05 | -0.19 | -0.03 |
+| iclr | pool | rating | 109 | +0.41 | +0.35 | +0.09 | +0.06 | +0.36 | +0.35 | +0.25 | +0.38 | +0.49 |
+| neurips | pool | rating | 175 | +0.17 | +0.13 | +0.02 | -0.03 | +0.08 | +0.06 | +0.17 | +0.01 | +0.04 |
+| cvpr | pool | citation | 97 | +0.11 | +0.20 | -0.06 | -0.08 | +0.03 | -0.00 | +0.12 | -0.05 | -0.01 |
+| iclr | pool | citation | 55 | +0.14 | +0.13 | -0.03 | -0.05 | +0.07 | +0.04 | +0.11 | +0.04 | +0.11 |
+| neurips | pool | citation | 77 | +0.02 | +0.08 | -0.15 | -0.17 | -0.11 | -0.12 | +0.05 | -0.19 | -0.03 |
+
+### Patterns
+
+- **Text consistently outperforms vision on rating correlation** in arxiv subsets — even on iclr 2026 (where the iclr-vision-50/50 trained model gets ρ ≈ +0.01 — essentially no rating alignment). The 7B arxiv-balanced text model (ckpt 656) hits +0.45 on iclr 2026 rating, the highest single cell. **The previous "vision is the universal-quality model" claim was driven by direct ICLR test results, not arxiv-iclr subsets.**
+- **NeurIPS 2025 rating correlations are uniformly weak** (max +0.14). NeurIPS 2024 is stronger (max +0.31 from 3B iclr-bal text). The newer 2025 NeurIPS papers may have noisier or less-spread ratings.
+- **Citation correlations are weaker than rating correlations** at the same venue+year. On NeurIPS 2024, rating ρ reaches +0.31 but citation ρ on the same venue/year is at best +0.08 (text models) or as low as −0.19 (7B arxiv-nat text). Citations are a noisier signal than ratings in our data — partly because pct_citation depends on post-publication trajectory while pct_rating reflects review-time perception.
+- **CVPR 2025 citation is the brightest spot** for citation-tracking: 7B iclr text 30/70 hits +0.34, 3B iclr-bal text +0.30. **The iclr-trained text models track CVPR-2025 citations slightly better than they track rating on most other venues** — surprising, given the modality and venue mismatch.
+- **arxiv-trained models do NOT consistently outperform iclr-trained ones on quality correlation**, even on arxiv test cells. They have higher classification accuracy on arxiv (training-distribution match) but their score doesn't track quality better — the two axes (predictor vs quality) really are different.
+
+### Caveats
+
+- **Sample sizes are small** (n=47-98 per cell). Spearman ρ at this n has wide CIs (roughly ±0.15 at 95% confidence for n=50), so small differences between models shouldn't be over-interpreted.
+- **2026 papers have ~0 citation history**, so we have no per-year citation data for 2026.
+- **`pct_citation` field appeared on more venues than `pct_rating`** (cvpr, aaai, icml, eccv all have some citation but no rating coverage). Coverage is venue-dependent.
+- The 7B arxiv-bal text model is at ckpt 656 (only 1st available) — flagged but included.
