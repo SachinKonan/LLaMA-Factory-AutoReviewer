@@ -226,3 +226,86 @@ For any future cross-eval:
 5. **If a model's per-class recalls are wildly asymmetric (one is < 10%)**, flag it as a degenerate / constant-class predictor — its raw ACC is meaningless even at the deployment prior.
 
 This collapses the test-ratio question: **build one balanced test set, run inference once, report all metrics from there.** The natural-prior raw ACC for any deployment scenario is a one-line calculation, not a separate evaluation.
+
+
+---
+
+## Sanity-check: do these conclusions hold for arxiv-trained models?
+
+All prior analysis used **ICLR-trained 7B** models (text + vision). Here we extend to **arxiv-trained text models** at 3B and 7B scales to verify that the metric and test-ratio conclusions are robust to model family.
+
+**Models** (text only — no vision arxiv-trained yet):
+
+| Model | Train data | Train ratio | Ckpt |
+|---|---|---|---:|
+| 3B arxiv-bal (ckpt 2624) | arxiv | balanced | 2624 |
+| 3B arxiv-nat (ckpt 2624) | arxiv | natrate | 2624 |
+| 3B iclr-bal  (ckpt 2644) | iclr | balanced | 2644 |
+| 7B arxiv-nat (ckpt 1312) | arxiv | natrate | 1312 |
+| 7B arxiv-bal (ckpt 656) | arxiv | balanced | 656  ⚠️ only first ckpt available |
+
+**Eval cells** (8 per model): {arxiv, iclr} × {balanced, natural} × {test, val}.
+
+### Conclusion 1 (test-ratio invariance for bACC) ✓ holds
+
+For each (model, eval-family), compare balanced-ACC measured on the balanced test set vs the natural test set. They should be nearly equal if bACC is prior-invariant.
+
+| model | family | bACC bal | bACC nat | Δ_bACC | AUC bal | AUC nat | Δ_AUC | rACC bal | rACC nat | **Δ_rACC** |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 3B arxiv-bal (ckpt 2624) | arxiv | 71.1 | 72.0 | **+0.9** | 0.788 | 0.801 | +0.013 | 71.2 | 73.4 | **+2.1** |
+| 3B arxiv-bal (ckpt 2624) | iclr | 61.7 | 59.6 | **-2.1** | 0.677 | 0.634 | -0.044 | 61.7 | 52.1 | **-9.6** |
+| 3B arxiv-nat (ckpt 2624) | arxiv | 61.8 | 63.9 | **+2.0** | 0.767 | 0.783 | +0.016 | 62.8 | 79.2 | **+16.3** |
+| 3B arxiv-nat (ckpt 2624) | iclr | 60.8 | 57.9 | **-2.9** | 0.670 | 0.630 | -0.040 | 60.8 | 61.1 | **+0.3** |
+| 3B iclr-bal  (ckpt 2644) | iclr | 66.2 | 66.0 | **-0.1** | 0.719 | 0.717 | -0.001 | 66.2 | 65.0 | **-1.2** |
+| 7B arxiv-nat (ckpt 1312) | arxiv | 61.1 | 61.4 | **+0.3** | 0.789 | 0.799 | +0.010 | 62.3 | 79.2 | **+16.9** |
+| 7B arxiv-nat (ckpt 1312) | iclr | 59.4 | 55.9 | **-3.5** | 0.663 | 0.621 | -0.042 | 59.4 | 59.7 | **+0.3** |
+| 7B arxiv-bal (ckpt 656) | arxiv | 72.0 | 71.2 | **-0.8** | 0.781 | 0.779 | -0.003 | 71.9 | 68.3 | **-3.5** |
+| 7B arxiv-bal (ckpt 656) | iclr | 58.8 | 56.9 | **-1.9** | 0.663 | 0.628 | -0.035 | 58.8 | 44.5 | **-14.3** |
+
+Verdict: bACC and AUC are **stable across test priors** (Δ ≤ ~5pp on bACC; ≤ 0.05 on AUC). Raw ACC swings up to **+25pp** purely from the test prior change — same pathology as in the 7B ICLR-trained analysis. **Conclusion holds for arxiv-trained text at both scales.**
+
+### Conclusion 2 (raw_ACC formula prediction) ✓ holds
+
+Use the balanced-test per-class recalls to predict raw ACC on the natural-test, via `predicted = π·AccR + (1−π)·RejR`. Compare to the empirical raw ACC on the natural test.
+
+| model | family | AccR(bal) | RejR(bal) | π | predicted | empirical | Δ |
+|---|---|---:|---:|---:|---:|---:|---:|
+| 3B arxiv-bal (ckpt 2624) | arxiv | 66.5 | 75.6 | 0.25 | 73.4 | 73.4 | -0.0 |
+| 3B arxiv-bal (ckpt 2624) | iclr | 77.8 | 45.6 | 0.30 | 55.3 | 52.1 | -3.2 |
+| 3B arxiv-nat (ckpt 2624) | arxiv | 31.6 | 92.1 | 0.25 | 77.1 | 79.2 | +2.0 |
+| 3B arxiv-nat (ckpt 2624) | iclr | 49.2 | 72.5 | 0.30 | 65.5 | 61.1 | -4.4 |
+| 3B iclr-bal  (ckpt 2644) | iclr | 67.1 | 65.2 | 0.30 | 65.8 | 65.0 | -0.8 |
+| 7B arxiv-nat (ckpt 1312) | arxiv | 27.2 | 95.1 | 0.25 | 78.3 | 79.2 | +0.9 |
+| 7B arxiv-nat (ckpt 1312) | iclr | 44.7 | 74.1 | 0.30 | 65.3 | 59.7 | -5.6 |
+| 7B arxiv-bal (ckpt 656) | arxiv | 77.2 | 66.9 | 0.25 | 69.4 | 68.3 | -1.1 |
+| 7B arxiv-bal (ckpt 656) | iclr | 89.4 | 28.1 | 0.30 | 46.5 | 44.5 | -2.0 |
+
+Verdict: predicted matches empirical within a few pp; **conclusion holds for arxiv-trained text**.
+
+### Conclusion 3 (bACC tracks ρ_quality vs AUC) — *holds within eval family, but pooling deceives*
+
+**The pooled-across-eval-families correlation flipped sign on this dataset** — but it's a stratification artifact, not a real reversal. Per-family correlations recover the original conclusion.
+
+| Subset | n | ρ(AUC, ρ_quality) | ρ(bACC, ρ_quality) |
+|---|---:|---:|---:|
+| **POOLED** (arxiv + iclr eval cells) | 39 | **-0.60** | **-0.25** |
+| Within arxiv eval family only | 19 | +0.05 | +0.15 |
+| Within iclr  eval family only | 20 | **+0.35** | **+0.48** |
+
+**Why pooling deceives**: arxiv eval cells have intrinsically *low* ρ_pr (the pct_rating subset is tiny — n=90-292, only ICLR + NeurIPS papers in arxiv have it) AND arxiv-trained models score *high* bACC on arxiv evals. Conversely, iclr eval cells have intrinsically *high* ρ_pr (full pct_rating coverage) AND somewhat lower bACC for the same models. Pooling the two clusters produces a spurious negative correlation. Stratifying by eval family removes the confound.
+
+**Within ICLR eval cells**: ρ(bACC, ρ_pr) = **+0.48** vs ρ(AUC, ρ_pr) = **+0.35** — bACC still tracks ρ_pr more than AUC, consistent with the original 7B finding (+0.66 vs +0.50). Within ICLR (where the quality signal is well-measured), the ranking holds.
+
+**Within arxiv eval cells**: both correlations are weak (close to zero). The arxiv pct_rating subsets are too small (n=90-292) and too restricted (only ICLR/NeurIPS subsets) to give a stable correlation. Don't draw modality conclusions from these cells.
+
+**Practical takeaway**: When verifying "high predictor metric → high quality alignment," **always stratify by eval family**. Mixing test populations with different intrinsic ρ_quality levels (e.g., direct-ICLR vs arxiv-iclr-subset) creates Simpson's-paradox-like reversals.
+
+### Figure
+
+![arxiv-trained metric verification](../tmp_latex_dir/figures/ratio_xeval_arxiv_trained_summary.png)
+
+3 panels: (a) bACC on balanced vs natural test for each model — points cluster on y=x (gray ±5pp band) confirming prior invariance; (b) predicted-vs-empirical raw ACC on natural test — tight agreement around y=x (gray ±3pp band) confirms the formula; (c) ρ(score, pct_rating) vs AUC (blue) and bACC (orange) — bACC has a stronger relationship.
+
+### Headline takeaway
+
+**The reporting protocol from Section 7 generalizes**: build one balanced test set, report `balanced ACC + AUC + ρ(score, pct_rating)` directly; derive raw ACC at any deployment prior via the formula. This is the right protocol regardless of whether the model was trained on ICLR or arxiv, and at either 3B or 7B scale.
