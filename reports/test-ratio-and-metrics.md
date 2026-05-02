@@ -17,6 +17,19 @@ and stop debating which test set to evaluate on.**
 
 ---
 
+## 0. A note on Spearman vs Pearson
+
+`pct_rating` and `pct_citation` are **percentiles** — already rank-encoded by construction. The right correlation choice is therefore **Spearman ρ**, not Pearson r. Two reasons:
+
+1. **Score-scale invariant**: Spearman gives the same answer regardless of whether you report `p_accept`, `logit`, or any monotonic transformation of the score. Pearson varies by 0.01-0.02 depending on which scale you choose. Empirically on text 50/50 / ICLR 2025:
+   - Spearman ρ = +0.537 with `p_accept`, +0.537 with `logit` (identical, as guaranteed by construction)
+   - Pearson  r = +0.548 with `p_accept`, +0.536 with `logit` (differs by 0.012)
+2. **Robust to non-linear monotonic relationships**: if `p_accept` saturates at the extremes (sigmoidal), Pearson underestimates the true relationship while Spearman captures it.
+
+In our data the two metrics agree within ~0.02, so the choice rarely changes conclusions — but going forward, **report Spearman as the primary number**. Use Pearson only when matching a specific existing figure (e.g., the tmp_latex_dir `impact_correlation_1x2.png` uses Pearson on `p_accept`) or to specifically test for linearity (e.g., evaluating Platt-scaling quality).
+
+---
+
 ## 1. Two goals, two axes
 
 | Axis | Goal | Right metric | What it measures |
