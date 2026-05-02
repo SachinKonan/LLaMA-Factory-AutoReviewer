@@ -522,3 +522,34 @@ Choose your model by your goal:
 - **Goal: universal quality scoring** (downstream review-assist, citation prediction, paper recommendation): pick **vision 50/50**, no calibration. Use ρ(score, pct_rating) as the validation metric.
 - **Goal: deployable accept/reject classifier**: pick **vision 50/50**, evaluate with balanced accuracy on the prior you'll deploy under. Calibrate threshold for balanced accuracy, not raw accuracy.
 - **Both goals → same model**. The two axes happen to converge on vision 50/50 *when measured properly*, but text 30/70 looks great on raw ACC and terrible on both axes once you switch to fair metrics. **Always report balanced accuracy alongside raw ACC** for any reject-heavy test set.
+
+
+---
+
+## Test-ratio question answered: which test set should you measure on?
+
+**Short answer.** The test prior matters *only for raw ACC*. Balanced ACC, AUC, and ρ(score, pct_rating) are all approximately **prior-invariant** — they measure the model's discrimination/ranking, not its relationship to the prior. So you can compute these on either test set.
+
+![test ratio invariance](../tmp_latex_dir/figures/ratio_xeval_test_ratio_invariance.png)
+
+Each point compares the same metric for the same (model, test family) on the balanced vs natural test set. **Balanced ACC and AUC cluster on the diagonal** (within ±5pp band shown in gray) — they don't care about the prior. **Raw ACC scatters dramatically off-diagonal** because text 30/70's apparent 76% raw ACC on natural collapses to ~52% on balanced (it's a constant-reject classifier that only looks good when most of the test is reject).
+
+### Recommendation table
+
+| Metric | Test prior to use | Why |
+|---|---|---|
+| Balanced ACC | **either** (use balanced for cleaner numbers) | prior-invariant |
+| AUC | **either** | prior-invariant |
+| ρ(score, pct_rating) | **either** (use larger n) | prior-invariant |
+| Raw ACC | **only natural** (deployment match) | depends on prior |
+
+**Suggested reporting protocol** for any future cross-eval:
+1. Report **balanced ACC, AUC, ρ_quality on the BALANCED test set** as your model-evaluation triple. The 50/50 prior makes raw ACC = balanced ACC, eliminating any ambiguity in interpretation.
+2. Report **raw ACC on the NATURAL test set** as the single "deployment readiness" number — what users will actually see if you deploy under the natural prior.
+3. Skip raw ACC on balanced (it's just balanced ACC under another name) and skip balanced ACC on natural unless you want to verify prior-invariance held.
+
+### Why balanced ACC is approximately prior-invariant
+
+- **By definition**: balanced ACC = (TP/(TP+FN) + TN/(TN+FP))/2. Each per-class recall divides by the count of that class, so changing the relative class proportions doesn't change the recalls.
+- **Empirically**: across our 8 (model × test family) pairs, balanced ACC differs by 0-5pp between balanced and natural test sets. The remaining differences come from the two test sets being *different paper draws* — not from the prior. ICLR shows larger gaps (~5pp) because balanced and natural test sets sample different year mixes; arxiv shows ~1pp because natrate is built from the same y24up pool with the same venues.
+- **Caveat**: if your two test priors are drawn from different paper distributions (as ours are), expect ~5pp residual variance. Use the larger / more representative test set.
