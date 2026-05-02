@@ -74,8 +74,15 @@ MODELS = [
      "text", "arxiv-bal", "7B"),
 ]
 
-META_BAL = DATA / "arxiv_50_50_21k_text_wmetadata_filtered24480_y24up_test/data.json"
-META_NAT = DATA / "arxiv_natrate_21k_text_wmetadata_filtered24480_y24up_test/data.json"
+META_BAL_TEXT = DATA / "arxiv_50_50_21k_text_wmetadata_filtered24480_y24up_test/data.json"
+META_NAT_TEXT = DATA / "arxiv_natrate_21k_text_wmetadata_filtered24480_y24up_test/data.json"
+META_BAL_VIS  = DATA / "arxiv_50_50_21k_vision_wmetadata_filtered24480_y24up_test/data.json"
+META_NAT_VIS  = DATA / "arxiv_natrate_21k_vision_wmetadata_filtered24480_y24up_test/data.json"
+
+def meta_for(modality, prior):
+    if modality == "vision":
+        return META_BAL_VIS if prior == "balanced" else META_NAT_VIS
+    return META_BAL_TEXT if prior == "balanced" else META_NAT_TEXT
 
 
 # ---------- helpers ----------
@@ -163,12 +170,12 @@ def per_cell_correlation(rows, target_field_idx, venue, year):
 
 
 def main():
-    # Load all model rows
+    # Load all model rows — use the right meta for each modality
     print(f"Loading inference jsonls + metadata for {len(MODELS)} models...")
     bal_rows = {}; nat_rows = {}
-    for label, p_bal, p_nat, *_ in MODELS:
-        bal_rows[label] = load_with_meta(p_bal, META_BAL)
-        nat_rows[label] = load_with_meta(p_nat, META_NAT)
+    for label, p_bal, p_nat, modality, *_ in MODELS:
+        bal_rows[label] = load_with_meta(p_bal, meta_for(modality, "balanced"))
+        nat_rows[label] = load_with_meta(p_nat, meta_for(modality, "natrate"))
 
     # Define cells with ≥40 samples (verified earlier)
     # Format: (venue, year_or_None_for_pooled, metric_field_name, metric_field_idx)

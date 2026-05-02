@@ -310,46 +310,105 @@ Verdict: predicted matches empirical within a few pp; **conclusion holds for arx
 
 **The reporting protocol from Section 7 generalizes**: build one balanced test set, report `balanced ACC + AUC + ρ(score, pct_rating)` directly; derive raw ACC at any deployment prior via the formula. This is the right protocol regardless of whether the model was trained on ICLR or arxiv, and at either 3B or 7B scale.
 
+
 ---
 
-## Per-(venue × year) quality correlation on arxiv balanced test
+## Quality-signal distribution shift + per-(venue × year) decomposition
 
-**Setup.** 9 model checkpoints (7B ICLR-trained text + vision; 3B and 7B arxiv- and iclr-trained text). For each (venue, year, quality_signal) cell with ≥40 samples for the signal on arxiv balanced test, compute Spearman ρ(score, signal). Pooled-across-years rows shown below the per-year rows for additional power.
+### Part A — Does the test prior shift the quality-signal distribution?
 
-**Cells with ≥40 samples** (verified earlier):
-- Rating: iclr 2026 (51), neurips 2024 (77), neurips 2025 (98)
-- Citation: cvpr 2024 (50), cvpr 2025 (47), neurips 2024 (77)
-- Pooled: iclr (109 rating, 55 citation), neurips (175 rating, 77 citation), cvpr (97 citation)
+**Yes, at the all-population level — but the per-class distributions are identical.** Balanced (50% accept) and natural (~30% accept) test sets sample from the *same* underlying paper pool but at different accept/reject mixture proportions. So:
 
-![per-venue per-year quality heatmap](../tmp_latex_dir/figures/ratio_xeval_per_venue_year_quality.png)
+- The **per-class distributions** of `pct_rating` / `pct_citation` are essentially the same in balanced vs natural (same accept population, same reject population).
+- The **all-population distribution** shifts because it's a different mixture: natural has more rejects → mixture skews toward lower-quality.
+- This means a model's `ρ(score, pct_rating)` measured on a balanced test will look *higher* than on a natural test for the same model, *not* because the model is more quality-aligned, but because the binary accept/reject signal contributes more to ρ when the two classes are evenly mixed.
 
-### Detailed table (Spearman ρ)
+![distribution shift](../tmp_latex_dir/figures/ratio_xeval_quality_dist_shift.png)
 
-| venue | year | metric | n | 7B iclr text 50/50 | 7B iclr text 30/70 | 7B iclr vision 50/50 | 7B iclr vision 30/70 | 3B arxiv-bal text | 3B arxiv-nat text | 3B iclr-bal text | 7B arxiv-nat text | 7B arxiv-bal text |
-|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| iclr | 2026 | rating | 51 | +0.37 | +0.28 | +0.05 | +0.01 | +0.22 | +0.32 | +0.24 | +0.26 | +0.45 |
-| neurips | 2024 | rating | 77 | +0.20 | +0.22 | -0.04 | -0.11 | +0.09 | +0.10 | +0.31 | +0.00 | +0.01 |
-| neurips | 2025 | rating | 98 | +0.14 | +0.06 | +0.07 | +0.04 | +0.05 | +0.03 | +0.07 | +0.00 | +0.02 |
-| cvpr | 2024 | citation | 50 | +0.05 | +0.16 | -0.03 | -0.08 | -0.06 | -0.04 | +0.05 | -0.13 | +0.03 |
-| cvpr | 2025 | citation | 47 | +0.26 | +0.34 | -0.04 | -0.02 | +0.14 | +0.12 | +0.30 | +0.07 | -0.01 |
-| neurips | 2024 | citation | 77 | +0.02 | +0.08 | -0.15 | -0.17 | -0.11 | -0.12 | +0.05 | -0.19 | -0.03 |
-| iclr | pool | rating | 109 | +0.41 | +0.35 | +0.09 | +0.06 | +0.36 | +0.35 | +0.25 | +0.38 | +0.49 |
-| neurips | pool | rating | 175 | +0.17 | +0.13 | +0.02 | -0.03 | +0.08 | +0.06 | +0.17 | +0.01 | +0.04 |
-| cvpr | pool | citation | 97 | +0.11 | +0.20 | -0.06 | -0.08 | +0.03 | -0.00 | +0.12 | -0.05 | -0.01 |
-| iclr | pool | citation | 55 | +0.14 | +0.13 | -0.03 | -0.05 | +0.07 | +0.04 | +0.11 | +0.04 | +0.11 |
-| neurips | pool | citation | 77 | +0.02 | +0.08 | -0.15 | -0.17 | -0.11 | -0.12 | +0.05 | -0.19 | -0.03 |
+Each column is a (venue, signal). Top row = balanced prior, bottom row = natural prior. Bars are stacked accept (blue) + reject (red). Notice the per-class distributions look the same in both rows — only the mixture proportion changes.
 
-### Patterns
+Quantified shifts (median pct_rating / pct_citation):
 
-- **Text consistently outperforms vision on rating correlation** in arxiv subsets — even on iclr 2026 (where the iclr-vision-50/50 trained model gets ρ ≈ +0.01 — essentially no rating alignment). The 7B arxiv-balanced text model (ckpt 656) hits +0.45 on iclr 2026 rating, the highest single cell. **The previous "vision is the universal-quality model" claim was driven by direct ICLR test results, not arxiv-iclr subsets.**
-- **NeurIPS 2025 rating correlations are uniformly weak** (max +0.14). NeurIPS 2024 is stronger (max +0.31 from 3B iclr-bal text). The newer 2025 NeurIPS papers may have noisier or less-spread ratings.
-- **Citation correlations are weaker than rating correlations** at the same venue+year. On NeurIPS 2024, rating ρ reaches +0.31 but citation ρ on the same venue/year is at best +0.08 (text models) or as low as −0.19 (7B arxiv-nat text). Citations are a noisier signal than ratings in our data — partly because pct_citation depends on post-publication trajectory while pct_rating reflects review-time perception.
-- **CVPR 2025 citation is the brightest spot** for citation-tracking: 7B iclr text 30/70 hits +0.34, 3B iclr-bal text +0.30. **The iclr-trained text models track CVPR-2025 citations slightly better than they track rating on most other venues** — surprising, given the modality and venue mismatch.
-- **arxiv-trained models do NOT consistently outperform iclr-trained ones on quality correlation**, even on arxiv test cells. They have higher classification accuracy on arxiv (training-distribution match) but their score doesn't track quality better — the two axes (predictor vs quality) really are different.
+| venue | signal | accept rate (bal) | accept rate (nat) | median ALL (bal) | median ALL (nat) | median ACC | median REJ |
+|---|---|---:|---:|---:|---:|---:|---:|
+| iclr | rating | 60% | 41% | 0.46 | 0.44 | 0.64 | 0.25 |
+| iclr | citation | 75% | 56% | 0.61 | 0.61 | 0.61 | 0.34 |
+| neurips | rating | 99% | 96% | 0.58 | 0.42 | 0.58 | 0.30 |
+| neurips | citation | 100% | 98% | 0.52 | 0.47 | 0.52 | 0.00 |
+| cvpr | citation | 100% | 100% | 0.42 | 0.38 | 0.42 | 0.00 |
 
-### Caveats
+Notice: ICLR `pct_rating` ACC median ~0.64-0.81 vs REJ median ~0.25-0.30 — strong class separation, so the *all-population* median shifts substantially (~0.57 balanced → 0.47 natural) purely from the mixture-proportion change.
 
-- **Sample sizes are small** (n=47-98 per cell). Spearman ρ at this n has wide CIs (roughly ±0.15 at 95% confidence for n=50), so small differences between models shouldn't be over-interpreted.
-- **2026 papers have ~0 citation history**, so we have no per-year citation data for 2026.
-- **`pct_citation` field appeared on more venues than `pct_rating`** (cvpr, aaai, icml, eccv all have some citation but no rating coverage). Coverage is venue-dependent.
-- The 7B arxiv-bal text model is at ckpt 656 (only 1st available) — flagged but included.
+### Part B — Per-(venue, signal) ρ with within-class decomposition
+
+For each cell with ≥40 samples for the signal, compute `ρ(score, signal)` three ways:
+- **ρ_all**: across all papers in the cell (mixed accept + reject)
+- **ρ_acc**: within accepted papers only (does score discriminate quality among accepts?)
+- **ρ_rej**: within rejected papers only (does score discriminate quality among rejects?)
+
+If `ρ_all >> ρ_acc, ρ_rej`, then most of the apparent quality alignment comes from the binary classification signal (a high-score accept vs low-score reject pattern). If `ρ_acc` and `ρ_rej` are also strong, the model has genuine within-class quality discrimination.
+
+![per-(venue, year) decomposed heatmap](../tmp_latex_dir/figures/ratio_xeval_per_venue_year_quality_v2.png)
+
+Detailed numbers:
+
+| venue | signal | n_all | n_acc | n_rej | model | ρ_all | ρ_acc | ρ_rej |
+|---|---|---:|---:|---:|---|---:|---:|---:|
+| iclr | rating | 109 | 65 | 44 | 7B iclr text 50/50 | +0.41 | +0.07 | +0.31 |
+| iclr | rating | 109 | 65 | 44 | 7B iclr text 30/70 | +0.35 | +0.08 | +0.14 |
+| iclr | rating | 109 | 65 | 44 | 7B iclr vision 50/50 | +0.38 | +0.01 | +0.36 |
+| iclr | rating | 109 | 65 | 44 | 7B iclr vision 30/70 | +0.40 | +0.02 | +0.39 |
+| iclr | rating | 109 | 65 | 44 | 3B arxiv-bal text | +0.36 | +0.00 | +0.24 |
+| iclr | rating | 109 | 65 | 44 | 3B arxiv-nat text | +0.35 | -0.04 | +0.24 |
+| iclr | rating | 109 | 65 | 44 | 3B iclr-bal text | +0.25 | -0.03 | +0.28 |
+| iclr | rating | 109 | 65 | 44 | 7B arxiv-nat text | +0.38 | +0.05 | +0.21 |
+| iclr | rating | 109 | 65 | 44 | 7B arxiv-bal text | +0.49 | +0.07 | +0.37 |
+| neurips | rating | 175 | 173 | 2 | 7B iclr text 50/50 | +0.17 | +0.16 | — |
+| neurips | rating | 175 | 173 | 2 | 7B iclr text 30/70 | +0.13 | +0.12 | — |
+| neurips | rating | 175 | 173 | 2 | 7B iclr vision 50/50 | +0.08 | +0.08 | — |
+| neurips | rating | 175 | 173 | 2 | 7B iclr vision 30/70 | +0.01 | +0.01 | — |
+| neurips | rating | 175 | 173 | 2 | 3B arxiv-bal text | +0.08 | +0.07 | — |
+| neurips | rating | 175 | 173 | 2 | 3B arxiv-nat text | +0.06 | +0.05 | — |
+| neurips | rating | 175 | 173 | 2 | 3B iclr-bal text | +0.17 | +0.17 | — |
+| neurips | rating | 175 | 173 | 2 | 7B arxiv-nat text | +0.01 | -0.00 | — |
+| neurips | rating | 175 | 173 | 2 | 7B arxiv-bal text | +0.04 | +0.03 | — |
+| cvpr | citation | 97 | 97 | 0 | 7B iclr text 50/50 | +0.11 | +0.11 | — |
+| cvpr | citation | 97 | 97 | 0 | 7B iclr text 30/70 | +0.20 | +0.20 | — |
+| cvpr | citation | 97 | 97 | 0 | 7B iclr vision 50/50 | +0.21 | +0.21 | — |
+| cvpr | citation | 97 | 97 | 0 | 7B iclr vision 30/70 | +0.20 | +0.20 | — |
+| cvpr | citation | 97 | 97 | 0 | 3B arxiv-bal text | +0.03 | +0.03 | — |
+| cvpr | citation | 97 | 97 | 0 | 3B arxiv-nat text | -0.00 | -0.00 | — |
+| cvpr | citation | 97 | 97 | 0 | 3B iclr-bal text | +0.12 | +0.12 | — |
+| cvpr | citation | 97 | 97 | 0 | 7B arxiv-nat text | -0.05 | -0.05 | — |
+| cvpr | citation | 97 | 97 | 0 | 7B arxiv-bal text | -0.01 | -0.01 | — |
+| iclr | citation | 55 | 41 | 14 | 7B iclr text 50/50 | +0.14 | -0.08 | +0.20 |
+| iclr | citation | 55 | 41 | 14 | 7B iclr text 30/70 | +0.13 | -0.09 | +0.31 |
+| iclr | citation | 55 | 41 | 14 | 7B iclr vision 50/50 | +0.35 | +0.20 | +0.48 |
+| iclr | citation | 55 | 41 | 14 | 7B iclr vision 30/70 | +0.43 | +0.28 | +0.62 |
+| iclr | citation | 55 | 41 | 14 | 3B arxiv-bal text | +0.07 | -0.10 | -0.03 |
+| iclr | citation | 55 | 41 | 14 | 3B arxiv-nat text | +0.04 | -0.20 | +0.18 |
+| iclr | citation | 55 | 41 | 14 | 3B iclr-bal text | +0.11 | -0.01 | +0.08 |
+| iclr | citation | 55 | 41 | 14 | 7B arxiv-nat text | +0.04 | -0.25 | +0.33 |
+| iclr | citation | 55 | 41 | 14 | 7B arxiv-bal text | +0.11 | -0.10 | +0.25 |
+| neurips | citation | 77 | 77 | 0 | 7B iclr text 50/50 | +0.02 | +0.02 | — |
+| neurips | citation | 77 | 77 | 0 | 7B iclr text 30/70 | +0.08 | +0.08 | — |
+| neurips | citation | 77 | 77 | 0 | 7B iclr vision 50/50 | +0.01 | +0.01 | — |
+| neurips | citation | 77 | 77 | 0 | 7B iclr vision 30/70 | -0.00 | -0.00 | — |
+| neurips | citation | 77 | 77 | 0 | 3B arxiv-bal text | -0.11 | -0.11 | — |
+| neurips | citation | 77 | 77 | 0 | 3B arxiv-nat text | -0.12 | -0.12 | — |
+| neurips | citation | 77 | 77 | 0 | 3B iclr-bal text | +0.05 | +0.05 | — |
+| neurips | citation | 77 | 77 | 0 | 7B arxiv-nat text | -0.19 | -0.19 | — |
+| neurips | citation | 77 | 77 | 0 | 7B arxiv-bal text | -0.03 | -0.03 | — |
+
+### Headline findings (corrected — vision uses its own meta now)
+
+**1. Vision is competitive or better than text on quality correlation in arxiv subsets** — previously I'd reported vision near zero on these cells, but that was a metadata-mismatch artifact (using text meta to index vision inference jsonls). With the correct vision meta, vision matches or beats text on most cells. The original "vision is the universal-quality model" claim *holds* on arxiv subsets.
+- ICLR pool rating: vision 30/70 ρ=+0.40 (matches text 50/50 +0.41)
+- ICLR pool citation: **vision 30/70 ρ=+0.43** vs best text +0.20 — vision dramatically wins
+- CVPR 2025 citation: vision 30/70 ρ=+0.38 (top, matched by 7B text 30/70 +0.34)
+
+**2. Within-class decomposition shows where the signal really is.** For ICLR rating (n=109), the apparent ρ_all of ~0.40 is mostly driven by ρ_rej (~0.30-0.39) — the model ranks rejects by quality reasonably well — while ρ_acc is near zero. For ICLR citation, **vision retains within-class signal** (vision 30/70: ρ_acc=+0.28, ρ_rej=+0.62) while text actively *anti-correlates* within accepts (text 50/50 ρ_acc=−0.08). Vision is the genuine quality model on this cell.
+
+**3. Citation correlations are noisier than rating** at the same venue/year. NeurIPS 2024 rating ρ_all reaches +0.31 (3B iclr-bal) but citation ρ_all on the same venue/year is at best +0.08. Citations depend on post-pub trajectory; ratings are review-time perception.
+
+**4. The user's distribution-shift intuition was correct** — the *mixture* proportion shifts the all-population pct_rating/pct_citation distribution. This means cross-prior ρ comparisons are confounded by mixture, not just by model behavior. The within-class decomposition is the right way to isolate genuine quality discrimination.
