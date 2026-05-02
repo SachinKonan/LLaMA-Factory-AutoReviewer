@@ -1,6 +1,8 @@
 # 7B Ratio Cross-Eval — Consolidated Report
 
-**One-paragraph TL;DR.** We trained Qwen2.5-7B (text) and Qwen2.5-VL-7B (vision) at two accept/reject ratios (50/50 and 30/70) and evaluated them on ICLR (year 25/26) and arxiv (y24up) test sets, each at *balanced* (50/50) and *natural* (~30% accept) test priors. **For accuracy under natural-prior deployment, train at 30/70**: text 30/70 hits **76.3%** raw on arxiv-natural and **73.7%** on ICLR-natural without calibration. Vision is 2-4pp behind on accuracy but **vision is more robust to temporal shift** (text models drop −20pp on CVPR-2026 papers; vision drops only −6pp or improves). **AUC and quality-correlation (ρ vs `pct_rating`) are positively correlated (ρ = +0.50 across 24 cells)** but they decouple: text on arxiv-natural-iclr has decent AUC (~0.72) but *negative* ρ with reviewer ratings, while vision on the same papers stays positive (ρ = +0.46) — an evidence-backed argument that vision tracks underlying quality more reliably than text under prior shift.
+**One-paragraph TL;DR.** We trained Qwen2.5-7B (text) and Qwen2.5-VL-7B (vision) at two accept/reject ratios (50/50 and 30/70) and evaluated them on ICLR (year 25/26) and arxiv (y24up) test sets, each at *balanced* (50/50) and *natural* (~30% accept) test priors. **The picture depends entirely on the metric.** Raw ACC suggests text 30/70 dominates on natural-prior cells (76.3% on arxiv-natural) — but that's a **constant-reject classifier in disguise** (accept-recall = 0%, balanced ACC = 50% — random). Once you switch to **balanced accuracy** (the right metric for class-imbalanced cells), **vision wins on every natural-prior cell** (vision 50/50: 63.3% on arxiv-natural vs text 30/70's 50.1%; vision 30/70: 69.2% on ICLR-natural vs text's best 65%). Vision also wins on **quality alignment** (ρ(score, pct_rating)) — it's the only modality that stays positively correlated with reviewer ratings under prior shift on arxiv-natural-iclr (ρ ≈ +0.24 vs text ≈ −0.04). **Vision is also more robust to temporal shift** (text drops −20pp on CVPR-2026 papers; vision −6pp or improves). **Recommendation: vision 50/50, no calibration.** For deployment, evaluate with balanced accuracy and ρ(score, pct_rating); never report raw ACC alone on a reject-heavy population.
+
+> **Headline correction (read this first):** earlier drafts of this report recommended text 30/70 based on raw ACC. That recommendation was wrong — on natural-prior cells, **raw ACC rewards constant-reject classifiers**. After switching to balanced accuracy, the modality recommendation flips to vision. See "Two Axes of Model Quality" below for the full reframe.
 
 ## Two questions, two answers
 
@@ -459,3 +461,64 @@ On natural prior, NLP and General ML families are temporally flat across all 4 m
 - **NLP and Robotics**: no 2026 papers in the y24up subset (NLP venues are mostly 2024-25; CORL is too small). Can't conclude on temporal shift for these.
 
 **Practical takeaway**: the modality choice depends on your deployment horizon. For current natural-prior accuracy, text 30/70. For CV-paper-heavy workloads under balanced evaluation, or for robustness to year-on-year drift, vision is the safer pick.
+
+
+---
+
+## Two Axes of Model Quality (the right metric for the right question)
+
+**The framing.** A model's success can be measured along two distinct axes:
+
+- **Axis A — Universal quality indicator.** Does the model's continuous score track the underlying paper quality? Best metric: **Spearman ρ(score, pct_rating)**. Threshold-independent, prior-invariant.
+- **Axis B — Conference accept/reject classifier.** Does the model's binary decision match the venue's accept/reject? Best metric: **balanced accuracy** = avg(accept-recall, reject-recall). Raw ACC is *misleading* on imbalanced priors — predict-all-reject gives 70% raw ACC on a 30%-accept population without any signal at all.
+
+![Two axes scatter](../tmp_latex_dir/figures/ratio_xeval_two_axes_scatter.png)
+
+Each dot is one (model, test population) cell. Lines connect same-model points across populations. Top-right quadrant = high on both axes (universal quality indicator). Bottom-right = decoupled predictor (good at labels, doesn't track quality) — text on arxiv-natural-iclr lives here.
+
+![Per-cell rankings](../tmp_latex_dir/figures/ratio_xeval_two_axes_rankings.png)
+
+Three side-by-side ranking grids — same 4 models × same 4 test cells, but different metrics. **Green box + ★ = winner per cell**. Notice how often the winner changes when you switch from raw ACC to balanced ACC.
+
+### The reframe — Q1 revisited
+
+Earlier headline: text 30/70 wins on natural-prior raw ACC. **But that 76.3% raw ACC on arxiv natural is a constant-reject classifier** — accept-recall = 0%, reject-recall = 100%, balanced ACC = **50%** (random baseline). The model isn't predicting; it's just exploiting the natural prior.
+
+**On balanced accuracy** (the fair Axis B metric):
+
+| Test cell | Best raw-ACC model | Best **balanced-ACC** model |
+|---|---|---|
+| ICLR natural  | vision 30/70 (73.9) | **vision 30/70** (69.2) |
+| Arxiv natural  | text 50/50 (76.7) | **vision 50/50** (63.3) |
+| ICLR balanced | vision 50/50 (67.6) | **vision 50/50** (67.6) |
+| Arxiv balanced | vision 50/50 (63.4) | **vision 50/50** (62.8) |
+
+- **On natural-prior cells, vision wins on balanced accuracy** — opposite of the raw-ACC ranking. text 30/70's apparent dominance was a class-imbalance illusion.
+
+### Headline answers — the right metric for each axis
+
+**For Axis A (universal quality):**
+- Best metric: **ρ(score, pct_rating)** — measures continuous quality alignment.
+- Best test population: **direct ICLR balanced** (largest, full pct_rating coverage; ρ ≈ 0.47-0.51 across all 4 models — modality and ratio don't matter much here).
+- Best model: **vision 50/50** — most consistent ρ across populations and the only modality that retains positive ρ on the prior-shifted arxiv-natural-iclr cell.
+- Calibration: **doesn't apply** (threshold-independent metric).
+
+**For Axis B (conference predictor):**
+- Best metric: **balanced accuracy** (or AUC if you want threshold-independent ranking).
+- Best test population: **the prior you'll deploy under** (natural for production, balanced for stress testing).
+- Best model under natural prior (balanced ACC): **vision 50/50** — wins both arxiv and ICLR natural cells on balanced accuracy.
+- Calibration with raw-ACC objective often **hurts** balanced accuracy (because it pushes the threshold to match the natural prior, sacrificing accept-recall). Use raw τ=0 if you care about balanced accuracy, OR re-calibrate with balanced-acc objective.
+
+### Are the two axes correlated?
+
+- Across 16 cells: ρ(balanced_ACC, ρ_quality) = **+0.82**, r = **+0.74**. Moderate positive — they co-move but they decouple in important cases.
+- **Decoupling case (most striking)**: text 50/50 + 30/70 on `arxiv-natural-iclr` have balanced ACC ≈ 64-65% (above random) but ρ ≈ −0.13 to −0.17 (anti-correlated with reviewer ratings). The model passes the binary classifier test and fails the quality test — it's learning *venue-specific decision shortcuts* rather than quality.
+- **Vision on the same cell**: balanced ACC ≈ 64% AND ρ = +0.46. Same labels, same papers — vision is the universal-quality model; text is the decoupled predictor.
+
+### Recommendation
+
+Choose your model by your goal:
+
+- **Goal: universal quality scoring** (downstream review-assist, citation prediction, paper recommendation): pick **vision 50/50**, no calibration. Use ρ(score, pct_rating) as the validation metric.
+- **Goal: deployable accept/reject classifier**: pick **vision 50/50**, evaluate with balanced accuracy on the prior you'll deploy under. Calibrate threshold for balanced accuracy, not raw accuracy.
+- **Both goals → same model**. The two axes happen to converge on vision 50/50 *when measured properly*, but text 30/70 looks great on raw ACC and terrible on both axes once you switch to fair metrics. **Always report balanced accuracy alongside raw ACC** for any reject-heavy test set.
