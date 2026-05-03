@@ -10,6 +10,7 @@
    - **Arxiv-trained 7B vision balanced** (§7.4): on arxiv it **dominates DR on bACC with non-overlapping CIs** (+12.8pp on subsample) and **flips the AUC ordering** in our favor (+0.072 point estimate; on the full 1414-paper set the CI just barely separates from DR's CI upper bound).
 6. **Per-(venue, year) tracking** (§6): bACC on arxiv varies by venue (cvpr 2025 highest; aaai/eccv lowest) and drops on ICLR 2025→2026 by ~5pp for every config (paper population shift, not metric artifact). ρ citation collapses to 0 on ICLR 2026 due to the 2026 citation degeneracy.
 7. **Arxiv-trained checkpoint sweep** (§7): the training distribution dominates the modality choice on arxiv. **Arxiv-trained 7B vision balanced (ckpt-2618) wins arxiv-test by ~11pp** over our ICLR-trained 7B vision 50/50 (74.2 vs 62.8 bACC); ICLR-trained still wins on ICLR. **If you know the deployment distribution, train on it.** ICLR-trained 7B vision 50/50 remains the best single-model recommendation only when deployment distribution is unknown or mixed.
+8. **Dataset integrity case study** (§8): the arxiv y24up dataset's ICLR-venue subset (n=87) gives bACC within bootstrap-CI overlap of the gold ICLR 25/26 test set (n=1667) under the same ICLR-trained model — no evidence of arxiv label corruption for ICLR papers.
 
 ---
 
@@ -233,7 +234,7 @@ Subsample sizes (after dropping rows where DeepReviewer was truncated):
 
 | Dataset | Test n_usable | Val n_usable | Drop rate |
 |---|---:|---:|---:|
-| iclr balanced | 378 | 220 | 9.6% test |
+| iclr balanced | 399 | 220 | 4.5% test |
 | arxiv balanced | 343 | 177 | 5.2% test |
 
 ![deepreviewer comparison](../tmp_latex_dir/figures/objective_deepreviewer.png)
@@ -244,11 +245,11 @@ Both systems are reported at their **native decision** (no calibration) for an a
 
 All confidence intervals are 95% bootstrap CIs over papers (500 resamples). Tighter CIs imply more reliable point estimates.
 
-**ICLR 25/26 balanced** (DR subsample n=378):
+**ICLR 25/26 balanced** (DR subsample n=399):
 
 | Method | n | balanced ACC [95% CI] | accept-recall | reject-recall | AUC [95% CI] |
 |---|---:|---:|---:|---:|---:|
-| DeepReviewer-14B (native)        | 378 | 61.3 [56.3, 65.5] | 49.2 | 73.3 | 0.788 [0.741, 0.832] |
+| DeepReviewer-14B (native)        | 399 | 61.3 [56.6, 66.0] | 50.3 | 72.3 | 0.781 [0.739, 0.831] |
 | PaperLens 7B text 50/50 (DR subsample) | 418 | 68.9 [64.8, 72.8] | 60.3 | 77.5 | 0.763 [0.717, 0.806] |
 | PaperLens 7B text 50/50 (full set)   | 1667 | 65.2 [63.0, 67.2] | 56.2 | 74.2 | 0.721 [0.698, 0.744] |
 | **PaperLens 7B vision 50/50** (full set)   | 1670 | **67.6** [65.4, 69.7] | 65.4 | 69.8 | 0.736 [0.713, 0.758] |
@@ -273,11 +274,11 @@ All confidence intervals are 95% bootstrap CIs over papers (500 resamples). Tigh
 
 DeepReviewer's `predict_meta_rating` (1-10) used as the score; Spearman ρ to `pct_rating` and `citation_normalized_by_year` (year-filtered to 2025 on ICLR).
 
-**ICLR 25/26 balanced** (DR subsample, n=378):
+**ICLR 25/26 balanced** (DR subsample, n=399):
 
 | Source | ρ rating all | ρ rating acc | ρ rating rej | ρ citation all | ρ citation acc | ρ citation rej |
 |---|---:|---:|---:|---:|---:|---:|
-| DeepReviewer-14B | +0.37 | +0.12 | +0.32 | +0.34 | +0.20 | +0.23 |
+| DeepReviewer-14B | +0.38 | +0.14 | +0.34 | +0.34 | +0.20 | +0.23 |
 | PaperLens 7B text 50/50 (full set) | +0.47 | +0.21 | +0.44 | +0.30 | +0.22 | +0.19 |
 | PaperLens 7B vision 50/50 (full set) | +0.48 | +0.16 | +0.45 | +0.25 | +0.17 | +0.14 |
 
@@ -414,7 +415,7 @@ Sections 1-6 used **ICLR-trained** 7B checkpoints. The new arxiv-trained sweep (
 | Model | best epoch | ckpt | τ*_bal | val bACC | test bACC [95% CI] | test AUC [95% CI] | accept-rec | reject-rec |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | 3B balanced text | 2 | 1312 | -0.25 | 67.8 | **70.0** [67.9, 72.3] | 0.786 [0.763, 0.809] | 64.8 | 75.2 |
-| 7B balanced text | 2 | 1312 | -2.00 | 66.7 | **72.0** [69.5, 74.4] | 0.790 [0.766, 0.815] | 78.9 | 65.0 |
+| 7B balanced text | 1 | 656 | 0.50 | 66.2 | **67.2** [64.9, 69.5] | 0.763 [0.740, 0.788] | 57.9 | 76.5 |
 | 7B balanced vision | 2 | 2618 | -1.12 | 72.7 | **74.2** [71.6, 76.5] | 0.826 [0.804, 0.846] | 75.3 | 73.1 |
 | 3B natrate text | 3 | 1968 | -2.00 | 67.8 | **68.2** [66.0, 70.5] | 0.770 [0.746, 0.792] | 81.0 | 55.4 |
 | 7B natrate text | 1 | 656 | -1.44 | 65.9 | **69.2** [66.9, 71.5] | 0.776 [0.751, 0.799] | 56.7 | 81.7 |
@@ -426,7 +427,7 @@ Sections 1-6 used **ICLR-trained** 7B checkpoints. The new arxiv-trained sweep (
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | 3B balanced text | 1 | 656 | 0.50 | 61.4 | **63.3** [61.1, 65.3] | 0.694 [0.671, 0.717] | 78.1 | 48.5 |
 | 7B balanced text | 1 | 656 | 0.63 | 59.8 | **61.7** [59.3, 64.0] | 0.644 [0.620, 0.669] | 66.7 | 56.7 |
-| 7B balanced vision | — | — | — | — | — (no iclr eval available) | — | — | — |
+| 7B balanced vision | 1 | 1309 | -1.25 | 59.7 | **61.5** [59.2, 63.6] | 0.674 [0.648, 0.699] | 83.2 | 39.8 |
 | 3B natrate text | 3 | 1968 | -0.50 | 62.3 | **61.6** [59.0, 63.8] | 0.676 [0.649, 0.699] | 66.1 | 57.1 |
 | 7B natrate text | 2 | 1312 | -0.88 | 59.8 | **59.6** [57.1, 61.8] | 0.641 [0.612, 0.667] | 51.4 | 67.7 |
 | _ICLR-trained 7B vision 50/50 (ref, τ=0)_ | — | 2648 | 0.00 | — | **67.6** [65.4, 69.7] | 0.736 [0.713, 0.758] | 65.4 | 69.8 |
@@ -476,6 +477,56 @@ Arxiv-trained 7B vision balanced (ckpt-2618) was evaluated on the full arxiv bal
 - **7B natrate text iclr ep1 winning ICLR** looks suspicious in the source report (Acc-rec 0.69, Rej-rec 0.49) — only ckpts 656 + 1312 done; re-evaluate when 1968 + 2624 land.
 - **7B balanced vision iclr-test still queued at the time of source report** — partial data; the OOD numbers for vision balanced on iclr in this section are missing (the cell returns no iclr-test jsonl).
 - **iclr OOD ceiling (~0.63)** across cells is below arxiv (~0.71). Distribution shift is the dominant factor, not model size or training mix.
+
+---
+
+## 8. Dataset integrity case study — gold ICLR vs arxiv-set ICLR-subset
+
+**Question.** The arxiv y24up balanced test set includes ICLR papers as one venue (`pl_venue == "iclr"`). The gold ICLR 25/26 test set is the canonical, OpenReview-derived split. If our arxiv labeling pipeline is faithful, the *same model* should produce comparable metrics on:
+- (A) the **gold ICLR 25/26** test set (1,667 papers, 50/50 by construction), and
+- (B) the **arxiv y24up** test set restricted to ICLR-venue + year ∈ {2025, 2026} (subset of arxiv with ~50% accept).
+
+If the two views give very different metrics, the arxiv labeling for ICLR is suspect.
+
+### 8.1 Subset composition
+
+- Arxiv y24up balanced (text), restricted to `venue=iclr` & year ∈ {2025, 2026}: **n=87** papers, accept rate **52.9%**.
+- Arxiv y24up balanced (vision), same restriction: n=87, accept rate 52.9%.
+- Per-year breakdown of arxiv ICLR-subset (text): `(2025, 'Accept') = 25`, `(2025, 'Reject') = 11`, `(2026, 'Accept') = 21`, `(2026, 'Reject') = 30`
+
+**Composition note**: the arxiv ICLR-subset is small (~87 papers vs gold's 1,667), with higher-than-balanced accept rate on 2025 (25/36 ≈ 69%) and lower on 2026 (21/51 ≈ 41%). Different draw, not different distribution. The arxiv y24up corpus only includes papers that were also uploaded to arxiv — a self-selection that may favor accepts on 2025 (authors of accepted papers are more likely to keep arxiv versions current).
+
+On `decision` field: arxiv set uses binary `{accept, reject}`; gold ICLR has finer-grained `{poster, spotlight, oral, accept, reject}`. The arxiv pipeline collapses ICLR's three accept-tiers to `accept` — consistent with how we map to binary `answer`.
+
+### 8.2 Same-model performance — gold ICLR vs arxiv ICLR-subset
+
+If the labels and content are consistent, the same model should produce similar bACC and AUC on both views (allowing for sample-size noise).
+
+| Model | View | n | balanced ACC [95% CI] | AUC [95% CI] | accept-rec | reject-rec |
+|---|---|---:|---:|---:|---:|---:|
+| ICLR-trained 7B vision 50/50 | arxiv ICLR-subset | 87 | 73.7 [64.0, 83.1] | 0.817 [0.712, 0.903] | 71.7 | 75.6 |
+| ICLR-trained 7B vision 50/50 | gold ICLR 25/26 | 1670 | 67.6 [65.4, 69.7] | 0.736 [0.713, 0.758] | 65.4 | 69.8 |
+| ICLR-trained 7B text 50/50 | arxiv ICLR-subset | 87 | 68.4 [60.6, 76.9] | 0.771 [0.675, 0.853] | 46.8 | 90.0 |
+| ICLR-trained 7B text 50/50 | gold ICLR 25/26 | 1667 | 65.2 [63.0, 67.2] | 0.721 [0.698, 0.744] | 56.2 | 74.2 |
+| Arxiv-trained 7B vision balanced (ckpt-2618) | arxiv ICLR-subset | 87 | 70.4 [61.6, 80.4] | 0.779 [0.667, 0.872] | 84.8 | 56.1 |
+| Arxiv-trained 7B vision balanced (ckpt-2618) | gold ICLR 25/26 | — | — (no iclr_balanced_test ckpt for this cell) | — | — | — |
+
+### 8.3 Findings — does the arxiv ICLR-subset look like ICLR?
+
+- **ICLR-trained 7B vision 50/50**: bACC arxiv-ICLR-subset = 73.7 vs gold ICLR = 67.6 → Δ = +6.1pp. AUC: 0.817 vs 0.736 → Δ = +0.081. CIs **overlap** for bACC.
+- **ICLR-trained 7B text 50/50**: bACC arxiv-ICLR-subset = 68.4 vs gold ICLR = 65.2 → Δ = +3.2pp. AUC: 0.771 vs 0.721 → Δ = +0.049. CIs **overlap** for bACC.
+- **Arxiv-trained 7B vision balanced (ckpt-2618)** on arxiv-ICLR-subset: bACC = 70.4. (No matching iclr_balanced_test ckpt available — see §7 caveats.) The arxiv-trained model is *slightly* in-distribution for this subset (since it saw arxiv papers during training, including ICLR-venue ones).
+
+**Verdict on dataset integrity**.
+- The arxiv ICLR-subset and gold ICLR 25/26 give **comparable bACC** for the same ICLR-trained model — within bootstrap CI overlap on the small subsample (n=87 vs n=1667). This is consistent with the arxiv pipeline's labeling matching what OpenReview reports (no systematic mislabeling).
+- Where small subsample noise inflates the gap (e.g. ±5pp), the bigger lesson is that the arxiv set's ICLR-venue subset is small enough that per-cell metrics on it should always carry CIs.
+- **No evidence of label corruption.** If the arxiv pipeline had been mislabeling ICLR papers (e.g. swapping accept/reject), we would expect the ICLR-trained model — which we know gets ~67% bACC on real ICLR — to drop sharply on the arxiv-subset (close to 33%). It does not.
+
+### 8.4 Limitations
+
+- Only **1/87 papers** can be matched between the arxiv ICLR-subset and the gold ICLR test set via OpenReview ID (most arxiv records have empty `pl_openreview`). A paper-level integrity check (same arxiv_id ↔ same submission_id ↔ same label) is therefore not possible at scale; we rely on aggregate metric agreement instead.
+- The arxiv ICLR-subset (n=87) is small enough that bootstrap CIs span ~±10pp on bACC. A larger arxiv-set ICLR slice (or filling in `pl_openreview` for more rows) would tighten this.
+- The arxiv y24up corpus is itself a stratified subsample (filtered to year ≥ 2024, balanced 50/50 across (venue, label)); its ICLR-venue subset is therefore not a uniform draw from gold ICLR — see §8.1 composition note.
 
 ---
 
