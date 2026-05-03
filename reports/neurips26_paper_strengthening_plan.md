@@ -16,7 +16,7 @@ This lets the intro define `p(accept)` early: it is not just a class label, it i
 | figure | intended paper role |
 |---|---|
 | `tmp_latex_dir/figures/neurips26_threshold_recall_movement.png` | Show why balanced accuracy and recall movement matter: balanced-val thresholding changes the Accept/Reject operating point, while AUC/rank metrics are unchanged. |
-| `tmp_latex_dir/figures/neurips26_panel_mosaic.png` | Dataset/representation teaser: accept/reject rows across ICLR, CVPR, ICML, and AISTATS examples, rebuilt from raw page images with consistent gutters, source brackets, and examples chosen closest to 10 pages. This can replace the current abstract mock. |
+| `tmp_latex_dir/figures/neurips26_panel_mosaic.png` | Dataset/representation teaser: accept/reject rows across '25+ ICLR, NeurIPS, CVPR, and CoRL examples, rebuilt from raw page images with consistent gutters, source brackets, and examples chosen closest to 10 pages. This can replace the current abstract mock. |
 | `tmp_latex_dir/figures/neurips26_panel_order_ablation.png` | Compact representation ablation: panel efficiency and ordering sensitivity. |
 | `tmp_latex_dir/figures/neurips26_platt_calibration.png` | Post-hoc calibration: the y=x reliability view for `p(accept)` after Platt scaling. |
 

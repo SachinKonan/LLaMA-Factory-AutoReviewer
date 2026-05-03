@@ -425,6 +425,15 @@ def _entry_venue(entry: dict) -> str:
     return str(meta.get("pl_venue") or meta.get("venue") or "").lower()
 
 
+def _entry_year(entry: dict) -> int:
+    meta = entry.get("_metadata") or {}
+    raw = meta.get("year") or meta.get("conference_year") or meta.get("pl_year") or meta.get("arxiv_year") or 0
+    try:
+        return int(float(str(raw)))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _trim_white(im: Image.Image, tol: int = 8, pad: int = 10) -> Image.Image:
     rgb = im.convert("RGB")
     bg = Image.new("RGB", rgb.size, (255, 255, 255))
@@ -507,7 +516,8 @@ def entry_header(entry: dict, source: str) -> str:
     meta = entry.get("_metadata") or {}
     if source == "iclr":
         return f"ICLR {_short_year(meta.get('year'))}"
-    venue = str(meta.get("pl_venue") or meta.get("venue") or "?").upper()
+    venue_raw = str(meta.get("pl_venue") or meta.get("venue") or "?").lower()
+    venue = {"neurips": "NeurIPS", "cvpr": "CVPR", "corl": "CoRL"}.get(venue_raw, venue_raw.upper())
     year = meta.get("conference_year") or meta.get("pl_year") or meta.get("arxiv_year")
     return f"{venue} {_short_year(year)}"
 
@@ -566,7 +576,7 @@ def _compose_mosaic_panel(entry: dict, panel_w: int, panel_h: int) -> Image.Imag
             if page_idx >= n_pages:
                 break
             with Image.open(page_paths[page_idx]) as raw:
-                page = _trim_white(raw, tol=10, pad=14)
+                page = _trim_white(raw, tol=12, pad=4)
                 page.thumbnail((page_w, page_h), Image.LANCZOS)
                 paste_x = x + (page_w - page.width) // 2
                 paste_y = y + (page_h - page.height) // 2
@@ -599,9 +609,9 @@ def make_panel_mosaic() -> None:
     rows = [("Accept", "accept"), ("Reject", "reject")]
     columns = [
         ("ICLR", "iclr", None),
+        ("NeurIPS", "arxiv", "neurips"),
         ("CVPR", "arxiv", "cvpr"),
-        ("ICML", "arxiv", "icml"),
-        ("AISTATS", "arxiv", "aistats"),
+        ("CoRL", "arxiv", "corl"),
     ]
     used: set[str] = set()
     selected: list[list[tuple[dict, str]]] = []
@@ -612,14 +622,14 @@ def make_panel_mosaic() -> None:
                 entry = find_panel_entry(
                     iclr_entries,
                     label,
-                    lambda e: int((e.get("_metadata") or {}).get("year", 0)) in {2025, 2026},
+                    lambda e: _entry_year(e) >= 2025,
                     used,
                 )
             else:
                 entry = find_panel_entry(
                     arxiv_entries,
                     label,
-                    lambda e, venue=venue: _entry_venue(e) == venue,
+                    lambda e, venue=venue: _entry_venue(e) == venue and _entry_year(e) >= 2025,
                     used,
                 )
             row_cells.append((entry, source))
@@ -643,7 +653,7 @@ def make_panel_mosaic() -> None:
 
     draw.text((margin, 18), "Panelized paper examples across dataset sources",
               font=title_font, fill=INK)
-    draw.text((margin, 57), "Each cell shows up to 10 source pages with consistent page gutters; examples are chosen closest to 10 pages.",
+    draw.text((margin, 57), "Examples are from '25 or later; each cell shows up to 10 source pages with consistent page gutters.",
               font=small_font, fill="#5F6368")
 
     x0 = margin + row_label_w + gap
