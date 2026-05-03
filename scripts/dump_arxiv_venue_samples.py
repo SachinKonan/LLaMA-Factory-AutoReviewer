@@ -27,6 +27,29 @@ PANEL_W, PANEL_H = 1190, 756           # half the source 2380x1512 -> still read
 LABEL_H = 56                           # px reserved at top for venue+sample id text
 SEED = 17
 
+# Per-venue inter-page white border to compensate for source-PDF margin
+# differences. Single-column venues (ICLR/COLM/NeurIPS) have wide built-in
+# PDF margins so the panel cells already separate visibly; 2-column venues
+# (CVPR/ICCV/ICML/AAAI/AISTATS/EccV) trim to cell edges and need explicit
+# padding here so each page reads as its own card.
+VENUE_PAGE_BORDER = {
+    "iclr": 0,
+    "colm": 0,
+    "neurips": 4,
+    "corl": 6,
+    "aistats": 12,
+    "eccv": 12,
+    "icml": 14,
+    "iccv": 14,
+    "aaai": 14,
+    "cvpr": 16,
+    "acl": 12,  # ACL is 2-column-ish, similar to CVPR
+}
+DEFAULT_PAGE_BORDER = 12
+
+# Inner page-grid dims (5 cols x 2 rows) so we can paint borders around each cell.
+PANEL_INNER_COLS, PANEL_INNER_ROWS = 5, 2
+
 
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -53,6 +76,7 @@ def main() -> None:
         ImageDraw.Draw(sheet).text((24, 12), f"venue: {venue}   |   n_in_train={len(papers)}",
                                     fill="black", font=font)
 
+        border = VENUE_PAGE_BORDER.get(venue, DEFAULT_PAGE_BORDER)
         for i, e in enumerate(sampled):
             sid = e["_metadata"]["arxiv_id"]
             png = PANEL_DIR / f"{sid}.png"
@@ -60,6 +84,22 @@ def main() -> None:
                 continue
             with Image.open(png) as src:
                 src = src.convert("RGB")
+                # Add explicit white border around each of the 5x2 inner pages.
+                # Source panel is 2380x1512, cells are 476x756 each.
+                if border > 0:
+                    src_w, src_h = src.size
+                    cell_w = src_w // PANEL_INNER_COLS
+                    cell_h = src_h // PANEL_INNER_ROWS
+                    inner_w = cell_w - 2 * border
+                    inner_h = cell_h - 2 * border
+                    rebuilt = Image.new("RGB", (src_w, src_h), "white")
+                    for r_ in range(PANEL_INNER_ROWS):
+                        for c_ in range(PANEL_INNER_COLS):
+                            crop = src.crop((c_ * cell_w, r_ * cell_h,
+                                              (c_ + 1) * cell_w, (r_ + 1) * cell_h))
+                            shrunk = crop.resize((inner_w, inner_h), Image.LANCZOS)
+                            rebuilt.paste(shrunk, (c_ * cell_w + border, r_ * cell_h + border))
+                    src = rebuilt
                 thumb = src.resize((PANEL_W, PANEL_H), Image.LANCZOS)
             r, c = divmod(i, SHEET_COLS)
             x = c * PANEL_W
