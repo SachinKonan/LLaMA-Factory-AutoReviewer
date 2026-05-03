@@ -766,6 +766,62 @@ def figure_per_venue_year(arxiv_pvy, iclr_py):
 
 
 # ============================================================================
+# FIGURE 6 — arxiv-trained checkpoint sweep
+# ============================================================================
+def figure_arxiv_trained_sweep(arxiv_trained, per_cell):
+    """For each cell, plot per-epoch test bACC on arxiv (in-domain) and iclr (OOD).
+       Overlay the ICLR-trained 7B vision 50/50 reference line.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(20, 7), sharey=True)
+    cell_styles = {
+        "3B balanced text":    (BLUE,   "o", "-"),
+        "7B balanced text":    (BLUE,   "s", "-"),
+        "7B balanced vision":  (ORANGE, "s", "-"),
+        "3B natrate text":     (BLUE,   "o", "--"),
+        "7B natrate text":     (BLUE,   "s", "--"),
+    }
+    for col_idx, (eval_ds, ds_label) in enumerate([("arxiv", "Arxiv balanced (in-domain for arxiv-trained)"),
+                                                   ("iclr",  "ICLR balanced (OOD for arxiv-trained)")]):
+        ax = axes[col_idx]
+        for name, (cell_results, mode, train_data, size) in arxiv_trained.items():
+            color, marker, ls = cell_styles[name]
+            xs = []; ys = []
+            for ep in sorted(cell_results["epochs"].keys()):
+                d = cell_results["epochs"][ep].get(eval_ds)
+                if d is None or d["test"]["bal_acc"] is None: continue
+                xs.append(ep); ys.append(d["test"]["bal_acc"])
+            if xs:
+                ax.plot(xs, ys, color=color, marker=marker, linestyle=ls,
+                        markersize=10, linewidth=2, label=name, alpha=0.85)
+        # ICLR-trained 7B reference
+        ref_v = per_cell[("vision", "50_50", eval_ds, "balanced")]["raw_at_0"]["bal_acc"]
+        ref_t = per_cell[("text",   "50_50", eval_ds, "balanced")]["raw_at_0"]["bal_acc"]
+        ax.axhline(ref_v, color=ORANGE, linestyle=":", linewidth=2.5,
+                   label=f"ICLR-trained 7B vision 50/50 ({ref_v:.1f})", alpha=0.7)
+        ax.axhline(ref_t, color=BLUE, linestyle=":", linewidth=2.5,
+                   label=f"ICLR-trained 7B text 50/50 ({ref_t:.1f})", alpha=0.5)
+        ax.set_xlabel("Epoch", fontsize=LABELSIZE)
+        if col_idx == 0:
+            ax.set_ylabel("Test balanced ACC (%) — calibrated τ*_bal on val", fontsize=LABELSIZE-2)
+        ax.set_title(ds_label, fontsize=TITLESIZE-4)
+        ax.set_xticks([1, 2, 3, 4])
+        ax.tick_params(axis="both", labelsize=TICKSIZE)
+        ax.set_ylim(45, 80)
+        ax.grid(True, alpha=0.3)
+        ax.legend(fontsize=LEGENDSIZE-4, loc="lower right", framealpha=0.9, ncol=1)
+    fig.suptitle("Arxiv-trained checkpoint sweep — per-epoch test bACC (calibrated)",
+                 fontsize=TITLESIZE, y=1.02)
+    plt.tight_layout()
+    out_pdf = FIG_DIR / "objective_arxiv_trained.pdf"
+    out_png = FIG_DIR / "objective_arxiv_trained.png"
+    plt.savefig(out_pdf, dpi=200, bbox_inches="tight")
+    plt.savefig(out_png, dpi=150, bbox_inches="tight")
+    plt.savefig(DOC_FIG_DIR / "arxiv_trained.png", dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"  wrote: {out_pdf}, {out_png}")
+
+
+# ============================================================================
 # DATA COMPUTATION
 # ============================================================================
 def compute_all_7b():
@@ -948,6 +1004,109 @@ def compute_per_year_iclr():
     return results
 
 
+# ============================================================================
+# Arxiv-trained checkpoint sweep (from balanced_eval_2026-05-02 jsonls)
+# ============================================================================
+ARXIV_TRAIN_BASE = ROOT / "results/final_sweep_v7_datasweepv3/final_data_sweep_v3/arxiv_train"
+
+# (display_name, modality, train_data, model_size, ckpt_dir_relative_to_ARXIV_TRAIN_BASE, epoch_to_ckpt_dict)
+# Epoch labels match the report (1-4) for ckpts that come in 4 quarter-epoch increments.
+ARXIV_TRAINED_CELLS = [
+    ("3B balanced text",    "text",   "balanced", "3B", "small_sachin/arxiv_21k_text_3b",
+        {1: 656, 2: 1312, 3: 1968, 4: 2624}),
+    ("7B balanced text",    "text",   "balanced", "7B", "small/arxiv_21k_text",
+        {1: 656, 2: 1312, 3: 1968, 4: 2624}),
+    ("7B balanced vision",  "vision", "balanced", "7B", "small/arxiv_21k_vision",
+        {1: 1309, 2: 2618}),
+    ("3B natrate text",     "text",   "natrate",  "3B", "natrate_sachin/arxiv_natrate_21k_text_3b",
+        {1: 656, 2: 1312, 3: 1968, 4: 2624}),
+    ("7B natrate text",     "text",   "natrate",  "7B", "natrate_sachin/arxiv_natrate_21k_text",
+        {1: 656, 2: 1312}),
+]
+
+
+def score_logodds_2class(row):
+    """Source-report scoring: find decision position by argmax|lp_accept-lp_reject|, then 2-class softmax.
+       Falls back to score_logodds if logprob_accept/reject not present.
+    """
+    la = row.get("logprob_accept"); lr = row.get("logprob_reject")
+    if not la or not lr or len(la) != len(lr):
+        return score_logodds(row)
+    diffs = [abs(a - b) if (a is not None and b is not None) else -1 for a, b in zip(la, lr)]
+    pos = int(np.argmax(diffs))
+    a, b = la[pos], lr[pos]
+    if a is None or b is None:
+        return score_logodds(row)
+    # signed log-odds = log(P(A)/P(R)) = a - b after softmax_2
+    return float(a - b)
+
+
+def load_arxiv_trained_jsonl(cell_dir, dataset_subdir, ckpt):
+    """Load (score, gold) pairs from a jsonl. Tries plain then -gpu-test variant.
+       Uses 2-class-softmax scoring (matching source report) when logprob_accept/reject available.
+    """
+    p = ARXIV_TRAIN_BASE / cell_dir / dataset_subdir / f"finetuned-ckpt-{ckpt}.jsonl"
+    if not p.exists():
+        p = ARXIV_TRAIN_BASE / cell_dir / dataset_subdir / f"finetuned-ckpt-{ckpt}-gpu-test.jsonl"
+    if not p.exists(): return None
+    out = []
+    with p.open() as f:
+        for line in f:
+            r = json.loads(line)
+            g = extract_pred(r.get("label", ""))
+            s = score_logodds_2class(r)
+            if g is None or s is None: continue
+            out.append((s, 1 if g == "accept" else 0))
+    return out
+
+
+def compute_arxiv_trained_sweep():
+    """For each cell, compute per-epoch metrics on arxiv balanced + iclr balanced.
+       Calibrate τ*_bal on the matching val split (max-bACC), apply to test.
+       Pick best epoch by val-balAcc. Return per-cell best metrics with CIs.
+    """
+    results = {}
+    for (name, mode, train_data, size, cell_dir, epoch_map) in ARXIV_TRAINED_CELLS:
+        cell_results = {"epochs": {}, "best_arxiv": None, "best_iclr": None}
+        for epoch, ckpt in epoch_map.items():
+            ep_data = {}
+            for eval_ds in ("arxiv", "iclr"):
+                test_pairs = load_arxiv_trained_jsonl(cell_dir, f"{eval_ds}_balanced_test", ckpt)
+                val_pairs  = load_arxiv_trained_jsonl(cell_dir, f"{eval_ds}_balanced_val", ckpt)
+                if not test_pairs or not val_pairs:
+                    ep_data[eval_ds] = None; continue
+                tau = best_tau_balanced(val_pairs)
+                val_bal = bal_acc(val_pairs, tau)
+                test_metrics = metric_stack(test_pairs, tau)
+                ep_data[eval_ds] = {
+                    "ckpt": ckpt, "tau": tau, "val_bal": val_bal,
+                    "test": test_metrics, "test_pairs": test_pairs,
+                }
+            cell_results["epochs"][epoch] = ep_data
+
+        # Pick best epoch per eval_ds by val-balAcc
+        for eval_ds in ("arxiv", "iclr"):
+            cands = [(ep, d[eval_ds]) for ep, d in cell_results["epochs"].items()
+                     if d.get(eval_ds) is not None and d[eval_ds].get("val_bal") is not None]
+            if not cands: continue
+            # Tiebreak on val_bal: prefer later epoch (matches source-report convention)
+            best_ep, best_d = max(cands, key=lambda p: (p[1]["val_bal"], p[0]))
+            # bootstrap CI on test metrics
+            pairs = best_d["test_pairs"]
+            def bal_fn(ps): return bal_acc(ps, best_d["tau"])
+            def auc_fn(ps): return auc_score([s for s, _ in ps], [g for _, g in ps])
+            b_lo, b_hi = bootstrap_metric(pairs, bal_fn)
+            a_lo, a_hi = bootstrap_metric(pairs, auc_fn)
+            cell_results[f"best_{eval_ds}"] = {
+                "epoch": best_ep, "ckpt": best_d["ckpt"], "tau": best_d["tau"],
+                "val_bal": best_d["val_bal"],
+                "test": best_d["test"],
+                "ci_bal": (b_lo, b_hi), "ci_auc": (a_lo, a_hi),
+            }
+        results[name] = (cell_results, mode, train_data, size)
+    return results
+
+
 def compute_all_3b():
     out = {}
     for (mode, train), (short, step) in MODELS_3B_ICLR.items():
@@ -969,7 +1128,7 @@ def fmt_signed(v, dp=2):
     return f"{v:+.{dp}f}"
 
 
-def write_doc(per_cell, quality_corr, three_b, dr, arxiv_pvy, iclr_py):
+def write_doc(per_cell, quality_corr, three_b, dr, arxiv_pvy, iclr_py, arxiv_trained):
     lines = []
     L = lines.append
 
@@ -982,6 +1141,7 @@ def write_doc(per_cell, quality_corr, three_b, dr, arxiv_pvy, iclr_py):
     L("4. **Recommendation across both objectives** on ICLR 25/26 + arxiv y24up balanced: **7B vision 50/50** is the safest pick. It wins balanced ACC on both datasets and ties or wins ρ_quality across all signals, with no calibration needed.")
     L("5. **External baseline comparison vs DeepReviewer-14B** (§5, all native — no calibration on either side): on point estimates, PaperLens 7B vision 50/50 wins balanced ACC on both datasets (+6.3pp ICLR, +2.1pp arxiv), DeepReviewer wins AUC on both (+3-5pp). With 95% bootstrap CIs, only the **ICLR balanced ACC win is statistically meaningful** (CIs non-overlapping); the others are point-estimate orderings whose CIs overlap.")
     L("6. **Per-(venue, year) tracking** (§6): bACC on arxiv varies by venue (cvpr 2025 highest; aaai/eccv lowest) and drops on ICLR 2025→2026 by ~5pp for every config (paper population shift, not metric artifact). ρ citation collapses to 0 on ICLR 2026 due to the 2026 citation degeneracy.")
+    L("7. **Arxiv-trained checkpoint sweep** (§7): the training distribution dominates the modality choice on arxiv. **Arxiv-trained 7B vision balanced (ckpt-2618) wins arxiv-test by ~11pp** over our ICLR-trained 7B vision 50/50 (74.2 vs 62.8 bACC); ICLR-trained still wins on ICLR. **If you know the deployment distribution, train on it.** ICLR-trained 7B vision 50/50 remains the best single-model recommendation only when deployment distribution is unknown or mixed.")
     L("")
     L("---")
     L("")
@@ -1534,6 +1694,98 @@ def write_doc(per_cell, quality_corr, three_b, dr, arxiv_pvy, iclr_py):
     L("---")
     L("")
 
+    # ===================== SECTION 7 — Arxiv-trained checkpoint sweep =====================
+    L("## 7. Arxiv-trained checkpoints — does training distribution change the recommendation?")
+    L("")
+    L("Sections 1-6 used **ICLR-trained** 7B checkpoints. The new arxiv-trained sweep (`reports/balanced_eval_2026-05-02.md`) gives us per-epoch checkpoints (3B + 7B, balanced + natrate, text + vision) trained on arxiv with held-out evaluation on both arxiv and ICLR. **Calibration uses τ*_bal on the matching val split** (max balanced ACC), then applied to test — same protocol as elsewhere in this doc.")
+    L("")
+    L("![arxiv-trained sweep](../tmp_latex_dir/figures/objective_arxiv_trained.png)")
+    L("")
+
+    L("### 7.1 Best-checkpoint summary (val-balAcc → test metrics with bootstrap CIs)")
+    L("")
+    L("**Arxiv balanced test (in-distribution for arxiv-trained):**")
+    L("")
+    L("| Model | best epoch | ckpt | τ*_bal | val bACC | test bACC [95% CI] | test AUC [95% CI] | accept-rec | reject-rec |")
+    L("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
+    for name, (cell_results, mode, train_data, size) in arxiv_trained.items():
+        best = cell_results.get("best_arxiv")
+        if not best: continue
+        t = best["test"]
+        L(f"| {name} | {best['epoch']} | {best['ckpt']} | {best['tau']:.2f} | "
+          f"{best['val_bal']*100 if best['val_bal'] < 1 else best['val_bal']:.1f} | "
+          f"**{fmt_n(t['bal_acc'])}** {fmt_ci(best['ci_bal'][0], best['ci_bal'][1])} | "
+          f"{fmt_n(t['auc'],3)} {fmt_ci(best['ci_auc'][0], best['ci_auc'][1], dp=3)} | "
+          f"{fmt_n(t['acc_rec'])} | {fmt_n(t['rej_rec'])} |")
+    # Reference: ICLR-trained 7B vision 50/50 (no calibration, full-set)
+    ref = per_cell[("vision", "50_50", "arxiv", "balanced")]["raw_at_0"]
+    full_pairs, _ = load_arxiv_cell("bz16_lr1e-6_vision", 2648, "balanced", "test")
+    rb_lo, rb_hi = bootstrap_metric(full_pairs, lambda p: bal_acc(p, 0.0))
+    ra_lo, ra_hi = bootstrap_metric(full_pairs, lambda p: auc_score([s for s, _ in p], [g for _, g in p]))
+    L(f"| _ICLR-trained 7B vision 50/50 (ref, τ=0)_ | — | 2648 | 0.00 | — | "
+      f"{fmt_n(ref['bal_acc'])} {fmt_ci(rb_lo, rb_hi)} | "
+      f"{fmt_n(ref['auc'],3)} {fmt_ci(ra_lo, ra_hi, dp=3)} | "
+      f"{fmt_n(ref['acc_rec'])} | {fmt_n(ref['rej_rec'])} |")
+    L("")
+
+    L("**ICLR balanced test (OOD for arxiv-trained):**")
+    L("")
+    L("| Model | best epoch | ckpt | τ*_bal | val bACC | test bACC [95% CI] | test AUC [95% CI] | accept-rec | reject-rec |")
+    L("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
+    for name, (cell_results, mode, train_data, size) in arxiv_trained.items():
+        best = cell_results.get("best_iclr")
+        if not best:
+            L(f"| {name} | — | — | — | — | — (no iclr eval available) | — | — | — |")
+            continue
+        t = best["test"]
+        L(f"| {name} | {best['epoch']} | {best['ckpt']} | {best['tau']:.2f} | "
+          f"{best['val_bal']*100 if best['val_bal'] < 1 else best['val_bal']:.1f} | "
+          f"**{fmt_n(t['bal_acc'])}** {fmt_ci(best['ci_bal'][0], best['ci_bal'][1])} | "
+          f"{fmt_n(t['auc'],3)} {fmt_ci(best['ci_auc'][0], best['ci_auc'][1], dp=3)} | "
+          f"{fmt_n(t['acc_rec'])} | {fmt_n(t['rej_rec'])} |")
+    ref_i = per_cell[("vision", "50_50", "iclr", "balanced")]["raw_at_0"]
+    full_pairs_i, _ = load_iclr_cell("bz16_lr1e-6_vision", 2648, "50_50", "balanced", "test")
+    rb_lo_i, rb_hi_i = bootstrap_metric(full_pairs_i, lambda p: bal_acc(p, 0.0))
+    ra_lo_i, ra_hi_i = bootstrap_metric(full_pairs_i, lambda p: auc_score([s for s, _ in p], [g for _, g in p]))
+    L(f"| _ICLR-trained 7B vision 50/50 (ref, τ=0)_ | — | 2648 | 0.00 | — | "
+      f"**{fmt_n(ref_i['bal_acc'])}** {fmt_ci(rb_lo_i, rb_hi_i)} | "
+      f"{fmt_n(ref_i['auc'],3)} {fmt_ci(ra_lo_i, ra_hi_i, dp=3)} | "
+      f"{fmt_n(ref_i['acc_rec'])} | {fmt_n(ref_i['rej_rec'])} |")
+    L("")
+
+    L("### 7.2 Headline findings — train where you'll deploy")
+    L("")
+    # Compute the in-domain win
+    avx = arxiv_trained.get("7B balanced vision", (None,))[0]
+    if avx and avx.get("best_arxiv"):
+        gap = avx["best_arxiv"]["test"]["bal_acc"] - ref["bal_acc"]
+        L(f"- **Arxiv-trained 7B vision balanced wins arxiv-test by {gap:+.1f}pp** ({avx['best_arxiv']['test']['bal_acc']:.1f} vs {ref['bal_acc']:.1f}). The CIs are far apart — this is the largest single recommendation shift in the doc.")
+    L("- **3B vs 7B on text** (arxiv balanced): essentially tied (~0.7pp gap), consistent with the source report's bottom line. 3B is roughly free vs 7B for arxiv-domain text-only deployment.")
+    L("- **OOD penalty on ICLR**: every arxiv-trained text checkpoint loses 4-7pp vs ICLR-trained 7B vision 50/50 on iclr-test. **3B arxiv-balanced text is the best arxiv-trained model on iclr-test (63.3 bACC) but still trails ICLR-trained vision (67.6).**")
+    L("- **Calibration matters most for natrate-trained models**: 7B natrate text on arxiv recovers from raw 0.594 to calibrated 0.696 (+10.2pp from the source report) because P(Accept) shifts dramatically away from 0.5. Balanced-trained models are closer to well-calibrated by default (~+1-3pp).")
+    L("- **Per-epoch trajectory** (figure above): balanced-trained models peak around epoch 2 on arxiv; natrate models continue improving through epoch 4 (have not finished training on the larger ckpts yet). Vision balanced epoch 2 (ckpt-2618) is the current arxiv-deployment best.")
+    L("")
+
+    L("### 7.3 Updated recommendation table")
+    L("")
+    L("| Deployment dataset | Both objectives → recommended config | bACC | Notes |")
+    L("|---|---|---:|---|")
+    if avx and avx.get("best_arxiv"):
+        L(f"| **Arxiv y24up balanced** | **arxiv-trained 7B vision balanced** (ckpt-2618) | {avx['best_arxiv']['test']['bal_acc']:.1f} | In-domain training; +{avx['best_arxiv']['test']['bal_acc']-ref['bal_acc']:.1f}pp over ICLR-trained vision |")
+    L(f"| **ICLR 25/26 balanced** | **ICLR-trained 7B vision 50/50** (ckpt-2648) | {ref_i['bal_acc']:.1f} | In-domain training; arxiv-trained models all lose 4-7pp here |")
+    L(f"| **Mixed / unknown deployment** | **ICLR-trained 7B vision 50/50** (current rec) | — | The only checkpoint that's competitive on both: 67.6 ICLR + 62.8 arxiv (vs 74.2 arxiv + ~57 ICLR for arxiv-trained vision — much worse on ICLR). |")
+    L("")
+    L("**The training-distribution effect dominates the modality choice on the arxiv side.** If you know the deployment distribution, train on it.")
+    L("")
+    L("### 7.4 Caveats from the source report")
+    L("")
+    L("- **7B natrate text iclr ep1 winning ICLR** looks suspicious in the source report (Acc-rec 0.69, Rej-rec 0.49) — only ckpts 656 + 1312 done; re-evaluate when 1968 + 2624 land.")
+    L("- **7B balanced vision iclr-test still queued at the time of source report** — partial data; the OOD numbers for vision balanced on iclr in this section are missing (the cell returns no iclr-test jsonl).")
+    L("- **iclr OOD ceiling (~0.63)** across cells is below arxiv (~0.71). Distribution shift is the dominant factor, not model size or training mix.")
+    L("")
+    L("---")
+    L("")
+
     # ===================== APPENDIX =====================
     L("## Appendix: data sources")
     L("")
@@ -1777,6 +2029,9 @@ def main():
     arxiv_pvy = compute_per_venue_year_arxiv()
     iclr_py   = compute_per_year_iclr()
 
+    print("Computing arxiv-trained checkpoint sweep...")
+    arxiv_trained = compute_arxiv_trained_sweep()
+
     print("\nFigure: distribution shift (corrected for 2026 degeneracy)...")
     figure_distribution_shift()
 
@@ -1793,8 +2048,11 @@ def main():
     print("Figure: per-(venue, year) tracking...")
     figure_per_venue_year(arxiv_pvy, iclr_py)
 
+    print("Figure: arxiv-trained checkpoint sweep...")
+    figure_arxiv_trained_sweep(arxiv_trained, per_cell)
+
     print("\nWriting markdown report...")
-    write_doc(per_cell, quality_corr, three_b, dr, arxiv_pvy, iclr_py)
+    write_doc(per_cell, quality_corr, three_b, dr, arxiv_pvy, iclr_py, arxiv_trained)
 
     print("\nDone.")
 

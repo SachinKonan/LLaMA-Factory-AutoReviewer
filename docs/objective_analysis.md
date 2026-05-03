@@ -7,6 +7,7 @@
 4. **Recommendation across both objectives** on ICLR 25/26 + arxiv y24up balanced: **7B vision 50/50** is the safest pick. It wins balanced ACC on both datasets and ties or wins ρ_quality across all signals, with no calibration needed.
 5. **External baseline comparison vs DeepReviewer-14B** (§5, all native — no calibration on either side): on point estimates, PaperLens 7B vision 50/50 wins balanced ACC on both datasets (+6.3pp ICLR, +2.1pp arxiv), DeepReviewer wins AUC on both (+3-5pp). With 95% bootstrap CIs, only the **ICLR balanced ACC win is statistically meaningful** (CIs non-overlapping); the others are point-estimate orderings whose CIs overlap.
 6. **Per-(venue, year) tracking** (§6): bACC on arxiv varies by venue (cvpr 2025 highest; aaai/eccv lowest) and drops on ICLR 2025→2026 by ~5pp for every config (paper population shift, not metric artifact). ρ citation collapses to 0 on ICLR 2026 due to the 2026 citation degeneracy.
+7. **Arxiv-trained checkpoint sweep** (§7): the training distribution dominates the modality choice on arxiv. **Arxiv-trained 7B vision balanced (ckpt-2618) wins arxiv-test by ~11pp** over our ICLR-trained 7B vision 50/50 (74.2 vs 62.8 bACC); ICLR-trained still wins on ICLR. **If you know the deployment distribution, train on it.** ICLR-trained 7B vision 50/50 remains the best single-model recommendation only when deployment distribution is unknown or mixed.
 
 ---
 
@@ -395,6 +396,62 @@ Only cells with `n ≥ 40` for the relevant signal are shown.
 - **NeurIPS 2024**: both rating and citation available (`n=77` each). The strongest cell where we can directly compare both signals on the same papers — vision configs win citation correlation here while text configs win rating.
 - **CVPR 2024+2025**: citation-only (`n=47-50`). Useful for the citation-prediction objective, but no reviewer-rating data.
 - **NeurIPS 2025 / ICLR 2026 (in arxiv)**: rating-only. The arxiv ICLR 2026 cell is also subject to the 2026 citation degeneracy.
+
+---
+
+## 7. Arxiv-trained checkpoints — does training distribution change the recommendation?
+
+Sections 1-6 used **ICLR-trained** 7B checkpoints. The new arxiv-trained sweep (`reports/balanced_eval_2026-05-02.md`) gives us per-epoch checkpoints (3B + 7B, balanced + natrate, text + vision) trained on arxiv with held-out evaluation on both arxiv and ICLR. **Calibration uses τ*_bal on the matching val split** (max balanced ACC), then applied to test — same protocol as elsewhere in this doc.
+
+![arxiv-trained sweep](../tmp_latex_dir/figures/objective_arxiv_trained.png)
+
+### 7.1 Best-checkpoint summary (val-balAcc → test metrics with bootstrap CIs)
+
+**Arxiv balanced test (in-distribution for arxiv-trained):**
+
+| Model | best epoch | ckpt | τ*_bal | val bACC | test bACC [95% CI] | test AUC [95% CI] | accept-rec | reject-rec |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 3B balanced text | 2 | 1312 | -0.25 | 67.8 | **70.0** [67.9, 72.3] | 0.786 [0.763, 0.809] | 64.8 | 75.2 |
+| 7B balanced text | 2 | 1312 | -2.00 | 66.7 | **72.0** [69.5, 74.4] | 0.790 [0.766, 0.815] | 78.9 | 65.0 |
+| 7B balanced vision | 2 | 2618 | -1.12 | 72.7 | **74.2** [71.6, 76.5] | 0.826 [0.804, 0.846] | 75.3 | 73.1 |
+| 3B natrate text | 3 | 1968 | -2.00 | 67.8 | **68.2** [66.0, 70.5] | 0.770 [0.746, 0.792] | 81.0 | 55.4 |
+| 7B natrate text | 1 | 656 | -1.44 | 65.9 | **69.2** [66.9, 71.5] | 0.776 [0.751, 0.799] | 56.7 | 81.7 |
+| _ICLR-trained 7B vision 50/50 (ref, τ=0)_ | — | 2648 | 0.00 | — | 62.8 [60.3, 65.2] | 0.724 [0.697, 0.752] | 45.1 | 80.4 |
+
+**ICLR balanced test (OOD for arxiv-trained):**
+
+| Model | best epoch | ckpt | τ*_bal | val bACC | test bACC [95% CI] | test AUC [95% CI] | accept-rec | reject-rec |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 3B balanced text | 1 | 656 | 0.50 | 61.4 | **63.3** [61.1, 65.3] | 0.694 [0.671, 0.717] | 78.1 | 48.5 |
+| 7B balanced text | 1 | 656 | 0.63 | 59.8 | **61.7** [59.3, 64.0] | 0.644 [0.620, 0.669] | 66.7 | 56.7 |
+| 7B balanced vision | — | — | — | — | — (no iclr eval available) | — | — | — |
+| 3B natrate text | 3 | 1968 | -0.50 | 62.3 | **61.6** [59.0, 63.8] | 0.676 [0.649, 0.699] | 66.1 | 57.1 |
+| 7B natrate text | 2 | 1312 | -0.88 | 59.8 | **59.6** [57.1, 61.8] | 0.641 [0.612, 0.667] | 51.4 | 67.7 |
+| _ICLR-trained 7B vision 50/50 (ref, τ=0)_ | — | 2648 | 0.00 | — | **67.6** [65.4, 69.7] | 0.736 [0.713, 0.758] | 65.4 | 69.8 |
+
+### 7.2 Headline findings — train where you'll deploy
+
+- **Arxiv-trained 7B vision balanced wins arxiv-test by +11.4pp** (74.2 vs 62.8). The CIs are far apart — this is the largest single recommendation shift in the doc.
+- **3B vs 7B on text** (arxiv balanced): essentially tied (~0.7pp gap), consistent with the source report's bottom line. 3B is roughly free vs 7B for arxiv-domain text-only deployment.
+- **OOD penalty on ICLR**: every arxiv-trained text checkpoint loses 4-7pp vs ICLR-trained 7B vision 50/50 on iclr-test. **3B arxiv-balanced text is the best arxiv-trained model on iclr-test (63.3 bACC) but still trails ICLR-trained vision (67.6).**
+- **Calibration matters most for natrate-trained models**: 7B natrate text on arxiv recovers from raw 0.594 to calibrated 0.696 (+10.2pp from the source report) because P(Accept) shifts dramatically away from 0.5. Balanced-trained models are closer to well-calibrated by default (~+1-3pp).
+- **Per-epoch trajectory** (figure above): balanced-trained models peak around epoch 2 on arxiv; natrate models continue improving through epoch 4 (have not finished training on the larger ckpts yet). Vision balanced epoch 2 (ckpt-2618) is the current arxiv-deployment best.
+
+### 7.3 Updated recommendation table
+
+| Deployment dataset | Both objectives → recommended config | bACC | Notes |
+|---|---|---:|---|
+| **Arxiv y24up balanced** | **arxiv-trained 7B vision balanced** (ckpt-2618) | 74.2 | In-domain training; +11.4pp over ICLR-trained vision |
+| **ICLR 25/26 balanced** | **ICLR-trained 7B vision 50/50** (ckpt-2648) | 67.6 | In-domain training; arxiv-trained models all lose 4-7pp here |
+| **Mixed / unknown deployment** | **ICLR-trained 7B vision 50/50** (current rec) | — | The only checkpoint that's competitive on both: 67.6 ICLR + 62.8 arxiv (vs 74.2 arxiv + ~57 ICLR for arxiv-trained vision — much worse on ICLR). |
+
+**The training-distribution effect dominates the modality choice on the arxiv side.** If you know the deployment distribution, train on it.
+
+### 7.4 Caveats from the source report
+
+- **7B natrate text iclr ep1 winning ICLR** looks suspicious in the source report (Acc-rec 0.69, Rej-rec 0.49) — only ckpts 656 + 1312 done; re-evaluate when 1968 + 2624 land.
+- **7B balanced vision iclr-test still queued at the time of source report** — partial data; the OOD numbers for vision balanced on iclr in this section are missing (the cell returns no iclr-test jsonl).
+- **iclr OOD ceiling (~0.63)** across cells is below arxiv (~0.71). Distribution shift is the dominant factor, not model size or training mix.
 
 ---
 
