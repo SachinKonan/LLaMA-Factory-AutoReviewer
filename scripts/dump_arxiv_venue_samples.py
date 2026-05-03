@@ -32,20 +32,23 @@ SEED = 17
 # PDF margins so the panel cells already separate visibly; 2-column venues
 # (CVPR/ICCV/ICML/AAAI/AISTATS/EccV) trim to cell edges and need explicit
 # padding here so each page reads as its own card.
+# Sized so the *effective* horizontal margin per page (border + natural
+# letterbox bar from aspect mismatch) is roughly consistent across venues
+# (~28 px each side, matching ICLR's natural ~30 px bar in a 476x756 cell).
 VENUE_PAGE_BORDER = {
-    "iclr": 0,
-    "colm": 0,
-    "neurips": 4,
-    "corl": 6,
-    "aistats": 12,
-    "eccv": 12,
-    "icml": 14,
-    "iccv": 14,
-    "aaai": 14,
-    "cvpr": 16,
-    "acl": 12,  # ACL is 2-column-ish, similar to CVPR
+    "iclr": 0,    # natural ~30 px
+    "colm": 0,    # natural ~30 px
+    "neurips": 12,
+    "corl": 18,
+    "aistats": 22,
+    "eccv": 22,
+    "acl": 22,
+    "icml": 24,
+    "iccv": 24,
+    "aaai": 24,
+    "cvpr": 26,
 }
-DEFAULT_PAGE_BORDER = 12
+DEFAULT_PAGE_BORDER = 22
 
 # Inner page-grid dims (5 cols x 2 rows) so we can paint borders around each cell.
 PANEL_INNER_COLS, PANEL_INNER_ROWS = 5, 2
