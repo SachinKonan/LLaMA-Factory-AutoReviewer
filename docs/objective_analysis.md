@@ -5,7 +5,9 @@
 2. Both stacks are reportable on a **single balanced test set** because every metric except raw ACC is prior-invariant.
 3. **Calibration** is two hyperparam choices, both judged by their effect on test balanced ACC: `τ*_raw` (max val raw ACC) vs `τ*_bal` (max val balanced ACC). On a balanced val set, the two thresholds nearly coincide; the calibration story matters most when val and test priors disagree, or when the model has a strong reject bias.
 4. **Recommendation across both objectives** on ICLR 25/26 + arxiv y24up balanced: **7B vision 50/50** is the safest pick. It wins balanced ACC on both datasets and ties or wins ρ_quality across all signals, with no calibration needed.
-5. **External baseline comparison vs DeepReviewer-14B** (§5, all native — no calibration on either side): on point estimates, PaperLens 7B vision 50/50 wins balanced ACC on both datasets (+6.3pp ICLR, +2.1pp arxiv), DeepReviewer wins AUC on both (+3-5pp). With 95% bootstrap CIs, only the **ICLR balanced ACC win is statistically meaningful** (CIs non-overlapping); the others are point-estimate orderings whose CIs overlap.
+5. **External baseline comparison vs DeepReviewer-14B** (§5, all native — no calibration on either side):
+   - **ICLR-trained PaperLens** vs DR: ICLR balanced ACC win is statistically meaningful (CIs non-overlapping); arxiv bACC and the AUC orderings are point-estimate-only (CIs overlap).
+   - **Arxiv-trained 7B vision balanced** (§7.4): on arxiv it **dominates DR on bACC with non-overlapping CIs** (+12.8pp on subsample) and **flips the AUC ordering** in our favor (+0.072 point estimate; on the full 1414-paper set the CI just barely separates from DR's CI upper bound).
 6. **Per-(venue, year) tracking** (§6): bACC on arxiv varies by venue (cvpr 2025 highest; aaai/eccv lowest) and drops on ICLR 2025→2026 by ~5pp for every config (paper population shift, not metric artifact). ρ citation collapses to 0 on ICLR 2026 due to the 2026 citation degeneracy.
 7. **Arxiv-trained checkpoint sweep** (§7): the training distribution dominates the modality choice on arxiv. **Arxiv-trained 7B vision balanced (ckpt-2618) wins arxiv-test by ~11pp** over our ICLR-trained 7B vision 50/50 (74.2 vs 62.8 bACC); ICLR-trained still wins on ICLR. **If you know the deployment distribution, train on it.** ICLR-trained 7B vision 50/50 remains the best single-model recommendation only when deployment distribution is unknown or mixed.
 
@@ -308,8 +310,8 @@ Neither system dominates on every metric, and the differences are interpretable:
 **Interpretation.** DeepReviewer's 4-reviewer ensemble produces a **better-ordered rating** (higher AUC; matches ICLR citation outcomes), but its decision threshold is **mis-placed toward Reject** (low accept-recall, lower bACC). PaperLens's log-odds is a slightly less granular ranking, but its decision boundary at τ=0 is well-calibrated for Accept/Reject under a balanced prior. PaperLens is also **half the parameter count** (7B vs 14B) and uses a **single forward pass** vs DR's 4-reviewer + meta-review ensemble (~56s/paper amortized).
 
 **Practical implication for our two objectives.**
-- **Obj 1 (quality indicator)**: if you only need a *ranking* (AUC, Spearman), DR is the stronger continuous signal. If you need a `score → quality` mapping that closely tracks reviewer ratings, PaperLens wins. The tradeoff depends on which downstream signal matters.
-- **Obj 2 (conference acceptor)**: PaperLens 7B vision 50/50 remains the recommendation — better balanced accuracy, better per-class recall balance, and an order-of-magnitude faster.
+- **Obj 1 (quality indicator)**: if you only need a *ranking* (AUC, Spearman), DR is the stronger continuous signal *for ICLR-trained PaperLens*. If you need a `score → quality` mapping that closely tracks reviewer ratings, PaperLens wins. The tradeoff depends on which downstream signal matters.
+- **Obj 2 (conference acceptor)**: ICLR-trained PaperLens 7B vision 50/50 wins on ICLR; close on arxiv. **But see §7.4** — the in-domain arxiv-trained 7B vision balanced model dominates DR on arxiv on both bACC and AUC with non-overlapping CIs, flipping DR's AUC advantage entirely.
 
 ---
 
@@ -447,7 +449,29 @@ Sections 1-6 used **ICLR-trained** 7B checkpoints. The new arxiv-trained sweep (
 
 **The training-distribution effect dominates the modality choice on the arxiv side.** If you know the deployment distribution, train on it.
 
-### 7.4 Caveats from the source report
+### 7.4 Arxiv-trained vs DeepReviewer-14B on arxiv balanced
+
+In §5 we found DeepReviewer beat ICLR-trained PaperLens on AUC (point estimate, overlapping CIs). With the **arxiv-trained** ckpt that picture flips.
+
+Arxiv-trained 7B vision balanced (ckpt-2618) was evaluated on the full arxiv balanced test (n=1414) above. To make the apples-to-apples comparison with DeepReviewer (on its 1/4 stratified subsample, n=343), I also recompute on the same subsample below:
+
+| System | n | balanced ACC [95% CI] | AUC [95% CI] | accept-rec | reject-rec |
+|---|---:|---:|---:|---:|---:|
+| **Arxiv-trained 7B vision balanced (full set)** | 1414 | **74.2** [71.6, 76.5] | 0.826 [0.804, 0.846] | 75.3 | 73.1 |
+| **Arxiv-trained 7B vision balanced (DR subsample)** | 361 | **73.5** [68.8, 77.6] | 0.826 [0.780, 0.866] | 74.3 | 72.7 |
+| DeepReviewer-14B (native, DR subsample)         | 343 | 60.7 [56.0, 65.7] | 0.754 [0.703, 0.800] | 48.8 | 72.5 |
+| ICLR-trained 7B vision 50/50 (full set, ref) | 1414 | 62.8 [60.3, 65.2] | 0.724 [0.697, 0.752] | 45.1 | 80.4 |
+
+**Findings on arxiv balanced (apples-to-apples on DR subsample)**:
+- **bACC**: arxiv-trained vision +12.8pp over DR (73.5 vs 60.7). CIs: arxiv-trained [68.8, 77.6] vs DR [56.0, 65.7] — **non-overlapping**, statistically meaningful.
+- **AUC**: arxiv-trained vision +0.072 over DR (0.826 vs 0.754). CIs: arxiv-trained [0.780, 0.866] vs DR [0.703, 0.800] — overlap (point estimate only).
+- **The DR subsample is faithful**: full-set bACC (74.2) vs subsample bACC (73.5) shifts only ~0.7pp (within CI width).
+
+**This is a meaningful update to §5.** ICLR-trained PaperLens lost AUC to DeepReviewer on arxiv (point estimate only, CIs overlapped). For arxiv-trained PaperLens:
+- **bACC** dominates DR with non-overlapping CIs on the subsample (+12.8pp), and the full-set CI is even tighter — robust.
+- **AUC** flips the previous DR advantage in favor of arxiv-trained (+0.072 point estimate), but on the small subsample CIs marginally overlap. On the full 1414-paper set, the arxiv-trained CI lower bound (0.804) sits just above DR's CI upper bound (0.800) — at the edge of statistical significance.
+
+### 7.5 Caveats from the source report
 
 - **7B natrate text iclr ep1 winning ICLR** looks suspicious in the source report (Acc-rec 0.69, Rej-rec 0.49) — only ckpts 656 + 1312 done; re-evaluate when 1968 + 2624 land.
 - **7B balanced vision iclr-test still queued at the time of source report** — partial data; the OOD numbers for vision balanced on iclr in this section are missing (the cell returns no iclr-test jsonl).

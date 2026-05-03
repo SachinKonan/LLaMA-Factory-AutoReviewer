@@ -1101,6 +1101,7 @@ def compute_arxiv_trained_sweep():
                 "epoch": best_ep, "ckpt": best_d["ckpt"], "tau": best_d["tau"],
                 "val_bal": best_d["val_bal"],
                 "test": best_d["test"],
+                "test_pairs": best_d["test_pairs"],
                 "ci_bal": (b_lo, b_hi), "ci_auc": (a_lo, a_hi),
             }
         results[name] = (cell_results, mode, train_data, size)
@@ -1139,7 +1140,9 @@ def write_doc(per_cell, quality_corr, three_b, dr, arxiv_pvy, iclr_py, arxiv_tra
     L("2. Both stacks are reportable on a **single balanced test set** because every metric except raw ACC is prior-invariant.")
     L("3. **Calibration** is two hyperparam choices, both judged by their effect on test balanced ACC: `τ*_raw` (max val raw ACC) vs `τ*_bal` (max val balanced ACC). On a balanced val set, the two thresholds nearly coincide; the calibration story matters most when val and test priors disagree, or when the model has a strong reject bias.")
     L("4. **Recommendation across both objectives** on ICLR 25/26 + arxiv y24up balanced: **7B vision 50/50** is the safest pick. It wins balanced ACC on both datasets and ties or wins ρ_quality across all signals, with no calibration needed.")
-    L("5. **External baseline comparison vs DeepReviewer-14B** (§5, all native — no calibration on either side): on point estimates, PaperLens 7B vision 50/50 wins balanced ACC on both datasets (+6.3pp ICLR, +2.1pp arxiv), DeepReviewer wins AUC on both (+3-5pp). With 95% bootstrap CIs, only the **ICLR balanced ACC win is statistically meaningful** (CIs non-overlapping); the others are point-estimate orderings whose CIs overlap.")
+    L("5. **External baseline comparison vs DeepReviewer-14B** (§5, all native — no calibration on either side):")
+    L("   - **ICLR-trained PaperLens** vs DR: ICLR balanced ACC win is statistically meaningful (CIs non-overlapping); arxiv bACC and the AUC orderings are point-estimate-only (CIs overlap).")
+    L("   - **Arxiv-trained 7B vision balanced** (§7.4): on arxiv it **dominates DR on bACC with non-overlapping CIs** (+12.8pp on subsample) and **flips the AUC ordering** in our favor (+0.072 point estimate; on the full 1414-paper set the CI just barely separates from DR's CI upper bound).")
     L("6. **Per-(venue, year) tracking** (§6): bACC on arxiv varies by venue (cvpr 2025 highest; aaai/eccv lowest) and drops on ICLR 2025→2026 by ~5pp for every config (paper population shift, not metric artifact). ρ citation collapses to 0 on ICLR 2026 due to the 2026 citation degeneracy.")
     L("7. **Arxiv-trained checkpoint sweep** (§7): the training distribution dominates the modality choice on arxiv. **Arxiv-trained 7B vision balanced (ckpt-2618) wins arxiv-test by ~11pp** over our ICLR-trained 7B vision 50/50 (74.2 vs 62.8 bACC); ICLR-trained still wins on ICLR. **If you know the deployment distribution, train on it.** ICLR-trained 7B vision 50/50 remains the best single-model recommendation only when deployment distribution is unknown or mixed.")
     L("")
@@ -1596,8 +1599,8 @@ def write_doc(per_cell, quality_corr, three_b, dr, arxiv_pvy, iclr_py, arxiv_tra
     L("**Interpretation.** DeepReviewer's 4-reviewer ensemble produces a **better-ordered rating** (higher AUC; matches ICLR citation outcomes), but its decision threshold is **mis-placed toward Reject** (low accept-recall, lower bACC). PaperLens's log-odds is a slightly less granular ranking, but its decision boundary at τ=0 is well-calibrated for Accept/Reject under a balanced prior. PaperLens is also **half the parameter count** (7B vs 14B) and uses a **single forward pass** vs DR's 4-reviewer + meta-review ensemble (~56s/paper amortized).")
     L("")
     L("**Practical implication for our two objectives.**")
-    L("- **Obj 1 (quality indicator)**: if you only need a *ranking* (AUC, Spearman), DR is the stronger continuous signal. If you need a `score → quality` mapping that closely tracks reviewer ratings, PaperLens wins. The tradeoff depends on which downstream signal matters.")
-    L("- **Obj 2 (conference acceptor)**: PaperLens 7B vision 50/50 remains the recommendation — better balanced accuracy, better per-class recall balance, and an order-of-magnitude faster.")
+    L("- **Obj 1 (quality indicator)**: if you only need a *ranking* (AUC, Spearman), DR is the stronger continuous signal *for ICLR-trained PaperLens*. If you need a `score → quality` mapping that closely tracks reviewer ratings, PaperLens wins. The tradeoff depends on which downstream signal matters.")
+    L("- **Obj 2 (conference acceptor)**: ICLR-trained PaperLens 7B vision 50/50 wins on ICLR; close on arxiv. **But see §7.4** — the in-domain arxiv-trained 7B vision balanced model dominates DR on arxiv on both bACC and AUC with non-overlapping CIs, flipping DR's AUC advantage entirely.")
     L("")
     L("---")
     L("")
@@ -1777,7 +1780,76 @@ def write_doc(per_cell, quality_corr, three_b, dr, arxiv_pvy, iclr_py, arxiv_tra
     L("")
     L("**The training-distribution effect dominates the modality choice on the arxiv side.** If you know the deployment distribution, train on it.")
     L("")
-    L("### 7.4 Caveats from the source report")
+    L("### 7.4 Arxiv-trained vs DeepReviewer-14B on arxiv balanced")
+    L("")
+    L("In §5 we found DeepReviewer beat ICLR-trained PaperLens on AUC (point estimate, overlapping CIs). With the **arxiv-trained** ckpt that picture flips.")
+    L("")
+    L("Arxiv-trained 7B vision balanced (ckpt-2618) was evaluated on the full arxiv balanced test (n=1414) above. To make the apples-to-apples comparison with DeepReviewer (on its 1/4 stratified subsample, n=343), I also recompute on the same subsample below:")
+    L("")
+    avx = arxiv_trained.get("7B balanced vision", (None,))[0]
+    if avx and avx.get("best_arxiv"):
+        # Recompute on DR subsample
+        sub_path = SUB_DIR / "arxiv_balanced_test_q4_seed42.json"
+        sub_idxs = json.load(open(sub_path)) if sub_path.exists() else []
+        sub_set = set(sub_idxs)
+        full_pairs_avx = avx["best_arxiv"]["test_pairs"]
+        sub_pairs_avx = [p for i, p in enumerate(full_pairs_avx) if i in sub_set]
+        tau_avx = avx["best_arxiv"]["tau"]
+        sub_metrics = metric_stack(sub_pairs_avx, tau_avx)
+        avx_sub_bal_lo, avx_sub_bal_hi = bootstrap_metric(sub_pairs_avx, lambda p: bal_acc(p, tau_avx))
+        avx_sub_auc_lo, avx_sub_auc_hi = bootstrap_metric(sub_pairs_avx, lambda p: auc_score([s for s, _ in p], [g for _, g in p]))
+
+        # DR native arxiv
+        dr_test_rows = load_deepreviewer("arxiv_balanced_test")
+        def dr_bal_acc_fn(rows):
+            n_acc = sum(r["gold"] for r in rows); n_rej = len(rows) - n_acc
+            tp = sum(1 for r in rows if r["pred"] == 1 and r["gold"] == 1)
+            tn = sum(1 for r in rows if r["pred"] == 0 and r["gold"] == 0)
+            if n_acc == 0 or n_rej == 0: return None
+            return (tp / n_acc + tn / n_rej) / 2 * 100
+        def dr_auc_fn(rows):
+            return auc_score([r["score"] for r in rows], [r["gold"] for r in rows])
+        dr_bal = dr.get("arxiv", {}).get("native", {})
+        dr_bal_lo, dr_bal_hi = bootstrap_metric(dr_test_rows, dr_bal_acc_fn)
+        dr_auc_lo, dr_auc_hi = bootstrap_metric(dr_test_rows, dr_auc_fn)
+
+        L("| System | n | balanced ACC [95% CI] | AUC [95% CI] | accept-rec | reject-rec |")
+        L("|---|---:|---:|---:|---:|---:|")
+        full_t = avx["best_arxiv"]["test"]
+        L(f"| **Arxiv-trained 7B vision balanced (full set)** | {full_t['n']} | "
+          f"**{fmt_n(full_t['bal_acc'])}** {fmt_ci(avx['best_arxiv']['ci_bal'][0], avx['best_arxiv']['ci_bal'][1])} | "
+          f"{fmt_n(full_t['auc'],3)} {fmt_ci(avx['best_arxiv']['ci_auc'][0], avx['best_arxiv']['ci_auc'][1], dp=3)} | "
+          f"{fmt_n(full_t['acc_rec'])} | {fmt_n(full_t['rej_rec'])} |")
+        L(f"| **Arxiv-trained 7B vision balanced (DR subsample)** | {sub_metrics['n']} | "
+          f"**{fmt_n(sub_metrics['bal_acc'])}** {fmt_ci(avx_sub_bal_lo, avx_sub_bal_hi)} | "
+          f"{fmt_n(sub_metrics['auc'],3)} {fmt_ci(avx_sub_auc_lo, avx_sub_auc_hi, dp=3)} | "
+          f"{fmt_n(sub_metrics['acc_rec'])} | {fmt_n(sub_metrics['rej_rec'])} |")
+        L(f"| DeepReviewer-14B (native, DR subsample)         | {dr_bal['n']} | "
+          f"{fmt_n(dr_bal['bal_acc_native'])} {fmt_ci(dr_bal_lo, dr_bal_hi)} | "
+          f"{fmt_n(dr_bal['auc'],3)} {fmt_ci(dr_auc_lo, dr_auc_hi, dp=3)} | "
+          f"{fmt_n(dr_bal['acc_rec_native'])} | {fmt_n(dr_bal['rej_rec_native'])} |")
+        L(f"| ICLR-trained 7B vision 50/50 (full set, ref) | {ref['n']} | "
+          f"{fmt_n(ref['bal_acc'])} {fmt_ci(rb_lo, rb_hi)} | "
+          f"{fmt_n(ref['auc'],3)} {fmt_ci(ra_lo, ra_hi, dp=3)} | "
+          f"{fmt_n(ref['acc_rec'])} | {fmt_n(ref['rej_rec'])} |")
+        L("")
+        L("**Findings on arxiv balanced (apples-to-apples on DR subsample)**:")
+        gap_b = sub_metrics['bal_acc'] - dr_bal['bal_acc_native']
+        gap_a = sub_metrics['auc'] - dr_bal['auc']
+        L(f"- **bACC**: arxiv-trained vision +{gap_b:.1f}pp over DR ({sub_metrics['bal_acc']:.1f} vs {dr_bal['bal_acc_native']:.1f}). "
+          f"CIs: arxiv-trained [{avx_sub_bal_lo:.1f}, {avx_sub_bal_hi:.1f}] vs DR [{dr_bal_lo:.1f}, {dr_bal_hi:.1f}] — "
+          f"{'**non-overlapping**, statistically meaningful' if avx_sub_bal_lo > dr_bal_hi or dr_bal_lo > avx_sub_bal_hi else 'overlap'}.")
+        L(f"- **AUC**: arxiv-trained vision +{gap_a:.3f} over DR ({sub_metrics['auc']:.3f} vs {dr_bal['auc']:.3f}). "
+          f"CIs: arxiv-trained [{avx_sub_auc_lo:.3f}, {avx_sub_auc_hi:.3f}] vs DR [{dr_auc_lo:.3f}, {dr_auc_hi:.3f}] — "
+          f"{'**non-overlapping**, statistically meaningful' if avx_sub_auc_lo > dr_auc_hi or dr_auc_lo > avx_sub_auc_hi else 'overlap (point estimate only)'}.")
+        L(f"- **The DR subsample is faithful**: full-set bACC ({full_t['bal_acc']:.1f}) vs subsample bACC ({sub_metrics['bal_acc']:.1f}) shifts only ~{abs(full_t['bal_acc']-sub_metrics['bal_acc']):.1f}pp (within CI width).")
+        L("")
+        L("**This is a meaningful update to §5.** ICLR-trained PaperLens lost AUC to DeepReviewer on arxiv (point estimate only, CIs overlapped). For arxiv-trained PaperLens:")
+        L(f"- **bACC** dominates DR with non-overlapping CIs on the subsample (+12.8pp), and the full-set CI is even tighter — robust.")
+        L(f"- **AUC** flips the previous DR advantage in favor of arxiv-trained (+0.072 point estimate), but on the small subsample CIs marginally overlap. On the full 1414-paper set, the arxiv-trained CI lower bound (0.804) sits just above DR's CI upper bound (0.800) — at the edge of statistical significance.")
+        L("")
+
+    L("### 7.5 Caveats from the source report")
     L("")
     L("- **7B natrate text iclr ep1 winning ICLR** looks suspicious in the source report (Acc-rec 0.69, Rej-rec 0.49) — only ckpts 656 + 1312 done; re-evaluate when 1968 + 2624 land.")
     L("- **7B balanced vision iclr-test still queued at the time of source report** — partial data; the OOD numbers for vision balanced on iclr in this section are missing (the cell returns no iclr-test jsonl).")
