@@ -30,19 +30,25 @@ from pathlib import Path
 from PIL import Image, ImageChops
 
 ROOT = Path(__file__).resolve().parents[1]
-PANEL_DIR = ROOT / "data" / "images_panel"
 
 TARGET_W, TARGET_H = 2380, 1512  # cell aspect 0.630; ~14% horizontal margin vs ICLR content (0.55)
 ROWS, COLS = 2, 5
-PANEL_W, PANEL_H = TARGET_W // COLS, TARGET_H // ROWS  # 448 x 574
+PANEL_W, PANEL_H = TARGET_W // COLS, TARGET_H // ROWS  # 476 x 756
 MAX_PAGES = ROWS * COLS  # 10
 
-# Vision dataset whose `images` lists already point at per-page PNGs
-VISION_BASE = "iclr_2020_2023_2025_2026_85_5_10_balanced_original_vision_labelfix_v7_filtered_filtered24480"
-SPLIT_DATASETS = {
-    "train": f"{VISION_BASE}_train",
-    "validation": f"{VISION_BASE}_validation",
-    "test": f"{VISION_BASE}_test",
+# Source vision datasets (whose `images` lists already point at per-page PNGs)
+# and the per-source SID metadata key + panel output dir
+SOURCES = {
+    "iclr": {
+        "base": "iclr_2020_2023_2025_2026_85_5_10_balanced_original_vision_labelfix_v7_filtered_filtered24480",
+        "sid_key": "submission_id",
+        "panel_dir": ROOT / "data" / "images_panel",
+    },
+    "arxiv": {
+        "base": "arxiv_50_50_21k_vision_wmetadata_filtered24480",
+        "sid_key": "arxiv_id",
+        "panel_dir": ROOT / "data" / "images_panel_arxiv",
+    },
 }
 
 
@@ -103,35 +109,41 @@ def render_one(args: tuple[str, list[str], Path]) -> tuple[str, str]:
         return sid, f"FAIL: {type(e).__name__}: {e}"
 
 
-def collect_tasks(splits: list[str], limit: int | None) -> list[tuple[str, list[str], Path]]:
+def collect_tasks(source: str, splits: list[str], limit: int | None) -> list[tuple[str, list[str], Path]]:
+    src = SOURCES[source]
+    base = src["base"]; sid_key = src["sid_key"]; panel_dir = src["panel_dir"]
     tasks: list[tuple[str, list[str], Path]] = []
     seen: set[str] = set()
     for split in splits:
-        ds_path = ROOT / "data" / SPLIT_DATASETS[split] / "data.json"
+        ds_path = ROOT / "data" / f"{base}_{split}" / "data.json"
         entries = json.loads(ds_path.read_text())
         if limit is not None:
             entries = entries[:limit]
         for entry in entries:
-            sid = entry["_metadata"]["submission_id"]
+            sid = entry["_metadata"][sid_key]
             if sid in seen:
                 continue
             seen.add(sid)
-            tasks.append((sid, entry["images"], PANEL_DIR / f"{sid}.png"))
+            tasks.append((sid, entry["images"], panel_dir / f"{sid}.png"))
     return tasks
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--source", default="iclr", choices=list(SOURCES),
+                    help="Which dataset family to build panels for")
     ap.add_argument("--splits", nargs="+", default=["train", "validation", "test"],
-                    choices=list(SPLIT_DATASETS))
+                    choices=["train", "validation", "test"])
     ap.add_argument("--workers", type=int, default=32)
     ap.add_argument("--limit", type=int, default=None,
                     help="Cap entries per split (debug)")
     args = ap.parse_args()
 
-    PANEL_DIR.mkdir(parents=True, exist_ok=True)
-    tasks = collect_tasks(args.splits, args.limit)
-    print(f"{len(tasks)} unique papers across {args.splits}; workers={args.workers}")
+    panel_dir = SOURCES[args.source]["panel_dir"]
+    panel_dir.mkdir(parents=True, exist_ok=True)
+    tasks = collect_tasks(args.source, args.splits, args.limit)
+    print(f"[{args.source}] {len(tasks)} unique papers across {args.splits}; "
+          f"workers={args.workers}; out={panel_dir}")
 
     fails: list[tuple[str, str]] = []
     started_at = time.time()

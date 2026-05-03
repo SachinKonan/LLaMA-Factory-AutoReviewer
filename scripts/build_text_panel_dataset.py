@@ -22,17 +22,26 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
-PANEL_DIR = DATA / "images_panel"
 DATASET_INFO = DATA / "dataset_info.json"
 
-TEXT_BASE = "iclr_2020_2023_2025_2026_85_5_10_balanced_original_text_labelfix_v7_filtered"
-PANEL_BASE = "iclr_2020_2023_2025_2026_85_5_10_balanced_original_vision_labelfix_v7_filtered_filtered24480_panel"
-OUT_BASE = "iclr_2020_2023_2025_2026_85_5_10_balanced_original_text_panel_v7_filtered"
 SPLITS = ["train", "validation", "test"]
 
-
-def panel_relpath(sid: str) -> str:
-    return f"data/images_panel/{sid}.png"
+SOURCES = {
+    "iclr": {
+        "text_base": "iclr_2020_2023_2025_2026_85_5_10_balanced_original_text_labelfix_v7_filtered",
+        "panel_base": "iclr_2020_2023_2025_2026_85_5_10_balanced_original_vision_labelfix_v7_filtered_filtered24480_panel",
+        "out_base":   "iclr_2020_2023_2025_2026_85_5_10_balanced_original_text_panel_v7_filtered",
+        "sid_key": "submission_id",
+        "panel_dir_name": "images_panel",
+    },
+    "arxiv": {
+        "text_base":  "arxiv_50_50_21k_text_wmetadata_filtered24480",
+        "panel_base": "arxiv_50_50_21k_vision_wmetadata_filtered24480_panel",
+        "out_base":   "arxiv_50_50_21k_text_panel_wmetadata_filtered24480",
+        "sid_key": "arxiv_id",
+        "panel_dir_name": "images_panel_arxiv",
+    },
+}
 
 
 # qwen2_vl's MM plugin scans the user message for <image>/<audio>/<video> and tries
@@ -46,9 +55,9 @@ def scrub_stray_mm_tags(text: str) -> str:
     return _STRAY_MM_TAG.sub(lambda m: f"[{m.group(1).lower()}]", text)
 
 
-def transform_entry(entry: dict) -> dict | None:
-    sid = entry["_metadata"]["submission_id"]
-    panel_path = PANEL_DIR / f"{sid}.png"
+def transform_entry(entry: dict, sid_key: str, panel_dir: Path, panel_dir_name: str) -> dict | None:
+    sid = entry["_metadata"][sid_key]
+    panel_path = panel_dir / f"{sid}.png"
     if not panel_path.exists():
         return None
     out = dict(entry)
@@ -66,20 +75,23 @@ def transform_entry(entry: dict) -> dict | None:
         else:
             new_convs.append(c)
     out["conversations"] = new_convs
-    out["images"] = [panel_relpath(sid)]
+    out["images"] = [f"data/{panel_dir_name}/{sid}.png"]
     return out
 
 
-def build_split(split: str) -> tuple[int, int]:
-    src = DATA / f"{TEXT_BASE}_{split}" / "data.json"
-    dst_dir = DATA / f"{OUT_BASE}_{split}"
+def build_split(source: str, split: str) -> tuple[int, int]:
+    cfg = SOURCES[source]
+    panel_dir = DATA / cfg["panel_dir_name"]
+
+    src = DATA / f"{cfg['text_base']}_{split}" / "data.json"
+    dst_dir = DATA / f"{cfg['out_base']}_{split}"
     dst_dir.mkdir(parents=True, exist_ok=True)
     dst = dst_dir / "data.json"
 
     out_entries = []
     skipped = 0
     for e in json.loads(src.read_text()):
-        t = transform_entry(e)
+        t = transform_entry(e, cfg["sid_key"], panel_dir, cfg["panel_dir_name"])
         if t is None:
             skipped += 1
         else:
@@ -90,13 +102,14 @@ def build_split(split: str) -> tuple[int, int]:
     return len(out_entries), skipped
 
 
-def register_in_dataset_info() -> None:
+def register_in_dataset_info(source: str) -> None:
+    cfg = SOURCES[source]
     info = json.loads(DATASET_INFO.read_text())
-    template = info[f"{PANEL_BASE}_train"]
+    template = info[f"{cfg['panel_base']}_train"]
     for split in SPLITS:
-        name = f"{OUT_BASE}_{split}"
+        name = f"{cfg['out_base']}_{split}"
         entry = dict(template)
-        entry["file_name"] = f"{OUT_BASE}_{split}/data.json"
+        entry["file_name"] = f"{cfg['out_base']}_{split}/data.json"
         info[name] = entry
         print(f"  registered: {name}")
     DATASET_INFO.write_text(json.dumps(info, indent=2))
@@ -104,19 +117,20 @@ def register_in_dataset_info() -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--source", default="iclr", choices=list(SOURCES))
     ap.add_argument("--splits", nargs="+", default=SPLITS, choices=SPLITS)
     ap.add_argument("--skip_register", action="store_true")
     args = ap.parse_args()
 
-    print("Building text+panel data.json files:")
+    print(f"Building [{args.source}] text+panel data.json files:")
     totals = {}
     for split in args.splits:
-        n, sk = build_split(split)
+        n, sk = build_split(args.source, split)
         totals[split] = (n, sk)
 
     if not args.skip_register:
         print("\nRegistering in dataset_info.json:")
-        register_in_dataset_info()
+        register_in_dataset_info(args.source)
 
     print("\nSummary:")
     for split, (n, sk) in totals.items():
