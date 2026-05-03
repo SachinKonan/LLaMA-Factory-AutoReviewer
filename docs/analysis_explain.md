@@ -659,7 +659,511 @@ Before publishing or extending:
 
 ---
 
-## 13. Glossary
+## 13. Canonical test datasets — one entry per dataset family
+
+The repo contains **hundreds** of `data/<name>/data.json` directories from
+many iterations of dataset construction. Most are dead. The current analysis
+uses a small canonical set documented here.
+
+### 13.1 ICLR canonical test/val sets
+
+The ICLR datasets all derive from one source corpus: every ICLR submission
+2020-2026 with parsed metadata + reviews from OpenReview. The named
+suffixes describe how the raw corpus was filtered + balanced for training
+and evaluation:
+
+| Family | Path glob | What it is |
+|---|---|---|
+| **balanced (50/50) ICLR** | `data/iclr_2020_2023_2025_2026_85_5_10_balanced_original_<text|vision>_*labelfix_v7_filtered_<test|validation>/data.json` | Training corpus split 85/5/10 train/val/test, then accepts and rejects subsampled to **exactly 50% accept rate within each year**. The test split is what we call "gold ICLR balanced" — 1,667 papers across years 2020-2026, with 836 from year ≥ 2025. |
+| **natural (30/70) ICLR** | `data/iclr_2020_2023_2025_2026_30_70_original_<text|vision>_v7_filtered_<test|validation_DERIVED>/data.json` | Same source corpus but accept rate **forced to 30%** (matches ICLR's actual long-run acceptance rate). Test split is 1,594 papers; ~31.3% accept. The validation split was constructed post-hoc (`_DERIVED`) from the test split's reject pool. |
+| **y25up subsamples** | `data/iclr_2020_2023_2025_2026_*_y25up_<test|validation>/data.json` | A pre-filtered version of the balanced/natural sets with year ≥ 2025 already applied. Same content as filtering the unrestricted version year-on-the-fly. We use y25up versions when running inference (saves time) but the in-place `year_keep={2025, 2026}` filter in our loaders works on either. |
+
+**Key observation: balanced vs natural are different paper draws, not just
+a relabeling**. Going from balanced (50/50) to natural (30/70) requires
+*adding more rejects*, which means the natural set contains papers the
+balanced set doesn't — and vice versa. The two are *not nested* (you can't
+just discard accepts from balanced to get natural; the rejects come from a
+different stratification). This matters when comparing per-class metrics
+across the two: the per-class **distributions are essentially the same**
+(both draw from the same accept-pool and reject-pool), but the **mixture
+proportions differ**.
+
+This is also why pooled metrics like Spearman ρ(score, pct_rating) shift
+between balanced and natural: the marginal `pct_rating` distribution moves
+because the accept/reject mixture moves. Per-class ρ is invariant; pooled
+ρ is not.
+
+### 13.2 Arxiv canonical test/val sets
+
+The arxiv datasets come from a different pipeline: scraped arxiv papers
+matched to peer-reviewed venues (ICLR, NeurIPS, CVPR, ACL, AAAI, ICML, ICCV,
+ECCV, COLM, AISTATS, CORL). The accept/reject label comes from whether the
+arxiv paper was eventually accepted to its target venue.
+
+| Family | Path glob | What it is |
+|---|---|---|
+| **balanced (50/50) arxiv y24up** | `data/arxiv_50_50_21k_<text|vision>_wmetadata_filtered24480_y24up_<test|validation>/data.json` | 21k-paper training pool, balanced 50/50 within each (venue, year). y24up filter = conference_year ≥ 2024. Test n=1,414; val n=722. |
+| **natural arxiv y24up** | `data/arxiv_natrate_21k_<text|vision>_wmetadata_filtered24480_y24up_<test|validation>/data.json` | Same y24up filter, but accepts/rejects sampled at each venue's **natural acceptance rate** (per openaccept.org 5-year averages). Different per-venue accept rate (e.g., NeurIPS ≈ 0.27, CVPR ≈ 0.25, ICLR ≈ 0.31). Pooled accept rate ≈ 23.8%. |
+
+### 13.3 The `y25up` / `y24up` filter convention
+
+Both families use a **year-cutoff filter** to focus on recent papers (the
+test set we actually care about for current model performance):
+
+- **`y25up`** — keep papers with `year ≥ 2025`. Used for ICLR (2025+2026 are
+  the unseen-by-training years).
+- **`y24up`** — keep papers with `conference_year ≥ 2024`. Used for arxiv
+  (2024+2025+2026; arxiv has more uncertainty in publication dates so we go
+  back one year).
+
+**Why year-filter at all?** Training corpora include papers up to and
+including 2023 (ICLR 2024 was the cutoff for some sweep iterations). To
+measure generalization on truly held-out time periods, we evaluate on
+`year ≥ 2025` only. The year filter is applied either:
+- **Pre-filtered at the dataset level** (`_y25up_test` directory exists)
+- **Applied on the fly in the loader** via `year_keep={2025, 2026}` argument
+
+Both produce identical results.
+
+### 13.4 ICLR balanced vs natural — when to use which
+
+| Scenario | Use balanced | Use natural |
+|---|---|---|
+| Reporting headline bACC / AUC | ✅ (prior-invariant by construction) | ❌ (raw ACC misleading) |
+| Reporting raw ACC under deployment prior | analytical: `π·AccR + (1-π)·RejR` from balanced | ✅ direct measurement |
+| Validating the analytical formula | use both, compare predicted vs empirical | ✅ |
+| Calibrating a threshold | depends on val/test prior match (see §6) | ✅ when val and test have same prior |
+| Computing Spearman ρ to quality | use balanced for stable mixture | **not** for cross-prior comparison (mixture shifts) |
+| Single-test-set deployment | ✅ (one set gives every metric we need) | optional, derivable from balanced |
+
+The doc's §3 + §5 + §7 use **balanced** test as the canonical reporting
+surface. **Natural** test is used only in §1.2 (to demonstrate the raw-ACC
+exploit) and §1.4 (to verify the formula).
+
+### 13.5 Other important datasets in `data/` (not used in objective_analysis)
+
+These exist but are NOT used by `generate_objective_analysis.py`. Listed
+for context if you're extending:
+
+- `data/2017_2026_*_v8_*` — older v8 splits, deprecated
+- `data/2017_2026_*split8*_v9_*` — v9 splits with different stratification
+- `data/2020_2023_2025_train_2020_2026_valtest_*` — 2025 train + 2020-2026 val/test (used in early scaling experiments)
+- `data/arxiv_*_y25up_*` — the y25up arxiv variant (drop year 2024)
+- `data/arxiv_natrate_train_*` — training corpora for arxiv natrate cells
+- `data/dataset_info.json` — registers dataset names → paths for LLaMA-Factory's `dataset` arg
+
+The `data/dataset_info.json` is the canonical registry. Look there if you
+need to find a dataset's full metadata or check what columns it exposes.
+
+---
+
+## 14. p(accept) — calculation and validity
+
+The classifier's continuous prediction is `p(accept | paper)`. Three different
+formulations exist in the codebase. They give nearly identical numbers in
+practice but differ in correctness.
+
+### 14.1 The three formulations
+
+#### Formulation A: marginal-chosen-token (legacy)
+
+```python
+chosen = "Accept" if "Accept" in row["predict"] else "Reject"
+p_chosen = exp(token_logprobs[5])           # confidence on chosen class
+p_accept = p_chosen if chosen == "Accept" else 1 - p_chosen
+```
+
+This treats the **probability of the chosen token** as the marginal probability
+under the binary classifier. It's what `score_logodds()` derives a
+signed log-odds from. This is the **legacy convention** used by all earlier
+calibration figures (`tmp_latex_dir/generate_calibration_*.py`).
+
+**Why it's not perfectly valid**: the model has the entire vocabulary to
+predict from. `exp(token_logprobs[5])` is `P(chosen_token | context)`,
+not `P(Accept | {Accept, Reject})`. There may be other tokens with nonzero
+probability that aren't Accept or Reject. But empirically, after SFT on the
+"Outcome: \boxed{Accept|Reject}" template, those other tokens get
+essentially-zero probability (~1e-4 cumulative), so the approximation is
+tight.
+
+**Why we still use it**: backward compatibility with older inference jsonls
+that don't have `logprob_accept` / `logprob_reject` arrays.
+
+#### Formulation B: 2-class softmax (current, theoretically correct)
+
+```python
+la = row["logprob_accept"]    # log P(Accept token at each position)
+lr = row["logprob_reject"]    # log P(Reject token at each position)
+pos = argmax(|la[i] - lr[i]|) # position with maximum class divergence
+log_p_accept = la[pos] - logsumexp(la[pos], lr[pos])  # 2-class softmax
+p_accept = exp(log_p_accept)
+score = la[pos] - lr[pos]     # signed log-odds (used for AUC, threshold)
+```
+
+This is **conditional on the decision being either Accept or Reject** —
+a true binary classifier. The `argmax` over positions handles cases where
+the boxed{} template parsing is shifted (rare).
+
+**Why it's correct**: explicitly normalizes over the two-class set, so
+`p_accept + p_reject = 1` exactly.
+
+**Used in**: `score_logodds_2class()` in
+`generate_objective_analysis.py`. Source: `reports/balanced_eval_2026-05-02.md`.
+
+#### Formulation C: greedy decode (pred_decision only)
+
+```python
+pred = "Accept" if "Accept" in row["predict"] else "Reject"
+# No continuous score — just the binary decision the model emitted greedily
+```
+
+This is what DeepReviewer's `predict_decision` field gives us. It's
+greedy decoding's output, no score. Useful for bACC/AR/RR but not for AUC
+or Spearman.
+
+### 14.2 Why the three agree to within ~0.5pp on bACC
+
+For our SFT models on the boxed{} template:
+1. Other tokens (anything besides `Accept` / `Reject`) get ~zero probability
+   → P(chosen) ≈ P(Accept | {A, R}).
+2. The model's chosen token matches the argmax under 2-class softmax in
+   >99% of cases.
+3. Greedy decode emits the same chosen token as argmax-softmax.
+
+So the three formulations give:
+- Same binary prediction in >99% of rows.
+- Same score ranking (same AUC) in >99.9% of rows.
+- Slightly different absolute scores (matters for calibration, not for
+  rank-based metrics).
+
+### 14.3 Validity checklist before using p(accept) for new analysis
+
+If you're computing a new metric using p(accept):
+
+- [ ] Confirm the model's `predict` field contains exactly one of `{Accept, Reject}`. Drop rows where it's neither (model emitted something else, ~0.1% of rows).
+- [ ] Check for `logprob_accept`/`reject` arrays. If present, prefer Formulation B. If not, use Formulation A.
+- [ ] If you need calibrated probabilities (not just ranking), apply Platt scaling on val (§17 below).
+- [ ] If you're comparing across model checkpoints with different score scales, use rank-based metrics (AUC, Spearman) instead of absolute p(accept).
+
+---
+
+## 15. Legacy vs current logprob handling — token index conventions
+
+Inference jsonls have evolved over time. The two regimes:
+
+### 15.1 Legacy: `token_logprobs[5]` only
+
+Old jsonls (pre-2026 sweeps, including ICLR-trained 7B models in
+`results/final_sweep_v7_datasweepv3/optim_search_2026/`) only have
+`token_logprobs` — the log-probability of *each generated token* in the
+order they were produced.
+
+For the chat template `"Outcome: \\boxed{Accept|Reject}"`:
+
+| Token index | Token (concrete example) |
+|---|---|
+| 0 | `Outcome` |
+| 1 | `:` |
+| 2 | ` ` |
+| 3 | `\\boxed` |
+| 4 | `{` |
+| **5** | **`Accept`** or **`Reject`** ← decision token |
+| 6 | `}` |
+| 7 | EOS |
+
+The constant `DECISION_TOKEN_IDX = 5` is hardcoded across our codebase
+(`scripts/calibration_posthoc.py`, `scripts/ratio_xeval_consolidated.py`,
+all `tmp_latex_dir/generate_calibration_*.py`). **It is robust as long as
+the chat template stays "Outcome: \boxed{...}"**. If the prompt template
+changes (e.g., to "The decision is: Accept/Reject"), this index breaks.
+
+How to compute p(accept) under legacy:
+```python
+DECISION_TOKEN_IDX = 5
+lp = row["token_logprobs"][DECISION_TOKEN_IDX]  # log P(chosen token)
+p_chosen = exp(lp)
+chosen = "Accept" if "Accept" in row["predict"] else "Reject"
+p_accept = p_chosen if chosen == "Accept" else 1 - p_chosen
+```
+
+### 15.2 Current: `logprob_accept` + `logprob_reject` arrays
+
+Newer inference (added in `--save_logprobs` flag of `scripts/vllm_infer.py`,
+used for arxiv-trained eval and DeepReviewer 2026 evals) saves **per-position
+log-probability arrays** for both candidate tokens:
+
+```python
+{
+    "token_logprobs": [-0.12, -0.05, ..., -1.31],          # 6-8 floats
+    "logprob_accept": [-0.12, -0.05, ..., -1.31],          # same length, log P("Accept" | context_at_pos_i)
+    "logprob_reject": [-0.45, -0.30, ..., -3.45]           # same length, log P("Reject" | context_at_pos_i)
+}
+```
+
+Each entry is the conditional log-probability of emitting that *specific
+token* at that position, given the prefix. So `logprob_accept[5]` =
+log P(emit "Accept" at position 5 | "Outcome: \boxed{").
+
+**Advantages over legacy**:
+1. **Robust to template drift**: the decision position can be located
+   dynamically by `argmax_i |logprob_accept[i] - logprob_reject[i]|` —
+   the position with maximum class divergence.
+2. **2-class softmax is well-defined**: `P(Accept | {A, R}) = sigmoid(la[pos] - lr[pos])`.
+3. **None-entries OK**: vLLM emits `None` for positions where the candidate
+   token wasn't in the top-k; just skip those positions.
+
+How to compute p(accept) under the current convention:
+```python
+la = row["logprob_accept"]
+lr = row["logprob_reject"]
+diffs = [abs(a - b) if (a is not None and b is not None) else -1
+         for a, b in zip(la, lr)]
+pos = argmax(diffs)
+score = la[pos] - lr[pos]                                # signed log-odds
+p_accept = 1 / (1 + exp(-score))                         # 2-class sigmoid
+```
+
+`score_logodds_2class()` in `generate_objective_analysis.py` falls back to
+the legacy formulation when `logprob_accept`/`reject` aren't present, so
+the same generator works across both regimes.
+
+### 15.3 When to expect each regime
+
+| Inference run | Regime |
+|---|---|
+| ICLR-trained 7B/3B sweeps (everything in `optim_search_2026/`) | legacy |
+| Arxiv-trained ckpt sweeps (everything in `final_data_sweep_v3/arxiv_train/`) | current (mixed: some have both, some have logprob arrays only) |
+| DeepReviewer-14B baseline (external) | neither — DR emits `predict_decision` + `predict_meta_rating`, no logprobs |
+| Anything you generate with `scripts/vllm_infer.py --save_logprobs` going forward | current |
+
+---
+
+## 16. Calibration procedures — three approaches
+
+The doc mentions three calibration approaches. Here's how each works and
+when to use it.
+
+### 16.1 Threshold calibration on val (used in `objective_analysis.md`)
+
+**Goal**: pick a threshold τ such that "predict Accept iff score > τ" maximizes
+some objective on val, then apply to test.
+
+**Two flavors of objective**:
+- `τ*_raw` = argmax raw accuracy on val
+- `τ*_bal` = argmax balanced accuracy on val
+
+**Algorithm**: sweep τ over all unique val scores, pick the best:
+```python
+def best_tau_balanced(pairs):
+    pairs = sorted(pairs)
+    npos = sum(g for _, g in pairs)
+    nneg = len(pairs) - npos
+    tp = npos; tn = 0  # τ = -∞: predict all Accept
+    best_b = (tp/npos + tn/nneg) / 2
+    best_t = -∞
+    for s, group in groupby(pairs, key=lambda p: p[0]):
+        for _, g in group:
+            if g == 1: tp -= 1   # this paper now predicted Reject
+            else:      tn += 1
+        b = (tp/npos + tn/nneg) / 2
+        if b > best_b: best_b, best_t = b, s
+    return best_t
+```
+
+**Use when**:
+- You want a deployable binary classifier (not just a ranking).
+- You have a labeled val set in the same prior as deployment.
+
+**Properties**:
+- `τ*_raw` is sensitive to val prior (favors majority class on imbalanced val).
+- `τ*_bal` is val-prior-invariant (always picks the threshold maximizing balanced accuracy).
+- When val is balanced 50/50, `τ*_raw == τ*_bal` (because raw accuracy = balanced accuracy at 50/50 prior).
+
+**Where used**: `objective_analysis.md` §1.3 (dual calibration table), §7
+(arxiv-trained ckpt sweep — uses `τ*_bal`).
+
+### 16.2 Platt scaling (used in `tmp_latex_dir/generate_calibration_platt*.py`)
+
+**Goal**: produce calibrated probabilities (not just a ranking) that match
+the true accuracy in each confidence bin. Useful when downstream consumers
+need `P(correct | confidence) ≈ confidence`.
+
+**Algorithm**: fit a 2-parameter logistic on val log-odds:
+```python
+def fit_platt(val_logits, val_correct):
+    # logit = log(p_chosen / (1 - p_chosen))
+    # Calibrated p = sigmoid(a * logit + b)
+    def nll(params):
+        a, b = params
+        p = sigmoid(a * val_logits + b)
+        pc = where(val_correct, p, 1 - p)
+        return -log(clip(pc, 1e-10, 1.0)).mean()
+    result = minimize(nll, x0=[1.0, 0.0], method="Nelder-Mead")
+    return result.x  # (a, b)
+
+def apply_platt(test_logits, a, b):
+    return sigmoid(abs(a * test_logits + b))  # |·| to map to chosen-class confidence
+```
+
+**Use when**:
+- You want calibrated `P(correct)` for thresholding by confidence
+  (e.g., "give me 80% accuracy on whatever fraction of papers I can").
+- You want reliability diagrams to show points on the diagonal.
+
+**Properties**:
+- Doesn't change the score *ranking* → AUC, balanced ACC at any τ are unchanged.
+- Only rescales the logit → maps raw confidence to calibrated confidence.
+- Two parameters fit on val → small risk of overfitting on small val.
+
+**Where used**:
+- `scripts/tmp_latex_dir/generate_calibration_1x3.py` (the headline 1×3 figure with reliability + impact + 3D surface).
+- `scripts/tmp_latex_dir/generate_calibration_platt*.py` (variants).
+- `scripts/tmp_latex_dir/generate_calibration_val_correction.py` (compares uncalibrated vs Platt vs temperature vs isotonic).
+
+### 16.3 Other post-hoc calibration methods (`scripts/calibration_posthoc.py`)
+
+`calibration_posthoc.py` and `tmp_latex_dir/generate_calibration_val_correction.py`
+implement 4 post-hoc methods:
+
+| Method | Function | What it does |
+|---|---|---|
+| **Temperature scaling** | `fit_temperature` | 1-parameter `p_cal = sigmoid(logit / T)` — fits T on val NLL |
+| **Platt scaling** | `fit_platt` | 2-parameter sigmoid (above) |
+| **Isotonic regression** | `IsotonicRegression` from sklearn | Non-parametric monotonic mapping |
+| **Histogram binning** | n/a in current code | Coarse calibration by binning |
+
+These are compared in `generate_calibration_val_correction.py` to show that
+**Platt is usually the best post-hoc method on our val** (lowest ECE), with
+isotonic being competitive but more variable.
+
+### 16.4 Which calibration to use when
+
+| Goal | Method |
+|---|---|
+| Maximize balanced ACC on a deployment with known prior | `τ*_bal` threshold (§16.1) |
+| Maximize raw ACC on a deployment with the val prior | `τ*_raw` threshold (§16.1) |
+| Get reliable confidence values | Platt scaling (§16.2) |
+| Reliability diagram for paper figure | Platt or isotonic (§16.3) |
+| Threshold a confidence to trade coverage for accuracy ("80% acc on 30% of data") | Platt-calibrated confidence + threshold sweep |
+
+For `objective_analysis.md`, all calibration is threshold-based (§16.1).
+The `tmp_latex_dir/calibration_*.py` scripts use Platt (§16.2) because their
+output is a paper figure that needs calibrated confidences for the 3D
+surface and reliability diagram.
+
+---
+
+## 17. The `tmp_latex_dir/` script catalog
+
+`scripts/tmp_latex_dir/` contains **41 figure-generation scripts** that
+produce PDFs/PNGs for the lab's paper. Each script reads inference jsonls,
+computes metrics, and writes to `tmp_latex_dir/figures/`.
+
+Conventions used by all of them:
+- Lab style: `"Arial"` font, sizes `labelsize=28, titlesize=34, legendsize=20, ticksize=20`
+- Lab palette: `BLUE=#6098FF, ORANGE=#FECC81, GREEN=#77B25D, RED=#FF8988, PURPLE=#B28CFF`
+- `LINEWIDTH=3.0, MARKERSIZE=10`
+- Output: BOTH `.pdf` (for LaTeX) and `.png` (for markdown previews)
+- `DECISION_TOKEN_IDX = 5` (legacy formulation A)
+
+### 17.1 Calibration / reliability figures
+
+| Script | Output | What it shows |
+|---|---|---|
+| `generate_calibration.py` | `calibration.{pdf,png}` | Original 1×3 figure (deprecated, use 1x3 below). |
+| `generate_calibration_1x3.py` | `calibration_1x3.{pdf,png}` | **Headline figure**: (a) reliability + coverage (Platt), (b) impact correlation (text/vision p_accept vs human rating, both vs pctl_citation), (c) 3D accuracy surface vs (rating, confidence) |
+| `generate_calibration_1x2.py` | `calibration_1x2.{pdf,png}` | Drops panel (b), keeps reliability + 3D surface |
+| `generate_calibration_1x3_platt_surface.py` | variant of 1x3 with Platt-scaled 3D surface (alternate angle) |
+| `generate_calibration_platt.py` | basic Platt-scaled reliability |
+| `generate_calibration_platt_1x2.py` | 1×2 with Platt — reliability + 3D surface |
+| `generate_calibration_platt_1x2_16x6.py` | wider 16×6 aspect ratio for paper layout |
+| `generate_calibration_platt_1x2_30_70.py` | same but with natural 30/70 prior subsampling |
+| `generate_calibration_extended.py` | 1×2 reliability + cumulative-threshold ("acc @ confidence ≥ τ") |
+| `generate_calibration_extended_2025.py` | 1×2 with 2025-only year filter |
+| `generate_calibration_extended_noise_em.py` | extended with the noise-EM model variant |
+| `generate_calibration_balanced_vs_trainagreeing.py` | 2×2 grid: text/vision × reliability/cumulative, comparing balanced vs train-agreeing val splits |
+| `generate_calibration_text_vs_vision_wd.py` | text vs vision side-by-side reliability (with weight decay) |
+| `generate_calibration_human_corr.py` | scatter `p(accept) vs pct_rating` |
+| `generate_calibration_human_corr_3d.py` | 3D version with reliability + scatter |
+| `generate_calibration_ratio_sweep.py` | reliability comparison across train ratios (50/50, 40/60, 30/70) |
+| `generate_calibration_posthoc.py` | 2×2 before/after for Platt/temperature/isotonic |
+| `generate_calibration_val_correction.py` | per-bin reliability for uncalibrated vs all 4 post-hoc corrections |
+| **`generate_objective_analysis.py`** | **`docs/objective_analysis.md` + 6 figures** | **The current headline analysis (§14 above)** |
+
+### 17.2 Cross-conference / cross-distribution figures
+
+| Script | Output | What it shows |
+|---|---|---|
+| `generate_cross_conference.py` | radar chart: SFT Text vs PT Base on balanced NeurIPS / ICML evals |
+| `generate_cross_conference_acc.py` | compact cross-conference accuracy bar chart |
+| `generate_cross_conference_combined.py` | 1×3: midtraining corpus pie + test-set pie + accuracy bars |
+| `generate_data_dist.py` | dataset distribution histograms |
+| `generate_data_mixture_combined.py` | data-mixture dot plots + cross-conference bars |
+| `plot_calibration_story.py` | 3-panel calibration story: raw ACC, calibrated ACC (Δ-colored), AUC |
+
+### 17.3 Scaling / comparison figures
+
+| Script | Output | What it shows |
+|---|---|---|
+| `generate_3b_vs_7b.py` | 2 rows × 5 cols: 3B vs 7B head-to-head for text + vision |
+| `generate_scaling_laws.py` | accuracy / accept-recall / reject-recall vs model size (3B/7B/14B text, 3B/7B vision) |
+| `generate_scaling_flops.py` | metrics vs training FLOPs (Chinchilla approximation for text + vision) |
+| `generate_32b_lora_train_curves.py` | 32B LoRA training loss curves (lr sweep) |
+| `generate_ratio_train_curves.py` | 3×2: training curves per train ratio (50/50, 40/60, 30/70) |
+| `generate_trainsize_vs_accuracy.py` | data-mixture ablation: paired dot plot |
+
+### 17.4 Quality / impact figures
+
+| Script | Output | What it shows |
+|---|---|---|
+| `generate_impact_correlation_1x2.py` | 1×2: p(accept) vs pctl_rating + p(accept) vs pctl_citation (both Platt-scaled) |
+| `generate_impact_correlation_3x1.py` | 3×1 vertical version: human rating, text p(accept), vision p(accept) → all vs pctl_citation |
+| `generate_citation_heatmap_3x1.py` | 3×1 compact heatmap: pctl_rating × pctl_citation → accuracy (human / text-SFT / vision-SFT) |
+
+### 17.5 Bias / artifact figures
+
+| Script | Output | What it shows |
+|---|---|---|
+| `generate_2024_bias.py` | 1×2: text vs vision accuracy by year (highlights 2024 artifact) + first-section-header y-position by accept/reject |
+| `generate_2024_bias_13x3.py` / `_16x6.py` | wider/taller variants for paper layout |
+
+### 17.6 Evidence / qualitative figures
+
+| Script | Output | What it shows |
+|---|---|---|
+| `generate_evidence_cards.py` | 3-column visual: Human Review | Without SFT Prior | With SFT Prior |
+| `generate_evidence_tex.py` | LaTeX-ready evidence display with thin colored borders + score dots |
+
+### 17.7 Visualization helpers
+
+| Script | Purpose |
+|---|---|
+| `visualize_paper.py` | Render a single paper's content + reviews + model decision (image-rich) |
+| `visualize_paper_text.py` | Same but text-only pipeline |
+
+### 17.8 LaTeX scaffolding
+
+`tmp_latex_dir/base.latex` is the LaTeX preamble used by the lab's paper.
+The figure files generated by the scripts above are referenced from there
+via `\input{tmp_latex_dir/figures/<name>.pdf}`.
+
+### 17.9 Which scripts are actively used in `objective_analysis.md`
+
+**Only one**: `generate_objective_analysis.py`. It re-implements the
+metric and scoring logic inline (doesn't import from the other figure
+scripts) so it can have its own bootstrap CIs, integrity checks, etc.
+
+If you're modifying `objective_analysis.md`, you don't need to touch any
+other `tmp_latex_dir/` script. They serve a different consumer (the
+LaTeX paper).
+
+If you're adding a figure to the LaTeX paper, **don't** modify
+`generate_objective_analysis.py` — add a new `generate_<name>.py` that
+follows the conventions above (lab style, palette, both PDF + PNG output).
+
+---
+
+## 18. Glossary
 
 - **bACC** — balanced accuracy = (accept-recall + reject-recall) / 2
 - **AR / RR** — accept-recall / reject-recall (per-class recall)
@@ -671,8 +1175,72 @@ Before publishing or extending:
 - **π** — accept rate (prior); π_iclr_natural ≈ 0.313, π_arxiv_natural ≈ 0.238
 - **OOD** — out-of-distribution (e.g., arxiv-trained model evaluated on ICLR)
 - **In-domain / cross-domain** — train and test from same/different distributions
-- **y24up** — arxiv subset filtered to conference_year ≥ 2024
+- **y25up / y24up** — year-cutoff filters: ICLR ≥ 2025 / arxiv conference_year ≥ 2024
 - **balanced (50/50)** — accept rate forced to 50% by stratified subsampling
 - **natural / natrate / 30/70** — accept rate matches the venue's actual rate
 - **DR** — DeepReviewer-14B (Phi-3 14B, Standard Mode, 4-reviewer ensemble)
 - **PaperLens** — our internal name for the 7B/3B Qwen-finetuned models
+- **DECISION_TOKEN_IDX** — `5`; the position of the Accept/Reject token in `Outcome: \boxed{X}` template
+- **Platt scaling** — 2-parameter `sigmoid(a·logit + b)` fit on val NLL → calibrated confidence
+- **Temperature scaling** — 1-parameter `sigmoid(logit / T)` calibration
+- **Isotonic regression** — non-parametric monotonic recalibration
+- **ECE** — expected calibration error; mean absolute gap between confidence and accuracy across bins
+- **Reliability diagram** — confidence-vs-accuracy plot, perfectly calibrated = on diagonal
+- **Coverage** — fraction of papers above a confidence threshold
+- **Logit / log-odds** — `log(p / (1-p))`, the linear scale where Platt scaling operates
+- **Marginal vs 2-class softmax** — Formulation A vs B in §14
+- **Legacy regime** — older inference jsonls with `token_logprobs` only, p(accept) via index 5
+- **Current regime** — newer inference jsonls with `logprob_accept`/`logprob_reject` arrays, dynamic decision-position lookup
+
+---
+
+## 19. Quick reference card — most-used file paths
+
+```
+# Generator + verifier
+scripts/tmp_latex_dir/generate_objective_analysis.py
+scripts/verify_objective_analysis.py
+
+# Output
+docs/objective_analysis.md
+docs/analysis_explain.md  ← this file
+docs/objective_analysis_figures/*.png
+tmp_latex_dir/figures/objective_*.{pdf,png}
+
+# Source reports the analysis builds on
+reports/test-ratio-and-metrics.md
+reports/ratio_xeval_7b.md
+reports/balanced_eval_2026-05-02.md
+/scratch/gpfs/ZHUANGL/sk7524/Researcher/RESULTS_deepreviewer_balanced.md
+
+# Canonical test datasets (ICLR balanced)
+data/iclr_2020_2023_2025_2026_85_5_10_balanced_original_text_labelfix_v7_filtered_test/data.json
+data/iclr_2020_2023_2025_2026_85_5_10_balanced_original_vision_labelfix_v7_filtered_filtered24480_test/data.json
+
+# Canonical test datasets (arxiv balanced y24up)
+data/arxiv_50_50_21k_text_wmetadata_filtered24480_y24up_test/data.json
+data/arxiv_50_50_21k_vision_wmetadata_filtered24480_y24up_test/data.json
+
+# ICLR-trained 7B inference (the headline 4 cells)
+results/final_sweep_v7_datasweepv3/optim_search_2026/bz32_lr1e-6_text/finetuned-ckpt-1322.jsonl                  # text 50/50
+results/final_sweep_v7_datasweepv3/optim_search_2026/ratio_sweep/bz32_lr1e-6_text_30_70/balanced/finetuned-ckpt-1322.jsonl  # text 30/70
+results/final_sweep_v7_datasweepv3/optim_search_2026/bz16_lr1e-6_vision/finetuned-ckpt-2648.jsonl                # vision 50/50
+results/final_sweep_v7_datasweepv3/optim_search_2026/ratio_sweep/bz16_lr1e-6_vision_30_70/balanced/finetuned-ckpt-2642.jsonl  # vision 30/70
+
+# Arxiv-trained ckpt sweep base
+results/final_sweep_v7_datasweepv3/final_data_sweep_v3/arxiv_train/<cell>/<dataset_subdir>/finetuned-ckpt-<step>{,-gpu-test}.jsonl
+
+# DeepReviewer baseline (external repo)
+/scratch/gpfs/ZHUANGL/sk7524/Researcher/results/deepreviewer-14b-standard/<tag>/deepreviewer-14b-standard.jsonl
+/scratch/gpfs/ZHUANGL/sk7524/Researcher/subsamples/<tag>_q4_seed42.json
+
+# This worktree
+/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer-analysis-codex
+  ├── data    → symlink to main/data
+  ├── results → symlink to main/results
+  └── (everything else is a real copy on branch `analysis-codex`)
+
+# Re-run anything
+uv run python scripts/tmp_latex_dir/generate_objective_analysis.py
+uv run python scripts/verify_objective_analysis.py
+```
