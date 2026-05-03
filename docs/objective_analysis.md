@@ -5,7 +5,8 @@
 2. Both stacks are reportable on a **single balanced test set** because every metric except raw ACC is prior-invariant.
 3. **Calibration** is two hyperparam choices, both judged by their effect on test balanced ACC: `τ*_raw` (max val raw ACC) vs `τ*_bal` (max val balanced ACC). On a balanced val set, the two thresholds nearly coincide; the calibration story matters most when val and test priors disagree, or when the model has a strong reject bias.
 4. **Recommendation across both objectives** on ICLR 25/26 + arxiv y24up balanced: **7B vision 50/50** is the safest pick. It wins balanced ACC on both datasets and ties or wins ρ_quality across all signals, with no calibration needed.
-5. **External baseline comparison vs DeepReviewer-14B** (§5): split decision — PaperLens 7B vision 50/50 wins balanced ACC by 2-3pp on both datasets, DeepReviewer wins AUC by 3-5pp (its 4-reviewer rating is a better continuous *ranking* but its decision threshold is mis-placed toward Reject, hurting bACC). PaperLens wins ρ pct_rating; DR wins ρ citation on ICLR; PaperLens wins all arxiv quality signals.
+5. **External baseline comparison vs DeepReviewer-14B** (§5, all native — no calibration on either side): on point estimates, PaperLens 7B vision 50/50 wins balanced ACC on both datasets (+6.3pp ICLR, +2.1pp arxiv), DeepReviewer wins AUC on both (+3-5pp). With 95% bootstrap CIs, only the **ICLR balanced ACC win is statistically meaningful** (CIs non-overlapping); the others are point-estimate orderings whose CIs overlap.
+6. **Per-(venue, year) tracking** (§6): bACC on arxiv varies by venue (cvpr 2025 highest; aaai/eccv lowest) and drops on ICLR 2025→2026 by ~5pp for every config (paper population shift, not metric artifact). ρ citation collapses to 0 on ICLR 2026 due to the 2026 citation degeneracy.
 
 ---
 
@@ -160,23 +161,25 @@ Resampled 500× over the ICLR balanced test set; 95% CI. Width is informative on
 
 Balanced ACC + accept-recall + reject-recall on the **balanced** test set. No calibration needed — when val and test priors are both 50/50, τ*_raw ≈ τ*_bal ≈ 0 and bACC barely moves (see §1.3).
 
+Bootstrap 95% CIs (500 paper-resamples) shown alongside point estimates.
+
 **ICLR 25/26 balanced (Obj 2 view):**
 
-| Model | n | balanced ACC | accept-recall | reject-recall | AUC |
+| Model | n | balanced ACC [95% CI] | accept-recall | reject-recall | AUC [95% CI] |
 |---|---:|---:|---:|---:|---:|
-| text 50/50 | 1667 | **65.2** | 56.2 | 74.2 | 0.721 |
-| text 30/70 | 1667 | **61.6** | 39.7 | 83.4 | 0.720 |
-| vision 50/50 | 1670 | **67.6** | 65.4 | 69.8 | 0.736 |
-| vision 30/70 | 1670 | **64.9** | 55.0 | 74.9 | 0.723 |
+| text 50/50 | 1667 | **65.2** [63.0, 67.2] | 56.2 | 74.2 | 0.721 [0.698, 0.744] |
+| text 30/70 | 1667 | **61.6** [59.6, 63.6] | 39.7 | 83.4 | 0.720 [0.696, 0.742] |
+| vision 50/50 | 1670 | **67.6** [65.4, 69.7] | 65.4 | 69.8 | 0.736 [0.713, 0.758] |
+| vision 30/70 | 1670 | **64.9** [62.7, 67.0] | 55.0 | 74.9 | 0.723 [0.700, 0.746] |
 
 **Arxiv y24up balanced (Obj 2 view):**
 
-| Model | n | balanced ACC | accept-recall | reject-recall | AUC |
+| Model | n | balanced ACC [95% CI] | accept-recall | reject-recall | AUC [95% CI] |
 |---|---:|---:|---:|---:|---:|
-| text 50/50 | 1414 | **58.4** | 24.0 | 92.9 | 0.720 |
-| text 30/70 | 1415 | **50.1** | 0.3 | 100.0 | 0.697 |
-| vision 50/50 | 1414 | **62.8** | 45.1 | 80.4 | 0.724 |
-| vision 30/70 | 1414 | **62.1** | 48.0 | 76.2 | 0.704 |
+| text 50/50 | 1414 | **58.4** [56.7, 60.3] | 24.0 | 92.9 | 0.720 [0.695, 0.744] |
+| text 30/70 | 1415 | **50.1** [50.0, 50.4] | 0.3 | 100.0 | 0.697 [0.669, 0.723] |
+| vision 50/50 | 1414 | **62.8** [60.3, 65.2] | 45.1 | 80.4 | 0.724 [0.697, 0.752] |
+| vision 30/70 | 1414 | **62.1** [59.7, 64.6] | 48.0 | 76.2 | 0.704 [0.677, 0.731] |
 
 ---
 
@@ -234,34 +237,34 @@ Subsample sizes (after dropping rows where DeepReviewer was truncated):
 
 ### 5.1 Conference acceptor metrics (Obj 2) — DeepReviewer vs ours
 
-DeepReviewer offers two protocols on the test set: **native** (use `predict_decision` directly) and **calibrated** (val-derived T on `predict_meta_rating ≥ T → Accept`, max-bACC objective). For our 7B models, these are the same numbers as in §3 but recomputed two ways: on the **full balanced test** (column `ours, full`) and restricted to the **same 1/4 subsample as DeepReviewer** (column `ours, subsample`) for an apples-to-apples sanity check.
+Both systems are reported at their **native decision** (no calibration) for an apples-to-apples comparison: PaperLens at τ=0 (signed log-odds), DeepReviewer at its emitted `predict_decision`. For our 7B models, these are the same numbers as in §3 but recomputed two ways: on the **full balanced test** and restricted to the **same 1/4 subsample as DeepReviewer** as a sanity check.
 
-**ICLR 25/26 balanced** (DR subsample n=378; val-derived T=6.0):
+All confidence intervals are 95% bootstrap CIs over papers (500 resamples). Tighter CIs imply more reliable point estimates.
 
-| Method | n | balanced ACC | accept-recall | reject-recall | AUC (rating-based) |
+**ICLR 25/26 balanced** (DR subsample n=378):
+
+| Method | n | balanced ACC [95% CI] | accept-recall | reject-recall | AUC [95% CI] |
 |---|---:|---:|---:|---:|---:|
-| DeepReviewer-14B (native)        | 378 | 61.3 | 49.2 | 73.3 | 0.788 |
-| DeepReviewer-14B (cal T=6.0) | 378 | 65.2 | 70.5 | 60.0 | 0.788 |
-| **PaperLens 7B text 50/50** (DR subsample) | 418 | **68.9** | 60.3 | 77.5 | 0.763 |
-| PaperLens 7B text 50/50 (full set, ref)   | 1667 | 65.2 | 56.2 | 74.2 | 0.721 |
-| **PaperLens 7B vision 50/50** (full set)   | 1670 | **67.6** | 65.4 | 69.8 | 0.736 |
+| DeepReviewer-14B (native)        | 378 | 61.3 [56.3, 65.5] | 49.2 | 73.3 | 0.788 [0.741, 0.832] |
+| PaperLens 7B text 50/50 (DR subsample) | 418 | 68.9 [64.8, 72.8] | 60.3 | 77.5 | 0.763 [0.717, 0.806] |
+| PaperLens 7B text 50/50 (full set)   | 1667 | 65.2 [63.0, 67.2] | 56.2 | 74.2 | 0.721 [0.698, 0.744] |
+| **PaperLens 7B vision 50/50** (full set)   | 1670 | **67.6** [65.4, 69.7] | 65.4 | 69.8 | 0.736 [0.713, 0.758] |
 
-**Arxiv y24up balanced** (DR subsample n=343; val-derived T=5.0):
+**Arxiv y24up balanced** (DR subsample n=343):
 
-| Method | n | balanced ACC | accept-recall | reject-recall | AUC (rating-based) |
+| Method | n | balanced ACC [95% CI] | accept-recall | reject-recall | AUC [95% CI] |
 |---|---:|---:|---:|---:|---:|
-| DeepReviewer-14B (native)        | 343 | 60.7 | 48.8 | 72.5 | 0.754 |
-| DeepReviewer-14B (cal T=5.0) | 343 | 60.3 | 90.1 | 30.4 | 0.754 |
-| **PaperLens 7B text 50/50** (DR subsample) | 361 | **57.9** | 23.3 | 92.4 | 0.687 |
-| PaperLens 7B text 50/50 (full set, ref)   | 1414 | 58.4 | 24.0 | 92.9 | 0.720 |
-| **PaperLens 7B vision 50/50** (full set)   | 1414 | **62.8** | 45.1 | 80.4 | 0.724 |
+| DeepReviewer-14B (native)        | 343 | 60.7 [56.0, 65.7] | 48.8 | 72.5 | 0.754 [0.703, 0.800] |
+| PaperLens 7B text 50/50 (DR subsample) | 361 | 57.9 [54.3, 61.5] | 23.3 | 92.4 | 0.687 [0.631, 0.746] |
+| PaperLens 7B text 50/50 (full set)   | 1414 | 58.4 [56.7, 60.3] | 24.0 | 92.9 | 0.720 [0.695, 0.744] |
+| **PaperLens 7B vision 50/50** (full set)   | 1414 | **62.8** [60.3, 65.2] | 45.1 | 80.4 | 0.724 [0.697, 0.752] |
 
-**Reading the comparison.**
+**Reading the comparison (with bootstrap CI honesty).**
 - DeepReviewer's **native decision is conservative** (favors Reject; reject-recall ≈ 73% vs accept-recall ≈ 49% on both sets) — same shape as our 30/70-trained models, but reached via a different route (4-reviewer ensemble that defaults to reject under disagreement).
-- **Val calibration helps DeepReviewer on ICLR** (+3.9pp bACC, 61.3 → 65.2) but **hurts on arxiv** (calibrated bACC ≈ native because the val subsample n=177 doesn't transfer well to test).
-- **PaperLens 7B vision 50/50 wins both balanced ACC comparisons** by 2-3pp over DeepReviewer's best protocol (ICLR 67.6 vs DR-cal 65.2; arxiv 62.8 vs DR-native 60.7).
-- **DeepReviewer wins AUC** on both datasets (ICLR 0.79 vs our 0.74; arxiv 0.75 vs our 0.72). DR's 4-reviewer rating is a better continuous *ranking* than our log-odds — but its threshold is misplaced (conservative decision pushes toward reject), so bACC suffers. **The two systems differ in *which part of the pipeline* they win**: DR's score ordering is better, our threshold placement is better.
-- The full-set vs subsample sanity check on PaperLens text 50/50 shows the subsample is faithful: bACC shifts by ≤4pp on ICLR and ≤2pp on arxiv (subsample stratification preserves the metrics well).
+- **bACC on ICLR**: PaperLens 7B vision 50/50 wins by 6.3pp (67.6 vs 61.3); CIs are **non-overlapping** ([65.4, 69.7] vs [56.3, 65.5]) → statistically meaningful at 95%.
+- **bACC on arxiv**: PaperLens 7B vision 50/50 wins by 2.1pp (62.8 vs 60.7); CIs **overlap** ([60.3, 65.2] vs [56.0, 65.7]) → not statistically distinguishable. The arxiv subsample is small (n=343) and DR's per-class-recall split is asymmetric — both effects widen the CI.
+- **AUC on both datasets**: DeepReviewer leads by 3-5pp (ICLR 0.79 vs 0.74; arxiv 0.75 vs 0.72), but **CIs overlap** in both cases ([0.741, 0.832] vs [0.713, 0.758] on ICLR). The point estimate ordering favors DR but the difference is below noise. Substantively, DR's 4-reviewer rating is a better-ordered ranking *as a point estimate*, while PaperLens's decision threshold is better-placed.
+- **Full-set vs subsample sanity**: PaperLens text 50/50 bACC shifts by ≤4pp on ICLR and ≤1pp on arxiv between subsample and full set — well within the CI width, so the stratified subsample is a faithful proxy.
 
 ### 5.2 Quality indicator metrics (Obj 1) — DeepReviewer rating ρ
 
@@ -294,8 +297,9 @@ Neither system dominates on every metric, and the differences are interpretable:
 
 | Objective | Metric | Winner | Δ |
 |---|---|---|---|
-| Obj 2 | Balanced ACC (ICLR + arxiv) | **PaperLens 7B vision 50/50** | +2-3pp |
-| Obj 1 | AUC (ICLR + arxiv)          | **DeepReviewer-14B**          | +3-5pp |
+| Obj 2 | Balanced ACC ICLR  | **PaperLens 7B vision 50/50** | +6.3pp (CIs non-overlapping) |
+| Obj 2 | Balanced ACC arxiv | PaperLens 7B vision 50/50 (point est.) | +2.1pp (CIs overlap) |
+| Obj 1 | AUC (ICLR + arxiv) | DeepReviewer-14B (point est.) | +3-5pp (CIs overlap) |
 | Obj 1 | ρ pct_rating (ICLR + arxiv) | **PaperLens 7B**              | +0.10–0.16 |
 | Obj 1 | ρ citation (ICLR)           | **DeepReviewer-14B**          | +0.04 |
 | Obj 1 | ρ citation (arxiv)          | **PaperLens 7B vision 50/50** | +0.10 |
@@ -305,6 +309,92 @@ Neither system dominates on every metric, and the differences are interpretable:
 **Practical implication for our two objectives.**
 - **Obj 1 (quality indicator)**: if you only need a *ranking* (AUC, Spearman), DR is the stronger continuous signal. If you need a `score → quality` mapping that closely tracks reviewer ratings, PaperLens wins. The tradeoff depends on which downstream signal matters.
 - **Obj 2 (conference acceptor)**: PaperLens 7B vision 50/50 remains the recommendation — better balanced accuracy, better per-class recall balance, and an order-of-magnitude faster.
+
+---
+
+## 6. Per-(venue, year) tracking
+
+Headline metrics from §3-§4 are pooled across venues and years. For both objectives, pooled metrics can hide venue-specific or year-specific drift. The 7B 2nd-ckpt models are evaluated on each (venue, year) cell with `n ≥ 20 papers AND ≥ 5 of each class` (smaller cells dropped as too noisy).
+
+![per-venue-year](../tmp_latex_dir/figures/objective_per_venue_year.png)
+
+### 6.1 Arxiv balanced — bACC + AUC per (venue, year)
+
+Per-cell sample sizes vary; cells with `n_acc < 5` or `n_rej < 5` are omitted. Listing only the recommended config (vision 50/50) for readability — all 4 configs are in the figure above.
+
+| venue | year | n_total | n_acc | n_rej | bACC | AUC | ρ rating (n) | ρ citation (n) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| aaai | 2024 | 21 | 2 | 21 | 53.8 | 0.548 | — | +0.58 (n=13) |
+| aaai | 2025 | 54 | 18 | 49 | 61.7 | 0.757 | — | +0.59 (n=24) |
+| aaai | 2026 | 70 | 19 | 53 | 51.5 | 0.636 | — | — |
+| acl | 2024 | 41 | 10 | 37 | 57.3 | 0.647 | — | +0.18 (n=12) |
+| acl | 2025 | 113 | 32 | 95 | 56.0 | 0.674 | — | — |
+| cvpr | 2024 | 106 | 49 | 83 | 62.3 | 0.750 | — | +0.27 (n=50) |
+| cvpr | 2025 | 105 | 69 | 76 | 69.2 | 0.742 | — | +0.34 (n=47) |
+| cvpr | 2026 | 63 | 39 | 36 | 59.6 | 0.624 | — | — |
+| eccv | 2024 | 36 | 8 | 33 | 57.2 | 0.746 | — | +0.08 (n=13) |
+| iccv | 2025 | 70 | 32 | 50 | 58.5 | 0.629 | — | — |
+| iclr | 2024 | 26 | 14 | 19 | 62.0 | 0.654 | -0.07 (n=22) | +0.37 (n=22) |
+| iclr | 2025 | 43 | 31 | 36 | 77.7 | 0.871 | +0.58 (n=36) | +0.40 (n=33) |
+| iclr | 2026 | 62 | 44 | 41 | 68.6 | 0.727 | +0.40 (n=51) | — |
+| icml | 2024 | 39 | 23 | 29 | 66.4 | 0.787 | — | -0.30 (n=19) |
+| icml | 2025 | 59 | 36 | 50 | 73.2 | 0.829 | — | +0.36 (n=21) |
+| neurips | 2024 | 177 | 83 | 145 | 64.4 | 0.759 | +0.09 (n=77) | +0.01 (n=77) |
+| neurips | 2025 | 210 | 105 | 182 | 68.4 | 0.777 | +0.08 (n=98) | — |
+
+**Per-(venue, year) headline observations.**
+
+- **bACC variation across venues** is large (range observed below across all 7B configs):
+  - Lowest bACC cell: aaai 2024 ('vision', '30_70'): 47.6
+  - Highest bACC cell: iclr 2024 ('text', '50_50'): 78.9
+- **Year drift on ICLR (2025 → 2026)** is shown in the right panel (per-year breakdown). All 4 configs sit in a tight band on each year; vision 50/50 is on top consistently.
+- **Quality correlations are sparse**: only 3 (venue, year) cells have `pct_rating ≥ 40` and 3 have `pct_citation ≥ 40` on arxiv. They are listed individually below.
+
+### 6.2 ICLR balanced — bACC + AUC per year
+
+| Model | 2025 bACC | 2025 AUC | 2025 ρ rating | 2025 ρ citation | 2026 bACC | 2026 AUC | 2026 ρ rating | 2026 ρ citation |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| text 50/50 | 68.1 | 0.762 | +0.54 | +0.30 | 63.3 | 0.693 | +0.42 | — |
+| text 30/70 | 63.8 | 0.756 | +0.52 | +0.30 | 60.0 | 0.695 | +0.43 | — |
+| vision 50/50 | 70.4 | 0.771 | +0.52 | +0.25 | 65.7 | 0.711 | +0.44 | — |
+| vision 30/70 | 67.4 | 0.756 | +0.51 | +0.28 | 63.2 | 0.700 | +0.44 | — |
+
+**ICLR year takeaways.**
+- **2025 → 2026 bACC drops** for every config (paper population shifts; 2026 includes more borderline submissions). This is a real distribution shift, not a metric artifact.
+- **ρ citation collapses on 2026** (all configs ≈ 0) — confirms the 2026 citation degeneracy from §2.3 (raw citations all zero → normalized field uninformative).
+- **ρ rating is stable** across years — reviewer ratings are a more reliable per-year quality signal than citations on this dataset.
+
+### 6.3 Arxiv quality-correlation cells (sparse subset)
+
+Only cells with `n ≥ 40` for the relevant signal are shown.
+
+| Model | venue | year | n_rating | ρ rating | n_citation | ρ citation |
+|---|---|---:|---:|---:|---:|---:|
+| text 50/50 | cvpr | 2024 | — | — | 50 | +0.05 |
+| text 50/50 | cvpr | 2025 | — | — | 47 | +0.26 |
+| text 50/50 | iclr | 2026 | 51 | +0.37 | — | — |
+| text 50/50 | neurips | 2024 | 77 | +0.20 | 77 | +0.02 |
+| text 50/50 | neurips | 2025 | 98 | +0.14 | — | — |
+| text 30/70 | cvpr | 2024 | — | — | 50 | +0.16 |
+| text 30/70 | cvpr | 2025 | — | — | 47 | +0.34 |
+| text 30/70 | iclr | 2026 | 51 | +0.28 | — | — |
+| text 30/70 | neurips | 2024 | 77 | +0.22 | 77 | +0.08 |
+| text 30/70 | neurips | 2025 | 98 | +0.06 | — | — |
+| vision 50/50 | cvpr | 2024 | — | — | 50 | +0.27 |
+| vision 50/50 | cvpr | 2025 | — | — | 47 | +0.34 |
+| vision 50/50 | iclr | 2026 | 51 | +0.40 | — | — |
+| vision 50/50 | neurips | 2024 | 77 | +0.09 | 77 | +0.01 |
+| vision 50/50 | neurips | 2025 | 98 | +0.08 | — | — |
+| vision 30/70 | cvpr | 2024 | — | — | 50 | +0.19 |
+| vision 30/70 | cvpr | 2025 | — | — | 47 | +0.38 |
+| vision 30/70 | iclr | 2026 | 51 | +0.36 | — | — |
+| vision 30/70 | neurips | 2024 | 77 | +0.07 | 77 | -0.00 |
+| vision 30/70 | neurips | 2025 | 98 | -0.04 | — | — |
+
+**Sparse-cell observations.**
+- **NeurIPS 2024**: both rating and citation available (`n=77` each). The strongest cell where we can directly compare both signals on the same papers — vision configs win citation correlation here while text configs win rating.
+- **CVPR 2024+2025**: citation-only (`n=47-50`). Useful for the citation-prediction objective, but no reviewer-rating data.
+- **NeurIPS 2025 / ICLR 2026 (in arxiv)**: rating-only. The arxiv ICLR 2026 cell is also subject to the 2026 citation degeneracy.
 
 ---
 

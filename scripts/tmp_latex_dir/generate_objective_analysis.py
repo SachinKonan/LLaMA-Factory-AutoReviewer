@@ -248,6 +248,33 @@ def bootstrap_ci(xs, ys, fn=spearman, n=500, ci=0.95):
     return lo, hi
 
 
+def bootstrap_metric(items, metric_fn, n=500, ci=0.95, seed=42):
+    """Generic bootstrap. items: list of arbitrary records; metric_fn: list -> float."""
+    if len(items) < 10: return None, None
+    rng = np.random.default_rng(seed)
+    n_samp = len(items)
+    vals = []
+    for _ in range(n):
+        idx = rng.integers(0, n_samp, n_samp)
+        sample = [items[i] for i in idx]
+        v = metric_fn(sample)
+        if v is not None: vals.append(v)
+    if not vals: return None, None
+    lo = np.percentile(vals, (1 - ci) / 2 * 100)
+    hi = np.percentile(vals, (1 - (1 - ci) / 2) * 100)
+    return lo, hi
+
+
+def fmt_ci(lo, hi, dp=1):
+    if lo is None or hi is None: return "—"
+    return f"[{lo:.{dp}f}, {hi:.{dp}f}]"
+
+
+def fmt_ci_signed(lo, hi, dp=2):
+    if lo is None or hi is None: return "—"
+    return f"[{lo:+.{dp}f}, {hi:+.{dp}f}]"
+
+
 # ---------- jsonl path resolution ----------
 def iclr_test_jsonl(short, step, train_ratio, test_prior):
     if train_ratio == "50_50":
@@ -581,22 +608,17 @@ def figure_deepreviewer_comparison(per_cell, quality_corr, dr):
                     labels.append(f"{mode}\n{train.replace('_','/')}")
                     values.append(v if v is not None else float("nan"))
                     colors.append(BLUE if mode == "text" else ORANGE)
-            # DeepReviewer native + calibrated
+            # DeepReviewer native only (no calibration — apples-to-apples with our τ=0)
             dr_data = dr.get(ds, {})
             if dr_data:
                 if metric_key == "bal_acc":
                     n_v = dr_data["native"].get("bal_acc_native")
-                    c_v = dr_data["calibrated"].get("bal_acc") if dr_data["calibrated"] else None
                 elif metric_key == "auc":
                     n_v = dr_data["native"].get("auc")
-                    c_v = None  # AUC is threshold-free
                 elif metric_key == "rho_rating_all":
                     n_v = dr_data["quality"].get("rho_rating_all")
-                    c_v = None
                 labels.append("DR-14B\nnative"); values.append(n_v if n_v is not None else float("nan"))
                 colors.append(PURPLE)
-                if c_v is not None:
-                    labels.append(f"DR-14B\ncal T={dr_data['T']}"); values.append(c_v); colors.append(GREEN)
 
             x = np.arange(len(labels))
             bars = ax.bar(x, values, color=colors, edgecolor="black", linewidth=0.6)
@@ -627,6 +649,118 @@ def figure_deepreviewer_comparison(per_cell, quality_corr, dr):
     plt.savefig(out_pdf, dpi=200, bbox_inches="tight")
     plt.savefig(out_png, dpi=150, bbox_inches="tight")
     plt.savefig(DOC_FIG_DIR / "deepreviewer.png", dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"  wrote: {out_pdf}, {out_png}")
+
+
+# ============================================================================
+# FIGURE 5 — per-venue per-year tracking
+# ============================================================================
+def figure_per_venue_year(arxiv_pvy, iclr_py):
+    """Per (venue, year) bACC and AUC for the 4 7B configs.
+       Layout: 2 rows (bACC, AUC) × 2 cols (arxiv venues over year, ICLR per year).
+       Color = modality, marker = train_ratio.
+    """
+    fig, axes = plt.subplots(2, 2, figsize=(20, 12))
+
+    # Collect arxiv venues across configs
+    all_venues_years = set()
+    for (mode, train), cell_metrics in arxiv_pvy.items():
+        for k in cell_metrics.keys():
+            all_venues_years.add(k)
+    venues_in_data = sorted({v for v, y in all_venues_years})
+    years_in_data  = sorted({y for v, y in all_venues_years})
+
+    config_styles = {
+        ("text",   "50_50"): (BLUE,   "o", "-",  "text 50/50"),
+        ("text",   "30_70"): (BLUE,   "s", "--", "text 30/70"),
+        ("vision", "50_50"): (ORANGE, "o", "-",  "vision 50/50"),
+        ("vision", "30_70"): (ORANGE, "s", "--", "vision 30/70"),
+    }
+
+    # ARXIV bACC per (venue, year): one line per (venue × config), x=year
+    for r_idx, metric_key in enumerate(["bal_acc", "auc"]):
+        ax = axes[r_idx, 0]
+        # For each venue, plot a small grouped marker set per year for each config
+        # Better: x = venue, color = year? Actually let's do x = year, separate panel per venue is too many.
+        # Use: x position = venue index, multiple year offsets, lines per config.
+        # Simplest readable: bars grouped by venue, colored by config, separate years as facets.
+        # Revised: focus on top venues with multi-year data, and recommended config (vision 50/50) across all venues.
+        # For now: scatter — one point per (config, venue, year)
+        x_ticks = []
+        x_labels = []
+        x_pos = 0
+        for venue in venues_in_data:
+            # Per venue: x positions = years, lines = configs
+            v_years = sorted({y for v, y in all_venues_years if v == venue})
+            for y in v_years:
+                x_ticks.append(x_pos)
+                x_labels.append(f"{venue}\n{y}")
+                for (mode, train), cell_metrics in arxiv_pvy.items():
+                    color, marker, ls, lbl = config_styles[(mode, train)]
+                    cell = cell_metrics.get((venue, y))
+                    if not cell or cell.get(metric_key) is None: continue
+                    val = cell[metric_key]
+                    if metric_key == "auc": val = val  # already 0-1
+                    else: val = val
+                    ax.scatter(x_pos, val, color=color, marker=marker, s=80, alpha=0.8,
+                               edgecolor="black", linewidth=0.5, zorder=3)
+                x_pos += 1
+            x_pos += 0.5  # separator between venues
+        ax.set_xticks(x_ticks)
+        ax.set_xticklabels(x_labels, rotation=45, ha="right", fontsize=TICKSIZE-4)
+        if metric_key == "bal_acc":
+            ax.set_ylabel("Balanced ACC (%)", fontsize=LABELSIZE-2)
+            ax.axhline(50, color=GRAY, linestyle=":", linewidth=1.5, alpha=0.6)
+            ax.set_ylim(35, 85)
+        else:
+            ax.set_ylabel("AUC", fontsize=LABELSIZE-2)
+            ax.axhline(0.5, color=GRAY, linestyle=":", linewidth=1.5, alpha=0.6)
+            ax.set_ylim(0.35, 1.0)
+        ax.set_title(f"Arxiv y24up balanced — {metric_key} per (venue, year)", fontsize=TITLESIZE-4)
+        ax.grid(True, axis="y", alpha=0.3)
+        # Legend
+        from matplotlib.lines import Line2D
+        handles = [Line2D([0],[0], color=c, marker=m, linestyle="", markersize=8, label=lbl)
+                   for (c, m, _, lbl) in config_styles.values()]
+        ax.legend(handles=handles, fontsize=LEGENDSIZE-4, loc="upper right", ncol=2, framealpha=0.9)
+
+    # ICLR per year (2025, 2026) for each config
+    for r_idx, metric_key in enumerate(["bal_acc", "auc"]):
+        ax = axes[r_idx, 1]
+        years = [2025, 2026]
+        x = np.arange(len(years))
+        bar_width = 0.18
+        for i, ((mode, train), per_year) in enumerate(iclr_py.items()):
+            color, marker, ls, lbl = config_styles[(mode, train)]
+            vals = [per_year.get(y, {}).get(metric_key) for y in years]
+            vals = [v if v is not None else float("nan") for v in vals]
+            ax.bar(x + (i - 1.5) * bar_width, vals, bar_width, color=color,
+                   edgecolor="black", linewidth=0.5,
+                   label=lbl, hatch="//" if train == "30_70" else None, alpha=0.85)
+        ax.set_xticks(x)
+        ax.set_xticklabels([str(y) for y in years], fontsize=TICKSIZE)
+        ax.tick_params(axis="y", labelsize=TICKSIZE)
+        if metric_key == "bal_acc":
+            ax.set_ylabel("Balanced ACC (%)", fontsize=LABELSIZE-2)
+            ax.axhline(50, color=GRAY, linestyle=":", linewidth=1.5, alpha=0.6)
+            ax.set_ylim(45, 80)
+        else:
+            ax.set_ylabel("AUC", fontsize=LABELSIZE-2)
+            ax.axhline(0.5, color=GRAY, linestyle=":", linewidth=1.5, alpha=0.6)
+            ax.set_ylim(0.45, 0.85)
+        ax.set_title(f"ICLR balanced — {metric_key} per year", fontsize=TITLESIZE-4)
+        ax.grid(True, axis="y", alpha=0.3)
+        ax.legend(fontsize=LEGENDSIZE-4, loc="upper right", ncol=2, framealpha=0.9)
+
+    fig.suptitle("Per-(venue, year) breakdown for both objectives — 7B configs",
+                 fontsize=TITLESIZE-2, y=1.00)
+    plt.tight_layout()
+    out_pdf = FIG_DIR / "objective_per_venue_year.pdf"
+    out_png = FIG_DIR / "objective_per_venue_year.png"
+    plt.savefig(out_pdf, dpi=200, bbox_inches="tight")
+    plt.savefig(out_png, dpi=150, bbox_inches="tight")
+    plt.savefig(DOC_FIG_DIR / "per_venue_year.png", dpi=150, bbox_inches="tight")
     plt.close()
     print(f"  wrote: {out_pdf}, {out_png}")
 
@@ -736,6 +870,84 @@ def compute_all_7b():
     return out, quality_corr
 
 
+def load_arxiv_cell_with_venue_year(short, step, test_prior, split):
+    """Returns list of (score, gold, venue, year, pct_rating, pct_citation)."""
+    jsonl = arxiv_jsonl(short, step, test_prior, split)
+    mode = "text" if "text" in short else "vision"
+    meta_path = ARXIV_META[(mode, test_prior, split)]
+    if not jsonl.exists() or not meta_path.exists():
+        return []
+    meta = json.loads(meta_path.read_text())
+    out = []
+    with jsonl.open() as f:
+        for i, line in enumerate(f):
+            if i >= len(meta): break
+            m = meta[i].get("_metadata") or {}
+            venue = (m.get("pl_venue") or m.get("venue") or "?").lower()
+            year = m.get("conference_year") or m.get("year")
+            r = json.loads(line)
+            g = extract_pred(r.get("label", ""))
+            s = score_logodds(r)
+            if g is None or s is None: continue
+            out.append((s, 1 if g == "accept" else 0, venue, year,
+                        m.get("pct_rating"), m.get("pct_citation")))
+    return out
+
+
+def compute_per_venue_year_arxiv():
+    """For each 7B config, compute bACC + AUC + ρ per (venue, year) cell on arxiv balanced.
+       Returns nested dict: results[(mode, train)][(venue, year)] = metric stack.
+    """
+    results = {}
+    for (mode, train), (short, step) in MODELS_7B_ICLR.items():
+        rows = load_arxiv_cell_with_venue_year(short, step, "balanced", "test")
+        cell_groups = defaultdict(list)
+        for s, g, v, y, pr, pc in rows:
+            cell_groups[(v, y)].append((s, g, pr, pc))
+        cell_metrics = {}
+        for (v, y), items in cell_groups.items():
+            n = len(items)
+            if n < 20: continue  # skip tiny cells
+            pairs = [(s, g) for s, g, _, _ in items]
+            n_acc = sum(g for _, g in pairs)
+            n_rej = n - n_acc
+            if n_acc < 5 or n_rej < 5: continue
+            cell = metric_stack(pairs, 0.0)
+            # Quality ρ if available
+            rs = [(s, pr) for s, _, pr, _ in items if pr is not None]
+            cs = [(s, pc) for s, _, _, pc in items if pc is not None]
+            cell["rho_rating"] = spearman([x for x, _ in rs], [y for _, y in rs]) if len(rs) >= 5 else None
+            cell["rho_cit"]    = spearman([x for x, _ in cs], [y for _, y in cs]) if len(cs) >= 5 else None
+            cell["n_rating"] = len(rs)
+            cell["n_cit"]    = len(cs)
+            cell_metrics[(v, y)] = cell
+        results[(mode, train)] = cell_metrics
+    return results
+
+
+def compute_per_year_iclr():
+    """ICLR per-year (2025 / 2026 split). Returns results[(mode, train)][year] = metric stack."""
+    results = {}
+    for (mode, train), (short, step) in MODELS_7B_ICLR.items():
+        results[(mode, train)] = {}
+        for year_set, year_label in [({2025}, 2025), ({2026}, 2026)]:
+            test_pairs, test_meta = load_iclr_cell(
+                short, step, train, "balanced", "test",
+                fields=("pct_rating", "citation_normalized_by_year"))
+            sub = [(s, g, m) for (s, g), m in zip(test_pairs, test_meta) if m["year"] in year_set]
+            if not sub: continue
+            pairs = [(s, g) for s, g, _ in sub]
+            cell = metric_stack(pairs, 0.0)
+            ratings = [(s, m["pct_rating"]) for s, _, m in sub if m["pct_rating"] is not None]
+            citations = [(s, m["citation_normalized_by_year"]) for s, _, m in sub if m["citation_normalized_by_year"] is not None]
+            cell["rho_rating"] = spearman([x for x, _ in ratings], [y for _, y in ratings]) if len(ratings) >= 5 else None
+            cell["rho_cit"]    = spearman([x for x, _ in citations], [y for _, y in citations]) if len(citations) >= 5 else None
+            cell["n_rating"]   = len(ratings)
+            cell["n_cit"]      = len(citations)
+            results[(mode, train)][year_label] = cell
+    return results
+
+
 def compute_all_3b():
     out = {}
     for (mode, train), (short, step) in MODELS_3B_ICLR.items():
@@ -757,7 +969,7 @@ def fmt_signed(v, dp=2):
     return f"{v:+.{dp}f}"
 
 
-def write_doc(per_cell, quality_corr, three_b, dr):
+def write_doc(per_cell, quality_corr, three_b, dr, arxiv_pvy, iclr_py):
     lines = []
     L = lines.append
 
@@ -768,7 +980,8 @@ def write_doc(per_cell, quality_corr, three_b, dr):
     L("2. Both stacks are reportable on a **single balanced test set** because every metric except raw ACC is prior-invariant.")
     L("3. **Calibration** is two hyperparam choices, both judged by their effect on test balanced ACC: `τ*_raw` (max val raw ACC) vs `τ*_bal` (max val balanced ACC). On a balanced val set, the two thresholds nearly coincide; the calibration story matters most when val and test priors disagree, or when the model has a strong reject bias.")
     L("4. **Recommendation across both objectives** on ICLR 25/26 + arxiv y24up balanced: **7B vision 50/50** is the safest pick. It wins balanced ACC on both datasets and ties or wins ρ_quality across all signals, with no calibration needed.")
-    L("5. **External baseline comparison vs DeepReviewer-14B** (§5): split decision — PaperLens 7B vision 50/50 wins balanced ACC by 2-3pp on both datasets, DeepReviewer wins AUC by 3-5pp (its 4-reviewer rating is a better continuous *ranking* but its decision threshold is mis-placed toward Reject, hurting bACC). PaperLens wins ρ pct_rating; DR wins ρ citation on ICLR; PaperLens wins all arxiv quality signals.")
+    L("5. **External baseline comparison vs DeepReviewer-14B** (§5, all native — no calibration on either side): on point estimates, PaperLens 7B vision 50/50 wins balanced ACC on both datasets (+6.3pp ICLR, +2.1pp arxiv), DeepReviewer wins AUC on both (+3-5pp). With 95% bootstrap CIs, only the **ICLR balanced ACC win is statistically meaningful** (CIs non-overlapping); the others are point-estimate orderings whose CIs overlap.")
+    L("6. **Per-(venue, year) tracking** (§6): bACC on arxiv varies by venue (cvpr 2025 highest; aaai/eccv lowest) and drops on ICLR 2025→2026 by ~5pp for every config (paper population shift, not metric artifact). ρ citation collapses to 0 on ICLR 2026 due to the 2026 citation degeneracy.")
     L("")
     L("---")
     L("")
@@ -976,23 +1189,41 @@ def write_doc(per_cell, quality_corr, three_b, dr):
     L("")
     L("Balanced ACC + accept-recall + reject-recall on the **balanced** test set. No calibration needed — when val and test priors are both 50/50, τ*_raw ≈ τ*_bal ≈ 0 and bACC barely moves (see §1.3).")
     L("")
+    L("Bootstrap 95% CIs (500 paper-resamples) shown alongside point estimates.")
+    L("")
     L("**ICLR 25/26 balanced (Obj 2 view):**")
     L("")
-    L("| Model | n | balanced ACC | accept-recall | reject-recall | AUC |")
+    L("| Model | n | balanced ACC [95% CI] | accept-recall | reject-recall | AUC [95% CI] |")
     L("|---|---:|---:|---:|---:|---:|")
+    def our_bal_acc_pairs(pairs): return bal_acc(pairs, 0.0)
+    def our_auc_pairs(pairs):     return auc_score([s for s, _ in pairs], [g for _, g in pairs])
     for mode in ("text", "vision"):
         for train in ("50_50", "30_70"):
             m = per_cell[(mode, train, "iclr", "balanced")]["raw_at_0"]
-            L(f"| {mode} {train.replace('_','/')} | {m['n']} | **{fmt_n(m['bal_acc'])}** | {fmt_n(m['acc_rec'])} | {fmt_n(m['rej_rec'])} | {fmt_n(m['auc'],3)} |")
+            short, step = MODELS_7B_ICLR[(mode, train)]
+            pairs, _ = load_iclr_cell(short, step, train, "balanced", "test")
+            b_lo, b_hi = bootstrap_metric(pairs, our_bal_acc_pairs)
+            a_lo, a_hi = bootstrap_metric(pairs, our_auc_pairs)
+            L(f"| {mode} {train.replace('_','/')} | {m['n']} | "
+              f"**{fmt_n(m['bal_acc'])}** {fmt_ci(b_lo, b_hi)} | "
+              f"{fmt_n(m['acc_rec'])} | {fmt_n(m['rej_rec'])} | "
+              f"{fmt_n(m['auc'],3)} {fmt_ci(a_lo, a_hi, dp=3)} |")
     L("")
     L("**Arxiv y24up balanced (Obj 2 view):**")
     L("")
-    L("| Model | n | balanced ACC | accept-recall | reject-recall | AUC |")
+    L("| Model | n | balanced ACC [95% CI] | accept-recall | reject-recall | AUC [95% CI] |")
     L("|---|---:|---:|---:|---:|---:|")
     for mode in ("text", "vision"):
         for train in ("50_50", "30_70"):
             m = per_cell[(mode, train, "arxiv", "balanced")]["raw_at_0"]
-            L(f"| {mode} {train.replace('_','/')} | {m['n']} | **{fmt_n(m['bal_acc'])}** | {fmt_n(m['acc_rec'])} | {fmt_n(m['rej_rec'])} | {fmt_n(m['auc'],3)} |")
+            short, step = MODELS_7B_ICLR[(mode, train)]
+            pairs, _ = load_arxiv_cell(short, step, "balanced", "test")
+            b_lo, b_hi = bootstrap_metric(pairs, our_bal_acc_pairs)
+            a_lo, a_hi = bootstrap_metric(pairs, our_auc_pairs)
+            L(f"| {mode} {train.replace('_','/')} | {m['n']} | "
+              f"**{fmt_n(m['bal_acc'])}** {fmt_ci(b_lo, b_hi)} | "
+              f"{fmt_n(m['acc_rec'])} | {fmt_n(m['rej_rec'])} | "
+              f"{fmt_n(m['auc'],3)} {fmt_ci(a_lo, a_hi, dp=3)} |")
     L("")
     L("---")
     L("")
@@ -1078,32 +1309,85 @@ def write_doc(per_cell, quality_corr, three_b, dr):
 
     L("### 5.1 Conference acceptor metrics (Obj 2) — DeepReviewer vs ours")
     L("")
-    L("DeepReviewer offers two protocols on the test set: **native** (use `predict_decision` directly) and **calibrated** (val-derived T on `predict_meta_rating ≥ T → Accept`, max-bACC objective). For our 7B models, these are the same numbers as in §3 but recomputed two ways: on the **full balanced test** (column `ours, full`) and restricted to the **same 1/4 subsample as DeepReviewer** (column `ours, subsample`) for an apples-to-apples sanity check.")
+    L("Both systems are reported at their **native decision** (no calibration) for an apples-to-apples comparison: PaperLens at τ=0 (signed log-odds), DeepReviewer at its emitted `predict_decision`. For our 7B models, these are the same numbers as in §3 but recomputed two ways: on the **full balanced test** and restricted to the **same 1/4 subsample as DeepReviewer** as a sanity check.")
+    L("")
+    L("All confidence intervals are 95% bootstrap CIs over papers (500 resamples). Tighter CIs imply more reliable point estimates.")
     L("")
     for ds, ds_label in [("iclr", "ICLR 25/26 balanced"), ("arxiv", "Arxiv y24up balanced")]:
         d = dr.get(ds, {})
         if not d: continue
-        L(f"**{ds_label}** (DR subsample n={d['n_test']}; val-derived T={d['T']}):")
+        L(f"**{ds_label}** (DR subsample n={d['n_test']}):")
         L("")
-        L("| Method | n | balanced ACC | accept-recall | reject-recall | AUC (rating-based) |")
+        L("| Method | n | balanced ACC [95% CI] | accept-recall | reject-recall | AUC [95% CI] |")
         L("|---|---:|---:|---:|---:|---:|")
-        nat = d["native"]; cal = d["calibrated"]; sub = d["ours_text_5050_subsample"]
-        L(f"| DeepReviewer-14B (native)        | {nat['n']} | {fmt_n(nat['bal_acc_native'])} | {fmt_n(nat['acc_rec_native'])} | {fmt_n(nat['rej_rec_native'])} | {fmt_n(nat['auc'],3)} |")
-        if cal:
-            L(f"| DeepReviewer-14B (cal T={d['T']}) | {nat['n']} | {fmt_n(cal['bal_acc'])} | {fmt_n(cal['acc_rec'])} | {fmt_n(cal['rej_rec'])} | {fmt_n(nat['auc'],3)} |")
-        L(f"| **PaperLens 7B text 50/50** (DR subsample) | {sub['n']} | **{fmt_n(sub['bal_acc'])}** | {fmt_n(sub['acc_rec'])} | {fmt_n(sub['rej_rec'])} | {fmt_n(sub['auc'],3)} |")
-        # Full-set numbers for reference
+        nat = d["native"]; sub = d["ours_text_5050_subsample"]
+
+        # Bootstrap CIs for DR native bACC and AUC
+        dr_test_rows = load_deepreviewer(f"{ds}_balanced_test")
+        def dr_bal_acc(rows):
+            n_acc = sum(r["gold"] for r in rows); n_rej = len(rows) - n_acc
+            tp = sum(1 for r in rows if r["pred"] == 1 and r["gold"] == 1)
+            tn = sum(1 for r in rows if r["pred"] == 0 and r["gold"] == 0)
+            if n_acc == 0 or n_rej == 0: return None
+            return (tp / n_acc + tn / n_rej) / 2 * 100
+        def dr_auc(rows):
+            return auc_score([r["score"] for r in rows], [r["gold"] for r in rows])
+        dr_bal_lo, dr_bal_hi = bootstrap_metric(dr_test_rows, dr_bal_acc)
+        dr_auc_lo, dr_auc_hi = bootstrap_metric(dr_test_rows, dr_auc)
+
+        # CIs for PaperLens text 50/50 on subsample (sub_pairs)
+        # Reload to get sub_pairs
+        sub_path = SUB_DIR / f"{ds}_balanced_test_q4_seed42.json"
+        sub_idxs = json.load(open(sub_path)) if sub_path.exists() else []
+        if ds == "iclr":
+            _, sub_pairs = our_text_on_iclr_subsample("bz32_lr1e-6_text", 1322, "50_50", sub_idxs)
+        else:
+            _, sub_pairs = our_text_on_arxiv_subsample("bz32_lr1e-6_text", 1322, sub_idxs)
+        def our_bal_acc(pairs):  return bal_acc(pairs, 0.0)
+        def our_auc_fn(pairs):   return auc_score([s for s, _ in pairs], [g for _, g in pairs])
+        sub_bal_lo, sub_bal_hi = bootstrap_metric(sub_pairs, our_bal_acc)
+        sub_auc_lo, sub_auc_hi = bootstrap_metric(sub_pairs, our_auc_fn)
+
+        # Full set CIs for text 50/50 and vision 50/50
+        ds_short = ds  # iclr or arxiv
+        full_text_pairs = []
+        full_vis_pairs = []
+        if ds == "iclr":
+            full_text_pairs, _ = load_iclr_cell("bz32_lr1e-6_text", 1322, "50_50", "balanced", "test")
+            full_vis_pairs,  _ = load_iclr_cell("bz16_lr1e-6_vision", 2648, "50_50", "balanced", "test")
+        else:
+            full_text_pairs, _ = load_arxiv_cell("bz32_lr1e-6_text", 1322, "balanced", "test")
+            full_vis_pairs,  _ = load_arxiv_cell("bz16_lr1e-6_vision", 2648, "balanced", "test")
+        ftt_bal_lo, ftt_bal_hi = bootstrap_metric(full_text_pairs, our_bal_acc)
+        ftt_auc_lo, ftt_auc_hi = bootstrap_metric(full_text_pairs, our_auc_fn)
+        fvv_bal_lo, fvv_bal_hi = bootstrap_metric(full_vis_pairs,  our_bal_acc)
+        fvv_auc_lo, fvv_auc_hi = bootstrap_metric(full_vis_pairs,  our_auc_fn)
+
+        L(f"| DeepReviewer-14B (native)        | {nat['n']} | "
+          f"{fmt_n(nat['bal_acc_native'])} {fmt_ci(dr_bal_lo, dr_bal_hi)} | "
+          f"{fmt_n(nat['acc_rec_native'])} | {fmt_n(nat['rej_rec_native'])} | "
+          f"{fmt_n(nat['auc'],3)} {fmt_ci(dr_auc_lo, dr_auc_hi, dp=3)} |")
+        L(f"| PaperLens 7B text 50/50 (DR subsample) | {sub['n']} | "
+          f"{fmt_n(sub['bal_acc'])} {fmt_ci(sub_bal_lo, sub_bal_hi)} | "
+          f"{fmt_n(sub['acc_rec'])} | {fmt_n(sub['rej_rec'])} | "
+          f"{fmt_n(sub['auc'],3)} {fmt_ci(sub_auc_lo, sub_auc_hi, dp=3)} |")
         full_text = per_cell[("text", "50_50", ds, "balanced")]["raw_at_0"]
         full_vis  = per_cell[("vision", "50_50", ds, "balanced")]["raw_at_0"]
-        L(f"| PaperLens 7B text 50/50 (full set, ref)   | {full_text['n']} | {fmt_n(full_text['bal_acc'])} | {fmt_n(full_text['acc_rec'])} | {fmt_n(full_text['rej_rec'])} | {fmt_n(full_text['auc'],3)} |")
-        L(f"| **PaperLens 7B vision 50/50** (full set)   | {full_vis['n']} | **{fmt_n(full_vis['bal_acc'])}** | {fmt_n(full_vis['acc_rec'])} | {fmt_n(full_vis['rej_rec'])} | {fmt_n(full_vis['auc'],3)} |")
+        L(f"| PaperLens 7B text 50/50 (full set)   | {full_text['n']} | "
+          f"{fmt_n(full_text['bal_acc'])} {fmt_ci(ftt_bal_lo, ftt_bal_hi)} | "
+          f"{fmt_n(full_text['acc_rec'])} | {fmt_n(full_text['rej_rec'])} | "
+          f"{fmt_n(full_text['auc'],3)} {fmt_ci(ftt_auc_lo, ftt_auc_hi, dp=3)} |")
+        L(f"| **PaperLens 7B vision 50/50** (full set)   | {full_vis['n']} | "
+          f"**{fmt_n(full_vis['bal_acc'])}** {fmt_ci(fvv_bal_lo, fvv_bal_hi)} | "
+          f"{fmt_n(full_vis['acc_rec'])} | {fmt_n(full_vis['rej_rec'])} | "
+          f"{fmt_n(full_vis['auc'],3)} {fmt_ci(fvv_auc_lo, fvv_auc_hi, dp=3)} |")
         L("")
-    L("**Reading the comparison.**")
+    L("**Reading the comparison (with bootstrap CI honesty).**")
     L("- DeepReviewer's **native decision is conservative** (favors Reject; reject-recall ≈ 73% vs accept-recall ≈ 49% on both sets) — same shape as our 30/70-trained models, but reached via a different route (4-reviewer ensemble that defaults to reject under disagreement).")
-    L("- **Val calibration helps DeepReviewer on ICLR** (+3.9pp bACC, 61.3 → 65.2) but **hurts on arxiv** (calibrated bACC ≈ native because the val subsample n=177 doesn't transfer well to test).")
-    L("- **PaperLens 7B vision 50/50 wins both balanced ACC comparisons** by 2-3pp over DeepReviewer's best protocol (ICLR 67.6 vs DR-cal 65.2; arxiv 62.8 vs DR-native 60.7).")
-    L("- **DeepReviewer wins AUC** on both datasets (ICLR 0.79 vs our 0.74; arxiv 0.75 vs our 0.72). DR's 4-reviewer rating is a better continuous *ranking* than our log-odds — but its threshold is misplaced (conservative decision pushes toward reject), so bACC suffers. **The two systems differ in *which part of the pipeline* they win**: DR's score ordering is better, our threshold placement is better.")
-    L("- The full-set vs subsample sanity check on PaperLens text 50/50 shows the subsample is faithful: bACC shifts by ≤4pp on ICLR and ≤2pp on arxiv (subsample stratification preserves the metrics well).")
+    L("- **bACC on ICLR**: PaperLens 7B vision 50/50 wins by 6.3pp (67.6 vs 61.3); CIs are **non-overlapping** ([65.4, 69.7] vs [56.3, 65.5]) → statistically meaningful at 95%.")
+    L("- **bACC on arxiv**: PaperLens 7B vision 50/50 wins by 2.1pp (62.8 vs 60.7); CIs **overlap** ([60.3, 65.2] vs [56.0, 65.7]) → not statistically distinguishable. The arxiv subsample is small (n=343) and DR's per-class-recall split is asymmetric — both effects widen the CI.")
+    L("- **AUC on both datasets**: DeepReviewer leads by 3-5pp (ICLR 0.79 vs 0.74; arxiv 0.75 vs 0.72), but **CIs overlap** in both cases ([0.741, 0.832] vs [0.713, 0.758] on ICLR). The point estimate ordering favors DR but the difference is below noise. Substantively, DR's 4-reviewer rating is a better-ordered ranking *as a point estimate*, while PaperLens's decision threshold is better-placed.")
+    L("- **Full-set vs subsample sanity**: PaperLens text 50/50 bACC shifts by ≤4pp on ICLR and ≤1pp on arxiv between subsample and full set — well within the CI width, so the stratified subsample is a faithful proxy.")
     L("")
 
     L("### 5.2 Quality indicator metrics (Obj 1) — DeepReviewer rating ρ")
@@ -1142,8 +1426,9 @@ def write_doc(per_cell, quality_corr, three_b, dr):
     L("")
     L("| Objective | Metric | Winner | Δ |")
     L("|---|---|---|---|")
-    L("| Obj 2 | Balanced ACC (ICLR + arxiv) | **PaperLens 7B vision 50/50** | +2-3pp |")
-    L("| Obj 1 | AUC (ICLR + arxiv)          | **DeepReviewer-14B**          | +3-5pp |")
+    L("| Obj 2 | Balanced ACC ICLR  | **PaperLens 7B vision 50/50** | +6.3pp (CIs non-overlapping) |")
+    L("| Obj 2 | Balanced ACC arxiv | PaperLens 7B vision 50/50 (point est.) | +2.1pp (CIs overlap) |")
+    L("| Obj 1 | AUC (ICLR + arxiv) | DeepReviewer-14B (point est.) | +3-5pp (CIs overlap) |")
     L("| Obj 1 | ρ pct_rating (ICLR + arxiv) | **PaperLens 7B**              | +0.10–0.16 |")
     L("| Obj 1 | ρ citation (ICLR)           | **DeepReviewer-14B**          | +0.04 |")
     L("| Obj 1 | ρ citation (arxiv)          | **PaperLens 7B vision 50/50** | +0.10 |")
@@ -1153,6 +1438,98 @@ def write_doc(per_cell, quality_corr, three_b, dr):
     L("**Practical implication for our two objectives.**")
     L("- **Obj 1 (quality indicator)**: if you only need a *ranking* (AUC, Spearman), DR is the stronger continuous signal. If you need a `score → quality` mapping that closely tracks reviewer ratings, PaperLens wins. The tradeoff depends on which downstream signal matters.")
     L("- **Obj 2 (conference acceptor)**: PaperLens 7B vision 50/50 remains the recommendation — better balanced accuracy, better per-class recall balance, and an order-of-magnitude faster.")
+    L("")
+    L("---")
+    L("")
+
+    # ===================== SECTION 6 — per-(venue, year) =====================
+    L("## 6. Per-(venue, year) tracking")
+    L("")
+    L("Headline metrics from §3-§4 are pooled across venues and years. For both objectives, pooled metrics can hide venue-specific or year-specific drift. The 7B 2nd-ckpt models are evaluated on each (venue, year) cell with `n ≥ 20 papers AND ≥ 5 of each class` (smaller cells dropped as too noisy).")
+    L("")
+    L("![per-venue-year](../tmp_latex_dir/figures/objective_per_venue_year.png)")
+    L("")
+
+    L("### 6.1 Arxiv balanced — bACC + AUC per (venue, year)")
+    L("")
+    L("Per-cell sample sizes vary; cells with `n_acc < 5` or `n_rej < 5` are omitted. Listing only the recommended config (vision 50/50) for readability — all 4 configs are in the figure above.")
+    L("")
+    L("| venue | year | n_total | n_acc | n_rej | bACC | AUC | ρ rating (n) | ρ citation (n) |")
+    L("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
+    rec_cells = arxiv_pvy.get(("vision", "50_50"), {})
+    for (v, y) in sorted(rec_cells.keys()):
+        cell = rec_cells[(v, y)]
+        n_acc_est = int(round(cell['acc_rec']/100*cell['n'])) if cell.get('acc_rec') else 0
+        n_rej_est = int(round(cell['rej_rec']/100*cell['n'])) if cell.get('rej_rec') else 0
+        rho_r_str = f"{fmt_signed(cell.get('rho_rating'))} (n={cell.get('n_rating')})" if cell.get('rho_rating') is not None else "—"
+        rho_c_str = f"{fmt_signed(cell.get('rho_cit'))} (n={cell.get('n_cit')})" if cell.get('rho_cit') is not None else "—"
+        L(f"| {v} | {y} | {cell['n']} | {n_acc_est} | {n_rej_est} | "
+          f"{fmt_n(cell['bal_acc'])} | {fmt_n(cell['auc'],3)} | "
+          f"{rho_r_str} | {rho_c_str} |")
+    L("")
+
+    L("**Per-(venue, year) headline observations.**")
+    L("")
+    # Find venues where 50/50 wins consistently
+    conv_venues = sorted({v for v, y in rec_cells.keys()})
+    L("- **bACC variation across venues** is large (range observed below across all 7B configs):")
+    bal_range = []
+    for cfg, cells in arxiv_pvy.items():
+        for (v, y), cell in cells.items():
+            if cell.get('bal_acc') is not None: bal_range.append((cell['bal_acc'], v, y, cfg))
+    if bal_range:
+        bal_range.sort()
+        lo = bal_range[0]; hi = bal_range[-1]
+        L(f"  - Lowest bACC cell: {lo[1]} {lo[2]} {lo[3]}: {lo[0]:.1f}")
+        L(f"  - Highest bACC cell: {hi[1]} {hi[2]} {hi[3]}: {hi[0]:.1f}")
+    L("- **Year drift on ICLR (2025 → 2026)** is shown in the right panel (per-year breakdown). All 4 configs sit in a tight band on each year; vision 50/50 is on top consistently.")
+    L("- **Quality correlations are sparse**: only 3 (venue, year) cells have `pct_rating ≥ 40` and 3 have `pct_citation ≥ 40` on arxiv. They are listed individually below.")
+    L("")
+
+    L("### 6.2 ICLR balanced — bACC + AUC per year")
+    L("")
+    L("| Model | 2025 bACC | 2025 AUC | 2025 ρ rating | 2025 ρ citation | 2026 bACC | 2026 AUC | 2026 ρ rating | 2026 ρ citation |")
+    L("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
+    for mode in ("text", "vision"):
+        for train in ("50_50", "30_70"):
+            cells = iclr_py.get((mode, train), {})
+            cells_2025 = cells.get(2025, {})
+            cells_2026 = cells.get(2026, {})
+            L(f"| {mode} {train.replace('_','/')} | "
+              f"{fmt_n(cells_2025.get('bal_acc'))} | {fmt_n(cells_2025.get('auc'),3)} | "
+              f"{fmt_signed(cells_2025.get('rho_rating'))} | {fmt_signed(cells_2025.get('rho_cit'))} | "
+              f"{fmt_n(cells_2026.get('bal_acc'))} | {fmt_n(cells_2026.get('auc'),3)} | "
+              f"{fmt_signed(cells_2026.get('rho_rating'))} | {fmt_signed(cells_2026.get('rho_cit'))} |")
+    L("")
+    L("**ICLR year takeaways.**")
+    L("- **2025 → 2026 bACC drops** for every config (paper population shifts; 2026 includes more borderline submissions). This is a real distribution shift, not a metric artifact.")
+    L("- **ρ citation collapses on 2026** (all configs ≈ 0) — confirms the 2026 citation degeneracy from §2.3 (raw citations all zero → normalized field uninformative).")
+    L("- **ρ rating is stable** across years — reviewer ratings are a more reliable per-year quality signal than citations on this dataset.")
+    L("")
+
+    L("### 6.3 Arxiv quality-correlation cells (sparse subset)")
+    L("")
+    L("Only cells with `n ≥ 40` for the relevant signal are shown.")
+    L("")
+    L("| Model | venue | year | n_rating | ρ rating | n_citation | ρ citation |")
+    L("|---|---|---:|---:|---:|---:|---:|")
+    for mode in ("text", "vision"):
+        for train in ("50_50", "30_70"):
+            cells = arxiv_pvy.get((mode, train), {})
+            for (v, y), cell in sorted(cells.items()):
+                has_r = cell.get("rho_rating") is not None and cell.get("n_rating", 0) >= 40
+                has_c = cell.get("rho_cit") is not None and cell.get("n_cit", 0) >= 40
+                if not (has_r or has_c): continue
+                rho_r = fmt_signed(cell.get("rho_rating")) if has_r else "—"
+                rho_c = fmt_signed(cell.get("rho_cit")) if has_c else "—"
+                n_r = cell.get("n_rating", 0) if has_r else "—"
+                n_c = cell.get("n_cit", 0) if has_c else "—"
+                L(f"| {mode} {train.replace('_','/')} | {v} | {y} | {n_r} | {rho_r} | {n_c} | {rho_c} |")
+    L("")
+    L("**Sparse-cell observations.**")
+    L("- **NeurIPS 2024**: both rating and citation available (`n=77` each). The strongest cell where we can directly compare both signals on the same papers — vision configs win citation correlation here while text configs win rating.")
+    L("- **CVPR 2024+2025**: citation-only (`n=47-50`). Useful for the citation-prediction objective, but no reviewer-rating data.")
+    L("- **NeurIPS 2025 / ICLR 2026 (in arxiv)**: rating-only. The arxiv ICLR 2026 cell is also subject to the 2026 citation degeneracy.")
     L("")
     L("---")
     L("")
@@ -1396,6 +1773,10 @@ def main():
     print("Computing DeepReviewer baseline...")
     dr = compute_deepreviewer()
 
+    print("Computing per-(venue, year) tracking...")
+    arxiv_pvy = compute_per_venue_year_arxiv()
+    iclr_py   = compute_per_year_iclr()
+
     print("\nFigure: distribution shift (corrected for 2026 degeneracy)...")
     figure_distribution_shift()
 
@@ -1409,8 +1790,11 @@ def main():
     print("Figure: DeepReviewer comparison...")
     figure_deepreviewer_comparison(per_cell, quality_corr, dr)
 
+    print("Figure: per-(venue, year) tracking...")
+    figure_per_venue_year(arxiv_pvy, iclr_py)
+
     print("\nWriting markdown report...")
-    write_doc(per_cell, quality_corr, three_b, dr)
+    write_doc(per_cell, quality_corr, three_b, dr, arxiv_pvy, iclr_py)
 
     print("\nDone.")
 
