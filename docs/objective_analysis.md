@@ -249,7 +249,7 @@ All confidence intervals are 95% bootstrap CIs over papers (500 resamples). Tigh
 
 | Method | n | balanced ACC [95% CI] | accept-recall | reject-recall | AUC [95% CI] |
 |---|---:|---:|---:|---:|---:|
-| DeepReviewer-14B (native)        | 399 | 61.3 [56.6, 66.0] | 50.3 | 72.3 | 0.781 [0.739, 0.831] |
+| DeepReviewer-14B (native)        | 399 | 61.3 [56.6, 66.0] | 50.3 | 72.3 | 0.668 [0.620, 0.723] |
 | PaperLens 7B text 50/50 (DR subsample) | 418 | 68.9 [64.8, 72.8] | 60.3 | 77.5 | 0.763 [0.717, 0.806] |
 | PaperLens 7B text 50/50 (full set)   | 1667 | 65.2 [63.0, 67.2] | 56.2 | 74.2 | 0.721 [0.698, 0.744] |
 | **PaperLens 7B vision 50/50** (full set)   | 1670 | **67.6** [65.4, 69.7] | 65.4 | 69.8 | 0.736 [0.713, 0.758] |
@@ -258,8 +258,8 @@ All confidence intervals are 95% bootstrap CIs over papers (500 resamples). Tigh
 
 | Method | n | balanced ACC [95% CI] | accept-recall | reject-recall | AUC [95% CI] |
 |---|---:|---:|---:|---:|---:|
-| DeepReviewer-14B (native)        | 343 | 60.7 [56.0, 65.7] | 48.8 | 72.5 | 0.754 [0.703, 0.800] |
-| PaperLens 7B text 50/50 (DR subsample) | 361 | 57.9 [54.3, 61.5] | 23.3 | 92.4 | 0.687 [0.631, 0.746] |
+| DeepReviewer-14B (native)        | 343 | 60.7 [56.0, 65.7] | 48.8 | 72.5 | 0.683 [0.630, 0.735] |
+| PaperLens 7B text 50/50 (DR subsample) | 361 | 57.9 [54.3, 61.5] | 23.3 | 92.4 | 0.687 [0.631, 0.745] |
 | PaperLens 7B text 50/50 (full set)   | 1414 | 58.4 [56.7, 60.3] | 24.0 | 92.9 | 0.720 [0.695, 0.744] |
 | **PaperLens 7B vision 50/50** (full set)   | 1414 | **62.8** [60.3, 65.2] | 45.1 | 80.4 | 0.724 [0.697, 0.752] |
 
@@ -414,22 +414,22 @@ Sections 1-6 used **ICLR-trained** 7B checkpoints. The new arxiv-trained sweep (
 
 | Model | best epoch | ckpt | τ*_bal | val bACC | test bACC [95% CI] | test AUC [95% CI] | accept-rec | reject-rec |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| 3B balanced text | 2 | 1312 | -0.25 | 67.8 | **70.0** [67.9, 72.3] | 0.786 [0.763, 0.809] | 64.8 | 75.2 |
-| 7B balanced text | 1 | 656 | 0.50 | 66.2 | **67.2** [64.9, 69.5] | 0.763 [0.740, 0.788] | 57.9 | 76.5 |
-| 7B balanced vision | 2 | 2618 | -1.12 | 72.7 | **74.2** [71.6, 76.5] | 0.826 [0.804, 0.846] | 75.3 | 73.1 |
-| 3B natrate text | 3 | 1968 | -2.00 | 67.8 | **68.2** [66.0, 70.5] | 0.770 [0.746, 0.792] | 81.0 | 55.4 |
-| 7B natrate text | 1 | 656 | -1.44 | 65.9 | **69.2** [66.9, 71.5] | 0.776 [0.751, 0.799] | 56.7 | 81.7 |
+| 3B balanced text | 2 | 1312 | -0.25 | 67.8 | **70.0** [67.9, 72.3] | 0.779 [0.756, 0.803] | 64.8 | 75.2 |
+| 7B balanced text | 1 | 656 | 0.50 | 66.2 | **67.2** [64.9, 69.5] | 0.759 [0.735, 0.784] | 57.9 | 76.5 |
+| 7B balanced vision | 2 | 2618 | -1.12 | 72.7 | **74.2** [71.6, 76.5] | 0.825 [0.802, 0.845] | 75.3 | 73.1 |
+| 3B natrate text | 3 | 1968 | -2.00 | 67.8 | **68.2** [66.0, 70.5] | 0.768 [0.744, 0.790] | 81.0 | 55.4 |
+| 7B natrate text | 1 | 656 | -1.44 | 65.9 | **69.2** [66.9, 71.5] | 0.775 [0.750, 0.798] | 56.7 | 81.7 |
 | _ICLR-trained 7B vision 50/50 (ref, τ=0)_ | — | 2648 | 0.00 | — | 62.8 [60.3, 65.2] | 0.724 [0.697, 0.752] | 45.1 | 80.4 |
 
 **ICLR balanced test (OOD for arxiv-trained):**
 
 | Model | best epoch | ckpt | τ*_bal | val bACC | test bACC [95% CI] | test AUC [95% CI] | accept-rec | reject-rec |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| 3B balanced text | 1 | 656 | 0.50 | 61.4 | **63.3** [61.1, 65.3] | 0.694 [0.671, 0.717] | 78.1 | 48.5 |
-| 7B balanced text | 1 | 656 | 0.63 | 59.8 | **61.7** [59.3, 64.0] | 0.644 [0.620, 0.669] | 66.7 | 56.7 |
-| 7B balanced vision | 1 | 1309 | -1.25 | 59.7 | **61.5** [59.2, 63.6] | 0.674 [0.648, 0.699] | 83.2 | 39.8 |
-| 3B natrate text | 3 | 1968 | -0.50 | 62.3 | **61.6** [59.0, 63.8] | 0.676 [0.649, 0.699] | 66.1 | 57.1 |
-| 7B natrate text | 2 | 1312 | -0.88 | 59.8 | **59.6** [57.1, 61.8] | 0.641 [0.612, 0.667] | 51.4 | 67.7 |
+| 3B balanced text | 1 | 656 | 0.50 | 61.4 | **63.3** [61.1, 65.3] | 0.686 [0.663, 0.710] | 78.1 | 48.5 |
+| 7B balanced text | 1 | 656 | 0.63 | 59.8 | **61.7** [59.3, 64.0] | 0.640 [0.615, 0.665] | 66.7 | 56.7 |
+| 7B balanced vision | 1 | 1309 | -1.25 | 59.7 | **61.5** [59.2, 63.6] | 0.668 [0.642, 0.693] | 83.2 | 39.8 |
+| 3B natrate text | 3 | 1968 | -0.50 | 62.3 | **61.6** [59.0, 63.8] | 0.669 [0.641, 0.693] | 66.1 | 57.1 |
+| 7B natrate text | 2 | 1312 | -0.88 | 59.8 | **59.6** [57.1, 61.8] | 0.638 [0.609, 0.664] | 51.4 | 67.7 |
 | _ICLR-trained 7B vision 50/50 (ref, τ=0)_ | — | 2648 | 0.00 | — | **67.6** [65.4, 69.7] | 0.736 [0.713, 0.758] | 65.4 | 69.8 |
 
 ### 7.2 Headline findings — train where you'll deploy
@@ -458,14 +458,14 @@ Arxiv-trained 7B vision balanced (ckpt-2618) was evaluated on the full arxiv bal
 
 | System | n | balanced ACC [95% CI] | AUC [95% CI] | accept-rec | reject-rec |
 |---|---:|---:|---:|---:|---:|
-| **Arxiv-trained 7B vision balanced (full set)** | 1414 | **74.2** [71.6, 76.5] | 0.826 [0.804, 0.846] | 75.3 | 73.1 |
-| **Arxiv-trained 7B vision balanced (DR subsample)** | 361 | **73.5** [68.8, 77.6] | 0.826 [0.780, 0.866] | 74.3 | 72.7 |
-| DeepReviewer-14B (native, DR subsample)         | 343 | 60.7 [56.0, 65.7] | 0.754 [0.703, 0.800] | 48.8 | 72.5 |
+| **Arxiv-trained 7B vision balanced (full set)** | 1414 | **74.2** [71.6, 76.5] | 0.825 [0.802, 0.845] | 75.3 | 73.1 |
+| **Arxiv-trained 7B vision balanced (DR subsample)** | 361 | **73.5** [68.8, 77.6] | 0.824 [0.778, 0.865] | 74.3 | 72.7 |
+| DeepReviewer-14B (native, DR subsample)         | 343 | 60.7 [56.0, 65.7] | 0.683 [0.630, 0.735] | 48.8 | 72.5 |
 | ICLR-trained 7B vision 50/50 (full set, ref) | 1414 | 62.8 [60.3, 65.2] | 0.724 [0.697, 0.752] | 45.1 | 80.4 |
 
 **Findings on arxiv balanced (apples-to-apples on DR subsample)**:
 - **bACC**: arxiv-trained vision +12.8pp over DR (73.5 vs 60.7). CIs: arxiv-trained [68.8, 77.6] vs DR [56.0, 65.7] — **non-overlapping**, statistically meaningful.
-- **AUC**: arxiv-trained vision +0.072 over DR (0.826 vs 0.754). CIs: arxiv-trained [0.780, 0.866] vs DR [0.703, 0.800] — overlap (point estimate only).
+- **AUC**: arxiv-trained vision +0.142 over DR (0.824 vs 0.683). CIs: arxiv-trained [0.778, 0.865] vs DR [0.630, 0.735] — **non-overlapping**, statistically meaningful.
 - **The DR subsample is faithful**: full-set bACC (74.2) vs subsample bACC (73.5) shifts only ~0.7pp (within CI width).
 
 **This is a meaningful update to §5.** ICLR-trained PaperLens lost AUC to DeepReviewer on arxiv (point estimate only, CIs overlapped). For arxiv-trained PaperLens:
@@ -508,14 +508,17 @@ If the labels and content are consistent, the same model should produce similar 
 | ICLR-trained 7B vision 50/50 | gold ICLR 25/26 | 1670 | 67.6 [65.4, 69.7] | 0.736 [0.713, 0.758] | 65.4 | 69.8 |
 | ICLR-trained 7B text 50/50 | arxiv ICLR-subset | 87 | 68.4 [60.6, 76.9] | 0.771 [0.675, 0.853] | 46.8 | 90.0 |
 | ICLR-trained 7B text 50/50 | gold ICLR 25/26 | 1667 | 65.2 [63.0, 67.2] | 0.721 [0.698, 0.744] | 56.2 | 74.2 |
-| Arxiv-trained 7B vision balanced (ckpt-2618) | arxiv ICLR-subset | 87 | 70.4 [61.6, 80.4] | 0.779 [0.667, 0.872] | 84.8 | 56.1 |
-| Arxiv-trained 7B vision balanced (ckpt-2618) | gold ICLR 25/26 | — | — (no iclr_balanced_test ckpt for this cell) | — | — | — |
+| Arxiv-trained 7B vision balanced (ckpt-2618, best-arxiv) | arxiv ICLR-subset | 87 | 70.4 [61.6, 80.4] | 0.778 [0.665, 0.869] | 84.8 | 56.1 |
+| Arxiv-trained 7B vision balanced (ckpt-2618, best-arxiv) | gold ICLR 25/26 | — | — (no iclr_balanced_test ckpt for this cell) | — | — | — |
+| Arxiv-trained 7B vision balanced (ckpt-1309, epoch 1) | arxiv ICLR-subset | 87 | 64.9 [53.6, 74.6] | 0.806 [0.704, 0.892] | 76.1 | 53.7 |
+| Arxiv-trained 7B vision balanced (ckpt-1309, epoch 1) | gold ICLR 25/26 | 1670 | 61.5 [59.2, 63.6] | 0.668 [0.642, 0.693] | 83.2 | 39.8 |
 
 ### 8.3 Findings — does the arxiv ICLR-subset look like ICLR?
 
 - **ICLR-trained 7B vision 50/50**: bACC arxiv-ICLR-subset = 73.7 vs gold ICLR = 67.6 → Δ = +6.1pp. AUC: 0.817 vs 0.736 → Δ = +0.081. CIs **overlap** for bACC.
 - **ICLR-trained 7B text 50/50**: bACC arxiv-ICLR-subset = 68.4 vs gold ICLR = 65.2 → Δ = +3.2pp. AUC: 0.771 vs 0.721 → Δ = +0.049. CIs **overlap** for bACC.
-- **Arxiv-trained 7B vision balanced (ckpt-2618)** on arxiv-ICLR-subset: bACC = 70.4. (No matching iclr_balanced_test ckpt available — see §7 caveats.) The arxiv-trained model is *slightly* in-distribution for this subset (since it saw arxiv papers during training, including ICLR-venue ones).
+- **Arxiv-trained 7B vision balanced (ckpt-2618, best-arxiv)** on arxiv-ICLR-subset: bACC = 70.4. (No matching iclr_balanced_test ckpt yet — still queued.) The arxiv-trained model is *slightly* in-distribution for this subset (since it saw arxiv papers during training, including ICLR-venue ones).
+- **Arxiv-trained 7B vision balanced (ckpt-1309, epoch 1)**: this is the only arxiv-trained vision ckpt with iclr_balanced_test available. bACC arxiv-ICLR-subset = 64.9 vs gold ICLR = 61.5 → Δ = +3.4pp. AUC: 0.806 vs 0.668. The OOD penalty for arxiv-trained on gold ICLR is consistent with §7's cross-dataset finding (~5pp below ICLR-trained vision's 67.6).
 
 **Verdict on dataset integrity**.
 - The arxiv ICLR-subset and gold ICLR 25/26 give **comparable bACC** for the same ICLR-trained model — within bootstrap CI overlap on the small subsample (n=87 vs n=1667). This is consistent with the arxiv pipeline's labeling matching what OpenReview reports (no systematic mislabeling).
@@ -555,3 +558,17 @@ If the labels and content are consistent, the same model should produce similar 
 - Source spec: `/scratch/gpfs/ZHUANGL/sk7524/Researcher/RESULTS_deepreviewer_balanced.md`
 
 Generated by `scripts/tmp_latex_dir/generate_objective_analysis.py`. All numbers reproducible from the source jsonls.
+
+**Verification.** Every metric in this doc is cross-checked against reference implementations by `scripts/verify_objective_analysis.py`:
+- AUC vs `sklearn.metrics.roc_auc_score` (exact match across random trials)
+- Spearman ρ vs `scipy.stats.spearmanr` (exact match including ties)
+- Balanced ACC vs `sklearn.metrics.balanced_accuracy_score` (exact match)
+- Best-τ functions vs brute-force threshold sweep (achieves same max)
+- Bootstrap CI reproducibility (same seed → same CI; different seeds within ~1pp)
+- Score derivation (`score_logodds` and `score_logodds_2class`) re-derived from raw token_logprobs / logprob_accept / logprob_reject
+- Year filtering and DR subsample indexing
+- End-to-end re-derivation of headline numbers (vision 50/50 ICLR bACC=67.6, text 30/70 arxiv natural bACC=50.1, arxiv-trained vision ckpt-2618 arxiv bACC=74.2, ρ pct_rating ≈ 0.48 on ICLR vision 50/50)
+- raw_ACC(π) = π·AccR + (1−π)·RejR formula vs empirical natural-prior raw ACC
+- DR 1/4 stratified subsample faithfulness (bACC shifts ≤5pp vs full set)
+
+Run `uv run python scripts/verify_objective_analysis.py` to re-execute all 13 checks. All pass as of the last regeneration.
