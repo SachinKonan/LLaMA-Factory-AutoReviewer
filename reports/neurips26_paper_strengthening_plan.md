@@ -16,7 +16,7 @@ This lets the intro define `p(accept)` early: it is not just a class label, it i
 | figure | intended paper role |
 |---|---|
 | `tmp_latex_dir/figures/neurips26_threshold_recall_movement.png` | Show why balanced accuracy and recall movement matter: balanced-val thresholding changes the Accept/Reject operating point, while AUC/rank metrics are unchanged. |
-| `tmp_latex_dir/figures/neurips26_panel_mosaic.png` | Dataset/representation teaser: ICLR and arxiv accept/reject examples as 5x2 panels. This can replace the current abstract mock. |
+| `tmp_latex_dir/figures/neurips26_panel_mosaic.png` | Dataset/representation teaser: accept/reject rows across ICLR, CVPR, ICML, and AISTATS examples, rebuilt from raw page images with consistent gutters, source brackets, and examples chosen closest to 10 pages. This can replace the current abstract mock. |
 | `tmp_latex_dir/figures/neurips26_panel_order_ablation.png` | Compact representation ablation: panel efficiency and ordering sensitivity. |
 | `tmp_latex_dir/figures/neurips26_platt_calibration.png` | Post-hoc calibration: the y=x reliability view for `p(accept)` after Platt scaling. |
 
@@ -84,11 +84,15 @@ Calibration prose should be explicit: Platt scaling makes `p(accept)` more inter
 7. **Calibration:** show post-hoc `p(accept)` reliability after the main results, not as the main claim.
 8. **Remove/condense old interpretation section:** keep only the pieces needed for the Claude Code review-improvement story or move them to appendix.
 
+## Latest completed-result update
+
+The new 8-eval sweeps for **ICLR-trained 14B text** and **ICLR-trained 3B vision**, plus the completed **large arxiv-balanced 7B vision** checkpoints, are integrated in `reports/neurips26_latest_results_update.md`. Promote these into the scaling/distribution section before editing the paper text.
+
 ## Missing or risky analyses to finish next
 
 - Common-subset comparison for GPT/Gemini/DeepReviewer/PaperLens before claiming closed-source wins/losses.
 - Base-model zero-shot baselines for the final eval suite.
-- Full arxiv-trained large text/vision/natural checkpoint integration once runs finish.
+- Large arxiv-balanced vision is now integrated; large arxiv text/natural variants still need integration once complete.
 - Venue/year count table for ICLR and arxiv, plus temporality plots from `ratio_xeval_family_analysis.py` promoted into the paper.
 - Per-venue/category arxiv validity checks: accept recall is especially important because arxiv reject labels can include papers never submitted to the main conference.
 - Statistical CIs/significance where methodologically clean and important; otherwise report point estimates with sample sizes and avoid overclaiming underpowered comparisons.

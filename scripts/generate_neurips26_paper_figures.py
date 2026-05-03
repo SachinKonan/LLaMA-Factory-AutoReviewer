@@ -35,7 +35,7 @@ from typing import Iterable
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -384,6 +384,7 @@ def make_threshold_recall_movement() -> list[dict]:
 
 def _font(size: int, bold: bool = False) -> ImageFont.ImageFont:
     candidates = [
+        "/usr/share/fonts/msttcorefonts/arialbd.ttf" if bold else "/usr/share/fonts/msttcorefonts/arial.ttf",
         "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
     ]
@@ -414,22 +415,79 @@ def image_path_for(entry: dict) -> Path | None:
     return path if path.exists() else None
 
 
-def find_panel_entry(entries: list[dict], label: str, predicate, used: set[str]) -> dict:
+def _entry_id(entry: dict) -> str:
+    meta = entry.get("_metadata") or {}
+    return str(meta.get("submission_id") or meta.get("arxiv_id") or id(entry))
+
+
+def _entry_venue(entry: dict) -> str:
+    meta = entry.get("_metadata") or {}
+    return str(meta.get("pl_venue") or meta.get("venue") or "").lower()
+
+
+def _trim_white(im: Image.Image, tol: int = 8, pad: int = 10) -> Image.Image:
+    rgb = im.convert("RGB")
+    bg = Image.new("RGB", rgb.size, (255, 255, 255))
+    diff = ImageChops.difference(rgb, bg).convert("L")
+    diff = diff.point(lambda p: 255 if p > tol else 0)
+    bbox = diff.getbbox()
+    if bbox is None:
+        return rgb
+    left = max(0, bbox[0] - pad)
+    upper = max(0, bbox[1] - pad)
+    right = min(rgb.width, bbox[2] + pad)
+    lower = min(rgb.height, bbox[3] + pad)
+    return rgb.crop((left, upper, right, lower))
+
+
+def _load_split_entries(base_name: str, splits: Iterable[str] = ("test",)) -> list[dict]:
+    entries: list[dict] = []
+    for split in splits:
+        path = DATA / f"{base_name}_{split}" / "data.json"
+        if path.exists():
+            entries.extend(json.loads(path.read_text()))
+    return entries
+
+
+def find_panel_entry(entries: list[dict], label: str, predicate, used: set[str],
+                     min_pages: int = 8, max_pages: int = 10) -> dict:
+    candidates = []
     for entry in entries:
         if answer_of(entry) != label:
             continue
-        meta = entry.get("_metadata") or {}
-        ident = str(meta.get("submission_id") or meta.get("arxiv_id") or id(entry))
+        ident = _entry_id(entry)
         if ident in used:
             continue
-        if predicate(entry) and image_path_for(entry) is not None:
-            used.add(ident)
-            return entry
+        if not predicate(entry) or image_path_for(entry) is None:
+            continue
+        page_count = len(entry.get("images") or [])
+        if min_pages <= page_count <= max_pages:
+            candidates.append((page_count, entry))
+
+    if not candidates:
+        for entry in entries:
+            if answer_of(entry) != label:
+                continue
+            ident = _entry_id(entry)
+            if ident in used:
+                continue
+            if not predicate(entry) or image_path_for(entry) is None:
+                continue
+            page_count = len(entry.get("images") or [])
+            if page_count < min_pages:
+                continue
+            candidates.append((page_count, entry))
+
+    if candidates:
+        candidates.sort(key=lambda item: (abs(max_pages - min(item[0], max_pages)), -min(item[0], max_pages), _entry_id(item[1])))
+        entry = candidates[0][1]
+        used.add(_entry_id(entry))
+        return entry
+
     for entry in entries:
         if answer_of(entry) != label:
             continue
-        meta = entry.get("_metadata") or {}
-        ident = str(meta.get("submission_id") or meta.get("arxiv_id") or id(entry))
+        ident = _entry_id(entry)
         if ident in used:
             continue
         if image_path_for(entry) is not None:
@@ -438,20 +496,34 @@ def find_panel_entry(entries: list[dict], label: str, predicate, used: set[str])
     raise RuntimeError(f"No panel entry found for label={label}")
 
 
-def entry_caption(entry: dict, source: str) -> str:
+def _short_year(year: object) -> str:
+    try:
+        return f"'{int(float(str(year))) % 100:02d}"
+    except (TypeError, ValueError):
+        return "'??"
+
+
+def entry_header(entry: dict, source: str) -> str:
     meta = entry.get("_metadata") or {}
     if source == "iclr":
+        return f"ICLR {_short_year(meta.get('year'))}"
+    venue = str(meta.get("pl_venue") or meta.get("venue") or "?").upper()
+    year = meta.get("conference_year") or meta.get("pl_year") or meta.get("arxiv_year")
+    return f"{venue} {_short_year(year)}"
+
+
+def entry_caption(entry: dict, source: str) -> str:
+    meta = entry.get("_metadata") or {}
+    pages = len(entry.get("images") or [])
+    if source == "iclr":
         sid = str(meta.get("submission_id", ""))[:7]
-        year = meta.get("year", "?")
         pct = meta.get("pct_rating")
         pct_s = f"pct={pct:.2f}" if isinstance(pct, (float, int)) else "pct=na"
-        return f"ICLR {year} | {pct_s} | {sid}"
-    venue = str(meta.get("pl_venue") or meta.get("venue") or "?").upper()
-    year = meta.get("conference_year") or meta.get("pl_year") or "?"
+        return f"{pct_s} | {pages} pages | {sid}"
     arxiv_id = str(meta.get("arxiv_id", ""))[:10]
     cats = ascii_clean(str(meta.get("categories") or "")).split()
     cat = cats[0] if cats else "cat=na"
-    return f"{venue} {year} | {cat} | {arxiv_id}"
+    return f"{cat} | {pages} pages | {arxiv_id}"
 
 
 def paste_wrapped(draw: ImageDraw.ImageDraw, xy: tuple[int, int], text: str, font, fill: str, width: int) -> None:
@@ -465,87 +537,144 @@ def paste_wrapped(draw: ImageDraw.ImageDraw, xy: tuple[int, int], text: str, fon
         y += font.size + 4
 
 
-def make_panel_mosaic() -> None:
-    iclr_entries = json.loads((DATA / "iclr_2020_2023_2025_2026_85_5_10_balanced_original_vision_labelfix_v7_filtered_filtered24480_panel_test/data.json").read_text())
-    arxiv_entries = json.loads((DATA / "arxiv_50_50_21k_vision_wmetadata_filtered24480_panel_test/data.json").read_text())
+def _compose_mosaic_panel(entry: dict, panel_w: int, panel_h: int) -> Image.Image:
+    page_paths = [ROOT / rel for rel in (entry.get("images") or [])[:10]]
+    page_paths = [path for path in page_paths if path.exists()]
+    n_pages = len(page_paths)
+    if n_pages >= 10:
+        row_counts = [5, 5]
+    elif n_pages == 9:
+        row_counts = [5, 4]
+    else:
+        row_counts = [4, min(4, max(0, n_pages - 4))]
 
-    rows = [
-        ("ML 2025", 2025, {"iclr", "icml", "neurips"}),
-        ("CV 2026", 2026, {"cvpr", "iccv", "eccv"}),
-        ("NLP 2025", 2025, {"acl", "emnlp", "naacl", "colm"}),
-        ("General 2026", 2026, {"aaai", "aistats", "corl"}),
+    page_gap = 13
+    row_gap = 13
+    max_cols = max(row_counts) if row_counts else 1
+    page_w = (panel_w - (max_cols - 1) * page_gap) // max_cols
+    page_h = (panel_h - row_gap) // 2
+
+    panel = Image.new("RGB", (panel_w, panel_h), "white")
+    page_idx = 0
+    for row_idx, count in enumerate(row_counts):
+        if count <= 0:
+            continue
+        row_width = count * page_w + (count - 1) * page_gap
+        x = (panel_w - row_width) // 2
+        y = row_idx * (page_h + row_gap)
+        for _ in range(count):
+            if page_idx >= n_pages:
+                break
+            with Image.open(page_paths[page_idx]) as raw:
+                page = _trim_white(raw, tol=10, pad=14)
+                page.thumbnail((page_w, page_h), Image.LANCZOS)
+                paste_x = x + (page_w - page.width) // 2
+                paste_y = y + (page_h - page.height) // 2
+                panel.paste(page, (paste_x, paste_y))
+            page_idx += 1
+            x += page_w + page_gap
+    return panel
+
+
+def _draw_bracket(draw: ImageDraw.ImageDraw, x1: int, x2: int, y: int, label: str, font) -> None:
+    tick = 13
+    draw.line((x1, y, x2, y), fill="#5F6368", width=3)
+    draw.line((x1, y, x1, y + tick), fill="#5F6368", width=3)
+    draw.line((x2, y, x2, y + tick), fill="#5F6368", width=3)
+    bbox = draw.textbbox((0, 0), label, font=font)
+    draw.text((x1 + (x2 - x1 - (bbox[2] - bbox[0])) // 2, y - font.size - 8),
+              label, font=font, fill="#3C4043")
+
+
+def make_panel_mosaic() -> None:
+    iclr_entries = _load_split_entries(
+        "iclr_2020_2023_2025_2026_85_5_10_balanced_original_vision_labelfix_v7_filtered_filtered24480",
+        splits=("test",),
+    )
+    arxiv_entries = _load_split_entries(
+        "arxiv_50_50_21k_vision_wmetadata_filtered24480",
+        splits=("test", "validation", "train"),
+    )
+
+    rows = [("Accept", "accept"), ("Reject", "reject")]
+    columns = [
+        ("ICLR", "iclr", None),
+        ("CVPR", "arxiv", "cvpr"),
+        ("ICML", "arxiv", "icml"),
+        ("AISTATS", "arxiv", "aistats"),
     ]
-    columns = [("ICLR Accept", "iclr", "accept"), ("ICLR Reject", "iclr", "reject"),
-               ("Arxiv Accept", "arxiv", "accept"), ("Arxiv Reject", "arxiv", "reject")]
     used: set[str] = set()
     selected: list[list[tuple[dict, str]]] = []
-    for _, iclr_year, arxiv_venues in rows:
+    for _, label in rows:
         row_cells: list[tuple[dict, str]] = []
-        for _, source, label in columns:
+        for _, source, venue in columns:
             if source == "iclr":
                 entry = find_panel_entry(
                     iclr_entries,
                     label,
-                    lambda e, year=iclr_year: int((e.get("_metadata") or {}).get("year", 0)) == year,
+                    lambda e: int((e.get("_metadata") or {}).get("year", 0)) in {2025, 2026},
                     used,
                 )
             else:
                 entry = find_panel_entry(
                     arxiv_entries,
                     label,
-                    lambda e, venues=arxiv_venues: str((e.get("_metadata") or {}).get("pl_venue")
-                                                       or (e.get("_metadata") or {}).get("venue")
-                                                       or "").lower() in venues,
+                    lambda e, venue=venue: _entry_venue(e) == venue,
                     used,
                 )
             row_cells.append((entry, source))
         selected.append(row_cells)
 
-    cell_w, cell_h = 690, 470
-    caption_h, header_h = 70, 88
-    row_label_w, margin, gap = 150, 52, 24
-    width = margin * 2 + row_label_w + gap + 4 * cell_w + 3 * gap
-    height = margin * 2 + header_h + 4 * (cell_h + caption_h) + 3 * gap
+    panel_w, panel_h = 820, 460
+    cell_header_h, caption_h = 52, 48
+    row_label_w, margin, gap = 118, 48, 28
+    title_h, bracket_h, row_gap = 62, 64, 42
+    cell_h = cell_header_h + panel_h + caption_h
+    width = margin * 2 + row_label_w + gap + 4 * panel_w + 3 * gap
+    height = margin * 2 + title_h + bracket_h + 2 * cell_h + row_gap
     canvas = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(canvas)
 
-    title_font = _font(38, bold=True)
-    head_font = _font(29, bold=True)
-    small_font = _font(19)
-    row_font = _font(26, bold=True)
+    title_font = _font(36, bold=True)
+    bracket_font = _font(25, bold=True)
+    head_font = _font(34, bold=True)
+    small_font = _font(20)
+    row_font = _font(30, bold=True)
 
-    draw.text((margin, 18), "Panelized paper examples: ICLR and arxiv accept/reject splits",
+    draw.text((margin, 18), "Panelized paper examples across dataset sources",
               font=title_font, fill=INK)
-    draw.text((margin, 56), "Each thumbnail is the single 5x2 page-panel input used by the panel representation.",
+    draw.text((margin, 57), "Each cell shows up to 10 source pages with consistent page gutters; examples are chosen closest to 10 pages.",
               font=small_font, fill="#5F6368")
 
     x0 = margin + row_label_w + gap
-    y0 = margin + header_h
-    for col_idx, (col_name, _, label) in enumerate(columns):
-        x = x0 + col_idx * (cell_w + gap)
-        color = GREEN if label == "accept" else RED
-        draw.rounded_rectangle((x, y0 - 48, x + cell_w, y0 - 10), radius=10, fill=color, outline=color)
-        bbox = draw.textbbox((0, 0), col_name, font=head_font)
-        draw.text((x + (cell_w - (bbox[2] - bbox[0])) // 2, y0 - 43), col_name, font=head_font, fill="white")
+    bracket_y = margin + title_h + 42
+    _draw_bracket(draw, x0, x0 + panel_w, bracket_y, "ICLR dataset", bracket_font)
+    arxiv_x1 = x0 + panel_w + gap
+    arxiv_x2 = x0 + 4 * panel_w + 3 * gap
+    _draw_bracket(draw, arxiv_x1, arxiv_x2, bracket_y, "arXiv-derived venues", bracket_font)
 
-    for row_idx, (row_label, _, _) in enumerate(rows):
-        y = y0 + row_idx * (cell_h + caption_h + gap)
-        draw.text((margin, y + cell_h // 2 - 14), row_label, font=row_font, fill=INK)
-        for col_idx, ((entry, source), (_, _, label)) in enumerate(zip(selected[row_idx], columns)):
-            x = x0 + col_idx * (cell_w + gap)
-            border = GREEN if label == "accept" else RED
-            draw.rounded_rectangle((x, y, x + cell_w, y + cell_h), radius=8,
-                                   fill=LIGHT, outline=border, width=5)
-            panel_path = image_path_for(entry)
-            assert panel_path is not None
-            with Image.open(panel_path) as img:
-                img = img.convert("RGB")
-                img.thumbnail((cell_w - 24, cell_h - 24), Image.LANCZOS)
-                paste_x = x + (cell_w - img.width) // 2
-                paste_y = y + (cell_h - img.height) // 2
-                canvas.paste(img, (paste_x, paste_y))
+    y0 = margin + title_h + bracket_h
+
+    for row_idx, (row_label, label) in enumerate(rows):
+        y = y0 + row_idx * (cell_h + row_gap)
+        row_color = GREEN if label == "accept" else RED
+        bbox = draw.textbbox((0, 0), row_label, font=row_font)
+        label_y = y + cell_header_h + panel_h // 2 - (bbox[3] - bbox[1]) // 2
+        draw.text((margin + row_label_w - (bbox[2] - bbox[0]), label_y),
+                  row_label, font=row_font, fill=row_color)
+        for col_idx, ((entry, source), _) in enumerate(zip(selected[row_idx], columns)):
+            x = x0 + col_idx * (panel_w + gap)
+            header = entry_header(entry, source)
+            bbox = draw.textbbox((0, 0), header, font=head_font)
+            draw.text((x + (panel_w - (bbox[2] - bbox[0])) // 2, y + 4),
+                      header, font=head_font, fill=INK)
+            panel_y = y + cell_header_h
+            draw.rounded_rectangle((x, panel_y, x + panel_w, panel_y + panel_h), radius=7,
+                                   fill="white", outline="#C9D2DC", width=2)
+            img = _compose_mosaic_panel(entry, panel_w - 30, panel_h - 30)
+            canvas.paste(img, (x + 15, panel_y + 15))
             caption = entry_caption(entry, source)
-            paste_wrapped(draw, (x, y + cell_h + 11), caption, small_font, INK, cell_w)
+            paste_wrapped(draw, (x, panel_y + panel_h + 10), caption, small_font, INK, panel_w)
 
     out_png = FIG_DIR / "neurips26_panel_mosaic.png"
     out_pdf = FIG_DIR / "neurips26_panel_mosaic.pdf"
