@@ -505,6 +505,13 @@ def find_panel_entry(entries: list[dict], label: str, predicate, used: set[str],
     raise RuntimeError(f"No panel entry found for label={label}")
 
 
+def find_entry_by_id(entries: list[dict], ident: str) -> dict:
+    for entry in entries:
+        if _entry_id(entry) == ident and image_path_for(entry) is not None:
+            return entry
+    raise RuntimeError(f"No entry found for id={ident}")
+
+
 def _short_year(year: object) -> str:
     try:
         return f"'{int(float(str(year))) % 100:02d}"
@@ -613,25 +620,44 @@ def make_panel_mosaic() -> None:
         ("CVPR", "arxiv", "cvpr"),
         ("CoRL", "arxiv", "corl"),
     ]
+    fixed_samples = {
+        ("iclr", "accept", None): "03EkqSCKuO",
+        ("iclr", "reject", None): "0Lpz2o6NDE",
+        ("arxiv", "accept", "neurips"): "2406.09795",
+        ("arxiv", "reject", "neurips"): "2410.15701",
+        ("arxiv", "accept", "cvpr"): "2410.10604",
+        ("arxiv", "reject", "cvpr"): "2501.05961",
+        ("arxiv", "accept", "corl"): "2504.12609",
+        ("arxiv", "reject", "corl"): "2505.07728",
+    }
     used: set[str] = set()
     selected: list[list[tuple[dict, str]]] = []
     for _, label in rows:
         row_cells: list[tuple[dict, str]] = []
         for _, source, venue in columns:
+            fixed_id = fixed_samples.get((source, label, venue))
             if source == "iclr":
-                entry = find_panel_entry(
-                    iclr_entries,
-                    label,
-                    lambda e: _entry_year(e) >= 2025,
-                    used,
-                )
+                if fixed_id is not None:
+                    entry = find_entry_by_id(iclr_entries, fixed_id)
+                    used.add(_entry_id(entry))
+                else:
+                    entry = find_panel_entry(
+                        iclr_entries,
+                        label,
+                        lambda e: _entry_year(e) >= 2025,
+                        used,
+                    )
             else:
-                entry = find_panel_entry(
-                    arxiv_entries,
-                    label,
-                    lambda e, venue=venue: _entry_venue(e) == venue and _entry_year(e) >= 2025,
-                    used,
-                )
+                if fixed_id is not None:
+                    entry = find_entry_by_id(arxiv_entries, fixed_id)
+                    used.add(_entry_id(entry))
+                else:
+                    entry = find_panel_entry(
+                        arxiv_entries,
+                        label,
+                        lambda e, venue=venue: _entry_venue(e) == venue and _entry_year(e) >= 2025,
+                        used,
+                    )
             row_cells.append((entry, source))
         selected.append(row_cells)
 
