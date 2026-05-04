@@ -21,10 +21,15 @@ import sys
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from PIL import Image
+from PIL import Image, ImageOps
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from build_panel_images import trim_white_margins  # noqa: E402
+
+# After trimming the wide ICLR PDF margins, add a thin white border back so
+# the trimmed pages don't touch each other / look squished. Tuned to match
+# the visual margin of pandoc-text pages (which use 0.6in = ~72 px margin).
+VISION_PAD_PX = 60
 
 mpl.rcParams.update({
     "text.usetex": False,
@@ -80,7 +85,8 @@ def render(entry: dict, submission_id: str, output_stem: Path) -> None:
             rendered.append(None)
             continue
         with Image.open(p) as src:
-            rendered.append(trim_white_margins(src))
+            trimmed = trim_white_margins(src)
+            rendered.append(ImageOps.expand(trimmed, border=VISION_PAD_PX, fill="white"))
 
     # Size figure to match the first valid trimmed page's aspect (W/H per cell).
     sample = next((r for r in rendered if r is not None), None)
