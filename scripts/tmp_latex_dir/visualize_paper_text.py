@@ -40,8 +40,8 @@ OUTPUT_DIR = ROOT / "tmp_latex_dir" / "figures"
 DATASET_INFO = ROOT / "data" / "dataset_info.json"
 FONT_DIR = Path(__file__).resolve().parent / "fonts"
 
-ROWS, COLS = 2, 2
-MAX_PANELS = ROWS * COLS  # 4: first 4 pages only
+ROWS, COLS = 1, 4
+MAX_PANELS = ROWS * COLS  # 4: first 4 pages only, single row
 
 # Pandoc input format: disable TeX math / raw_tex so $ and \ are escaped,
 # not interpreted (the paper text is full of LaTeX-y notation that won't
@@ -135,11 +135,14 @@ def render(entry: dict, output_stem: Path) -> None:
     pages = pages[:MAX_PANELS]
     n_shown = len(pages)
 
+    sample = pages[0] if pages else None
+    cell_aspect = (sample.width / sample.height) if sample else 0.77
+    panel_h = 6.5
     fig, axes = plt.subplots(
-        ROWS, COLS, figsize=(COLS * 5.0, ROWS * 6.5),
+        ROWS, COLS, figsize=(COLS * panel_h * cell_aspect, ROWS * panel_h),
         gridspec_kw={"wspace": 0, "hspace": 0},
     )
-    axes = axes.flatten()
+    axes = (axes,) if ROWS * COLS == 1 else axes.flatten()
 
     for ax in axes:
         ax.set_xticks([])

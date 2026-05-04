@@ -17,9 +17,14 @@ import argparse
 import json
 from pathlib import Path
 
+import sys
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from build_panel_images import trim_white_margins  # noqa: E402
 
 mpl.rcParams.update({
     "text.usetex": False,
@@ -31,8 +36,8 @@ ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = ROOT / "tmp_latex_dir" / "figures"
 DATASET_INFO = ROOT / "data" / "dataset_info.json"
 
-ROWS, COLS = 2, 2
-MAX_PAGES = ROWS * COLS  # 4: first 4 pages only
+ROWS, COLS = 1, 4
+MAX_PAGES = ROWS * COLS  # 4: first 4 pages only, single row
 
 
 def resolve_data_json(dataset_name: str) -> Path:
@@ -67,11 +72,25 @@ def render(entry: dict, submission_id: str, output_stem: Path) -> None:
     images = images[:MAX_PAGES]
     n_shown = len(images)
 
+    # Pre-trim each page's PDF margins so vision matches text density visually.
+    rendered: list[Image.Image | None] = []
+    for img in images:
+        p = ROOT / img
+        if not p.exists():
+            rendered.append(None)
+            continue
+        with Image.open(p) as src:
+            rendered.append(trim_white_margins(src))
+
+    # Size figure to match the first valid trimmed page's aspect (W/H per cell).
+    sample = next((r for r in rendered if r is not None), None)
+    cell_aspect = (sample.width / sample.height) if sample else 0.625
+    panel_h = 6.5
     fig, axes = plt.subplots(
-        ROWS, COLS, figsize=(COLS * 5.0, ROWS * 6.5),
+        ROWS, COLS, figsize=(COLS * panel_h * cell_aspect, ROWS * panel_h),
         gridspec_kw={"wspace": 0, "hspace": 0},
     )
-    axes = axes.flatten()
+    axes = (axes,) if ROWS * COLS == 1 else axes.flatten()
 
     for ax in axes:
         ax.set_xticks([])
@@ -80,14 +99,11 @@ def render(entry: dict, submission_id: str, output_stem: Path) -> None:
             spine.set_visible(False)
 
     for idx, ax in enumerate(axes):
-        if idx < n_shown:
-            img_path = ROOT / images[idx]
-            if not img_path.exists():
-                ax.text(0.5, 0.5, f"MISSING\n{images[idx]}",
-                        ha="center", va="center", fontsize=8, color="red")
-            else:
-                with Image.open(img_path) as im:
-                    ax.imshow(im)
+        if idx < n_shown and rendered[idx] is not None:
+            ax.imshow(rendered[idx])
+        elif idx < n_shown:
+            ax.text(0.5, 0.5, f"MISSING\n{images[idx]}",
+                    ha="center", va="center", fontsize=8, color="red")
         else:
             ax.axis("off")
 
