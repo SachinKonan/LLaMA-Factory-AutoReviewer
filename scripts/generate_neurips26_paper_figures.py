@@ -531,16 +531,11 @@ def entry_header(entry: dict, source: str) -> str:
 
 def entry_caption(entry: dict, source: str) -> str:
     meta = entry.get("_metadata") or {}
-    pages = len(entry.get("images") or [])
     if source == "iclr":
-        sid = str(meta.get("submission_id", ""))[:7]
-        pct = meta.get("pct_rating")
-        pct_s = f"pct={pct:.2f}" if isinstance(pct, (float, int)) else "pct=na"
-        return f"{pct_s} | {pages} pages | {sid}"
-    arxiv_id = str(meta.get("arxiv_id", ""))[:10]
-    cats = ascii_clean(str(meta.get("categories") or "")).split()
-    cat = cats[0] if cats else "cat=na"
-    return f"{cat} | {pages} pages | {arxiv_id}"
+        sid = str(meta.get("submission_id", ""))
+        return f"OpenReview ID: {sid}"
+    arxiv_id = str(meta.get("arxiv_id", ""))
+    return f"arXiv ID: {arxiv_id}"
 
 
 def paste_wrapped(draw: ImageDraw.ImageDraw, xy: tuple[int, int], text: str, font, fill: str, width: int) -> None:
@@ -664,7 +659,7 @@ def make_panel_mosaic() -> None:
     panel_w, panel_h = 820, 460
     cell_header_h, caption_h = 52, 48
     row_label_w, margin, gap = 118, 48, 28
-    title_h, bracket_h, row_gap = 62, 64, 42
+    title_h, bracket_h, row_gap = 50, 64, 42
     cell_h = cell_header_h + panel_h + caption_h
     width = margin * 2 + row_label_w + gap + 4 * panel_w + 3 * gap
     height = margin * 2 + title_h + bracket_h + 2 * cell_h + row_gap
@@ -677,17 +672,17 @@ def make_panel_mosaic() -> None:
     small_font = _font(20)
     row_font = _font(30, bold=True)
 
-    draw.text((margin, 18), "Panelized paper examples across dataset sources",
+    title = "Panelized paper examples across dataset sources"
+    title_box = draw.textbbox((0, 0), title, font=title_font)
+    draw.text(((width - (title_box[2] - title_box[0])) // 2, 18), title,
               font=title_font, fill=INK)
-    draw.text((margin, 57), "Examples are from '25 or later; each cell shows up to 10 source pages with consistent page gutters.",
-              font=small_font, fill="#5F6368")
 
     x0 = margin + row_label_w + gap
     bracket_y = margin + title_h + 42
-    _draw_bracket(draw, x0, x0 + panel_w, bracket_y, "ICLR dataset", bracket_font)
+    _draw_bracket(draw, x0, x0 + panel_w, bracket_y, "PaperLens-ICLR-25K", bracket_font)
     arxiv_x1 = x0 + panel_w + gap
     arxiv_x2 = x0 + 4 * panel_w + 3 * gap
-    _draw_bracket(draw, arxiv_x1, arxiv_x2, bracket_y, "arXiv-derived venues", bracket_font)
+    _draw_bracket(draw, arxiv_x1, arxiv_x2, bracket_y, "PaperLens-arXiv-25K", bracket_font)
 
     y0 = margin + title_h + bracket_h
 
@@ -706,7 +701,7 @@ def make_panel_mosaic() -> None:
                       header, font=head_font, fill=INK)
             panel_y = y + cell_header_h
             draw.rounded_rectangle((x, panel_y, x + panel_w, panel_y + panel_h), radius=7,
-                                   fill="white", outline="#C9D2DC", width=2)
+                                   fill="white", outline=row_color, width=2)
             img = _compose_mosaic_panel(entry, panel_w - 30, panel_h - 30)
             canvas.paste(img, (x + 15, panel_y + 15))
             caption = entry_caption(entry, source)
