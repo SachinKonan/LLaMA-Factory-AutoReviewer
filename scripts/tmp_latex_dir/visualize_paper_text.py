@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Render a single paper's markdown content as a panel image.
+"""Render a paper's markdown content as a 2x5 grid by typesetting it to PDF.
 
-Same canvas + composition as scripts/build_panel_images.py:
-- pandoc + xelatex typeset the paper markdown to a letter-size PDF
-- pymupdf rasterizes the first 10 pages
-- Each page goes through trim_white_margins + letterbox-fit into a
-  476x756 cell on a 2380x1512 canvas (5 cols x 2 rows)
-- Save as PNG (and PDF for convenience)
+Pipeline:
+    markdown (entry.human, from first `#` on)
+        -> pandoc + xelatex -> letter-size PDF (Roboto font)
+        -> pymupdf rasterize first 10 pages
+        -> matplotlib subplots (same layout as visualize_paper.py)
 
 Usage:
     uv run python scripts/tmp_latex_dir/visualize_paper_text.py \\
@@ -22,32 +21,31 @@ import argparse
 import json
 import re
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
 import fitz  # pymupdf
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 from PIL import Image
 
+mpl.rcParams.update({
+    "text.usetex": False,
+    "font.family": "sans-serif",
+    "font.sans-serif": ["Roboto", "Arial", "DejaVu Sans"],
+})
+
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scripts"))
-
-from build_panel_images import (  # noqa: E402  (path hack required)
-    MAX_PAGES,
-    TARGET_H,
-    TARGET_W,
-    compose_panel_from_images,
-)
-
 OUTPUT_DIR = ROOT / "tmp_latex_dir" / "figures"
 DATASET_INFO = ROOT / "data" / "dataset_info.json"
 FONT_DIR = Path(__file__).resolve().parent / "fonts"
 
-SID_KEYS = ("submission_id", "arxiv_id")
+ROWS, COLS = 2, 5
+MAX_PANELS = ROWS * COLS
 
-# Pandoc input format: disable TeX math / raw_tex so $ and \ are escaped, not
-# interpreted (the paper markdown uses LaTeX-y notation that won't compile in
-# vanilla xelatex without extra packages).
+# Pandoc input format: disable TeX math / raw_tex so $ and \ are escaped,
+# not interpreted (the paper text is full of LaTeX-y notation that won't
+# compile in vanilla xelatex).
 PANDOC_FORMAT = (
     "markdown"
     "-tex_math_dollars"
@@ -82,10 +80,9 @@ def resolve_data_json(dataset_name: str) -> Path:
 
 def find_entry(data: list[dict], submission_id: str) -> dict:
     for e in data:
-        meta = e.get("_metadata") or {}
-        for k in SID_KEYS:
-            if meta.get(k) == submission_id:
-                return e
+        sid = (e.get("_metadata") or {}).get("submission_id")
+        if sid == submission_id:
+            return e
     raise KeyError(f"submission_id {submission_id!r} not found in dataset")
 
 
@@ -96,8 +93,8 @@ def extract_markdown(entry: dict) -> str:
     return human if m is None else human[m.start():]
 
 
-def md_to_pdf_pages(md: str, dpi: int = 150) -> list[Image.Image]:
-    """pandoc -> letter-size PDF, rasterize each page to PIL."""
+def md_to_pdf_pages(md: str, dpi: int = 120) -> list[Image.Image]:
+    """Run pandoc to typeset md -> letter-size PDF, rasterize each page to PIL."""
     with tempfile.TemporaryDirectory() as td:
         td = Path(td)
         md_path = td / "doc.md"
@@ -133,20 +130,38 @@ def md_to_pdf_pages(md: str, dpi: int = 150) -> list[Image.Image]:
 
 def render(entry: dict, output_stem: Path) -> None:
     md = extract_markdown(entry)
-    all_pages = md_to_pdf_pages(md)
-    pages = all_pages[:MAX_PAGES]
-    panel = compose_panel_from_images(pages)
-    assert panel.size == (TARGET_W, TARGET_H), f"unexpected panel size {panel.size}"
+    pages = md_to_pdf_pages(md)
+    n_total = len(pages)
+    pages = pages[:MAX_PANELS]
+    n_shown = len(pages)
+
+    fig, axes = plt.subplots(ROWS, COLS, figsize=(COLS * 3.0, ROWS * 3.9))
+    axes = axes.flatten()
+
+    for ax in axes:
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+
+    for idx, ax in enumerate(axes):
+        if idx < n_shown:
+            ax.imshow(pages[idx])
+        else:
+            ax.axis("off")
+
+    fig.tight_layout()
 
     output_stem.parent.mkdir(parents=True, exist_ok=True)
     png_path = output_stem.with_suffix(".png")
     pdf_path = output_stem.with_suffix(".pdf")
-    panel.save(png_path, "PNG", optimize=True, compress_level=6)
-    panel.save(pdf_path, "PDF")
+    fig.savefig(png_path, dpi=150, bbox_inches="tight")
+    fig.savefig(pdf_path, bbox_inches="tight")
+    plt.close(fig)
 
     print(f"Saved {png_path}")
     print(f"Saved {pdf_path}")
-    print(f"Pages tiled: {len(pages)} of {len(all_pages)} typeset  (canvas {TARGET_W}x{TARGET_H})")
+    print(f"Pages shown: {n_shown} of {n_total} typeset")
 
 
 def main() -> None:
