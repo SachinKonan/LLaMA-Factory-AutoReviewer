@@ -659,26 +659,20 @@ def make_panel_mosaic() -> None:
     panel_w, panel_h = 820, 460
     cell_header_h, caption_h = 52, 48
     row_label_w, margin, gap = 118, 48, 28
-    title_h, bracket_h, row_gap = 50, 64, 42
+    title_h, bracket_h, row_gap = 8, 64, 42
     cell_h = cell_header_h + panel_h + caption_h
     width = margin * 2 + row_label_w + gap + 4 * panel_w + 3 * gap
     height = margin * 2 + title_h + bracket_h + 2 * cell_h + row_gap
     canvas = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(canvas)
 
-    title_font = _font(36, bold=True)
     bracket_font = _font(25, bold=True)
     head_font = _font(34, bold=True)
     small_font = _font(20)
     row_font = _font(30, bold=True)
 
-    title = "Panelized paper examples across dataset sources"
-    title_box = draw.textbbox((0, 0), title, font=title_font)
-    draw.text(((width - (title_box[2] - title_box[0])) // 2, 18), title,
-              font=title_font, fill=INK)
-
     x0 = margin + row_label_w + gap
-    bracket_y = margin + title_h + 42
+    bracket_y = margin + title_h + 28
     _draw_bracket(draw, x0, x0 + panel_w, bracket_y, "PaperLens-ICLR-25K", bracket_font)
     arxiv_x1 = x0 + panel_w + gap
     arxiv_x2 = x0 + 4 * panel_w + 3 * gap
