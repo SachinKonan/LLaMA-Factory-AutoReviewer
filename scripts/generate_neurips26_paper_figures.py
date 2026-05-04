@@ -621,7 +621,7 @@ def make_panel_mosaic() -> None:
         ("arxiv", "accept", "neurips"): "2406.09795",
         ("arxiv", "reject", "neurips"): "2410.15701",
         ("arxiv", "accept", "cvpr"): "2410.10604",
-        ("arxiv", "reject", "cvpr"): "2501.05961",
+        ("arxiv", "reject", "cvpr"): "2505.04961",
         ("arxiv", "accept", "corl"): "2504.12609",
         ("arxiv", "reject", "corl"): "2505.07728",
     }
