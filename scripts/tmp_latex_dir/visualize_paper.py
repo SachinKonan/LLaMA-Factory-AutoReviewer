@@ -31,8 +31,8 @@ ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = ROOT / "tmp_latex_dir" / "figures"
 DATASET_INFO = ROOT / "data" / "dataset_info.json"
 
-ROWS, COLS = 2, 5
-MAX_PAGES = ROWS * COLS
+ROWS, COLS = 2, 2
+MAX_PAGES = ROWS * COLS  # 4: first 4 pages only
 
 
 def resolve_data_json(dataset_name: str) -> Path:
@@ -67,7 +67,10 @@ def render(entry: dict, submission_id: str, output_stem: Path) -> None:
     images = images[:MAX_PAGES]
     n_shown = len(images)
 
-    fig, axes = plt.subplots(ROWS, COLS, figsize=(COLS * 3.0, ROWS * 3.9))
+    fig, axes = plt.subplots(
+        ROWS, COLS, figsize=(COLS * 5.0, ROWS * 6.5),
+        gridspec_kw={"wspace": 0, "hspace": 0},
+    )
     axes = axes.flatten()
 
     for ax in axes:
@@ -88,13 +91,13 @@ def render(entry: dict, submission_id: str, output_stem: Path) -> None:
         else:
             ax.axis("off")
 
-    fig.tight_layout()
+    fig.subplots_adjust(left=0, right=1, top=1, bottom=0, wspace=0, hspace=0)
 
     output_stem.parent.mkdir(parents=True, exist_ok=True)
     png_path = output_stem.with_suffix(".png")
     pdf_path = output_stem.with_suffix(".pdf")
-    fig.savefig(png_path, dpi=150, bbox_inches="tight")
-    fig.savefig(pdf_path, bbox_inches="tight")
+    fig.savefig(png_path, dpi=150, bbox_inches="tight", pad_inches=0)
+    fig.savefig(pdf_path, bbox_inches="tight", pad_inches=0)
     plt.close(fig)
 
     print(f"Saved {png_path}")

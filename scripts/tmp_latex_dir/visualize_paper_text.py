@@ -40,8 +40,8 @@ OUTPUT_DIR = ROOT / "tmp_latex_dir" / "figures"
 DATASET_INFO = ROOT / "data" / "dataset_info.json"
 FONT_DIR = Path(__file__).resolve().parent / "fonts"
 
-ROWS, COLS = 2, 5
-MAX_PANELS = ROWS * COLS
+ROWS, COLS = 2, 2
+MAX_PANELS = ROWS * COLS  # 4: first 4 pages only
 
 # Pandoc input format: disable TeX math / raw_tex so $ and \ are escaped,
 # not interpreted (the paper text is full of LaTeX-y notation that won't
@@ -110,7 +110,7 @@ def md_to_pdf_pages(md: str, dpi: int = 120) -> list[Image.Image]:
             "-V", "geometry:paperwidth=8.5in",
             "-V", "geometry:paperheight=11in",
             "-V", "geometry:margin=0.6in",
-            "-V", "fontsize=10pt",
+            "-V", "fontsize=14pt",
         ]
         proc = subprocess.run(cmd, capture_output=True, text=True)
         if proc.returncode != 0:
@@ -135,7 +135,10 @@ def render(entry: dict, output_stem: Path) -> None:
     pages = pages[:MAX_PANELS]
     n_shown = len(pages)
 
-    fig, axes = plt.subplots(ROWS, COLS, figsize=(COLS * 3.0, ROWS * 3.9))
+    fig, axes = plt.subplots(
+        ROWS, COLS, figsize=(COLS * 5.0, ROWS * 6.5),
+        gridspec_kw={"wspace": 0, "hspace": 0},
+    )
     axes = axes.flatten()
 
     for ax in axes:
@@ -150,13 +153,13 @@ def render(entry: dict, output_stem: Path) -> None:
         else:
             ax.axis("off")
 
-    fig.tight_layout()
+    fig.subplots_adjust(left=0, right=1, top=1, bottom=0, wspace=0, hspace=0)
 
     output_stem.parent.mkdir(parents=True, exist_ok=True)
     png_path = output_stem.with_suffix(".png")
     pdf_path = output_stem.with_suffix(".pdf")
-    fig.savefig(png_path, dpi=150, bbox_inches="tight")
-    fig.savefig(pdf_path, bbox_inches="tight")
+    fig.savefig(png_path, dpi=150, bbox_inches="tight", pad_inches=0)
+    fig.savefig(pdf_path, bbox_inches="tight", pad_inches=0)
     plt.close(fig)
 
     print(f"Saved {png_path}")
