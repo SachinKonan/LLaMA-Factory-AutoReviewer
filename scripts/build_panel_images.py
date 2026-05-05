@@ -36,6 +36,26 @@ ROWS, COLS = 2, 5
 PANEL_W, PANEL_H = TARGET_W // COLS, TARGET_H // ROWS  # 476 x 756
 MAX_PAGES = ROWS * COLS  # 10
 
+# Per-venue inner-cell padding (px).  2-column venues (CVPR/ICCV/ICML/AAAI/...)
+# trim flush to the cell edges; we inject extra padding so panels for those
+# venues have visible page boundaries comparable to ICLR/COLM (which get
+# ~30 px natural letterbox from their narrow trimmed content aspect ~0.55).
+# Same values used by the contact-sheet inspector dump_arxiv_venue_samples.py.
+VENUE_PAGE_BORDER = {
+    "iclr": 0,
+    "colm": 0,
+    "neurips": 12,
+    "corl": 18,
+    "aistats": 22,
+    "eccv": 22,
+    "acl": 22,
+    "icml": 24,
+    "iccv": 24,
+    "aaai": 24,
+    "cvpr": 26,
+}
+DEFAULT_PAGE_BORDER = 22
+
 # Source vision datasets (whose `images` lists already point at per-page PNGs)
 # and the per-source SID metadata key + panel output dir
 SOURCES = {
@@ -79,28 +99,30 @@ def fit_into_cell(im: Image.Image, cell_w: int, cell_h: int) -> Image.Image:
     return out
 
 
-def compose_panel_from_images(pages: list["Image.Image"]) -> Image.Image:
-    """Trim each PIL page, fit into PANEL_W x PANEL_H preserving aspect, tile."""
+def compose_panel_from_images(pages: list["Image.Image"], border: int = 0) -> Image.Image:
+    """Trim each PIL page, fit into (PANEL_W-2b)x(PANEL_H-2b), tile with `border` px white gutter."""
     canvas = Image.new("RGB", (TARGET_W, TARGET_H), "white")
+    inner_w = max(1, PANEL_W - 2 * border)
+    inner_h = max(1, PANEL_H - 2 * border)
     for i, src in enumerate(pages[:MAX_PAGES]):
         trimmed = trim_white_margins(src)
-        cell = fit_into_cell(trimmed, PANEL_W, PANEL_H)
+        cell = fit_into_cell(trimmed, inner_w, inner_h)
         row, col = divmod(i, COLS)
-        canvas.paste(cell, (col * PANEL_W, row * PANEL_H))
+        canvas.paste(cell, (col * PANEL_W + border, row * PANEL_H + border))
     return canvas
 
 
-def compose_panel(page_paths: list[Path]) -> Image.Image:
+def compose_panel(page_paths: list[Path], border: int = 0) -> Image.Image:
     """File-path version of compose_panel_from_images (used by bulk builder)."""
     pages: list[Image.Image] = []
     for p in page_paths[:MAX_PAGES]:
         with Image.open(p) as src:
             pages.append(src.convert("RGB").copy())
-    return compose_panel_from_images(pages)
+    return compose_panel_from_images(pages, border=border)
 
 
-def render_one(args: tuple[str, list[str], Path]) -> tuple[str, str]:
-    sid, image_rels, dst = args
+def render_one(args: tuple[str, list[str], Path, int]) -> tuple[str, str]:
+    sid, image_rels, dst, border = args
     if dst.exists():
         return sid, "skipped"
     try:
@@ -108,7 +130,7 @@ def render_one(args: tuple[str, list[str], Path]) -> tuple[str, str]:
         missing = [p for p in page_paths if not p.exists()]
         if missing:
             return sid, f"FAIL: missing pages: {[str(m.name) for m in missing[:3]]}"
-        img = compose_panel(page_paths)
+        img = compose_panel(page_paths, border=border)
         tmp = dst.with_suffix(".png.tmp")
         img.save(tmp, "PNG", optimize=True, compress_level=6)
         os.rename(tmp, dst)
@@ -117,10 +139,16 @@ def render_one(args: tuple[str, list[str], Path]) -> tuple[str, str]:
         return sid, f"FAIL: {type(e).__name__}: {e}"
 
 
-def collect_tasks(source: str, splits: list[str], limit: int | None) -> list[tuple[str, list[str], Path]]:
+def venue_for(entry: dict) -> str:
+    meta = entry.get("_metadata", {}) or {}
+    v = meta.get("venue") or meta.get("pl_venue") or "iclr"
+    return str(v).lower()
+
+
+def collect_tasks(source: str, splits: list[str], limit: int | None) -> list[tuple[str, list[str], Path, int]]:
     src = SOURCES[source]
     base = src["base"]; sid_key = src["sid_key"]; panel_dir = src["panel_dir"]
-    tasks: list[tuple[str, list[str], Path]] = []
+    tasks: list[tuple[str, list[str], Path, int]] = []
     seen: set[str] = set()
     for split in splits:
         ds_path = ROOT / "data" / f"{base}_{split}" / "data.json"
@@ -132,7 +160,8 @@ def collect_tasks(source: str, splits: list[str], limit: int | None) -> list[tup
             if sid in seen:
                 continue
             seen.add(sid)
-            tasks.append((sid, entry["images"], panel_dir / f"{sid}.png"))
+            border = VENUE_PAGE_BORDER.get(venue_for(entry), DEFAULT_PAGE_BORDER)
+            tasks.append((sid, entry["images"], panel_dir / f"{sid}.png", border))
     return tasks
 
 
