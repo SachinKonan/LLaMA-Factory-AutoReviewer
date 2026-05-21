@@ -8,6 +8,22 @@ LlamaFactory's ``get_dataset(template_obj, ..., "ppo", ...)`` tokenization
 path; switching to a different chat-template / image-processor invocation
 silently shifts logprobs in the third decimal place.
 
+**CRITICAL invariants** for vision idempotency (any drift here produces
+0.05--0.30 p_accept divergence -- learned the hard way):
+
+- ``image_max_pixels=1003520`` (training: ``1024*980 = 1003520``)
+- ``image_min_pixels=784`` (training: ``28*28 = 784``)
+- ``template=qwen2_vl``
+- ``cutoff_len=24480`` (training: ``filtered24480``)
+- ``temperature=0`` (greedy decode)
+- ``dtype=bfloat16`` (training-time and vLLM default)
+
+The default ``vllm_infer.py`` argv values do NOT match training -- they
+default to ``768*768 / 32*32``. Every invocation that needs parity MUST
+pass the training values explicitly. ``configs/serve.yaml`` carries them
+for the persistent server; this test passes them as CLI args to the
+subprocess.
+
 Gold reference: ``litsearch_eval/passover/predictions_3b.parquet`` from
 RANKER.md §6.1 (28,664 rows of ``(arxiv_id, p_accept_3b)`` produced by
 ``scripts/vllm_infer.py`` with ``--save_logprobs --temperature 0`` on the
@@ -197,6 +213,12 @@ def test_offline_vllm_infer_matches_parquet(gold_subset, tmp_path: Path):
     }
     (tmp_path / "data" / "dataset_info.json").write_text(json.dumps(info))
 
+    # CRITICAL: every flag below must MATCH the invocation that generated
+    # predictions_3b.parquet (sbatch/.../arxiv-ranking/run.sbatch from
+    # RANKER.md §4.4). Image-pixel bounds in particular: vllm_infer.py's
+    # defaults are 768*768 / 32*32, but training and RANKER.md used
+    # 1003520 / 784. A pixel-bound mismatch silently produces different
+    # visual tokens -> different logprobs -> p_accept drifts by 0.05-0.30.
     out_path = tmp_path / "out.jsonl"
     cmd = [
         sys.executable, str(SOURCE_REPO / "scripts" / "vllm_infer.py"),
@@ -205,11 +227,14 @@ def test_offline_vllm_infer_matches_parquet(gold_subset, tmp_path: Path):
         "--dataset_dir", str(tmp_path / "data"),
         "--template", "qwen2_vl",
         "--cutoff_len", "24480",
-        "--max_new_tokens", "8",
+        "--max_new_tokens", "1280",      # RANKER.md run used 1280; sampling deterministic so positions <=5 are identical regardless, but match for fidelity
         "--temperature", "0",
         "--save_logprobs", "True",
         "--save_name", str(out_path),
         "--batch_size", str(N_TEST),
+        # ---- pixel bounds: must equal training (paperprep + LF training sbatches) ----
+        "--image_min_pixels", "784",
+        "--image_max_pixels", "1003520",
     ]
     env = {**os.environ, "TRANSFORMERS_OFFLINE": "1", "HF_HUB_OFFLINE": "1"}
     subprocess.run(cmd, check=True, env=env)
