@@ -22,43 +22,44 @@ import os
 import sys
 from typing import Optional
 
+from pydantic import BaseModel, Field
+
 
 log = logging.getLogger(__name__)
 
 
-def _build_app(cfg):
-    """Construct the FastAPI app with cfg + Scorer captured in closures.
+# -------- Request / response shapes (module-level so FastAPI introspects
+# them as request bodies, not query params -- learned the hard way:
+# inner-function class defs cause FastAPI to fall back to query-param
+# parsing and return 422 'Field required' for req).
 
-    Lives inside run() so importing this module (e.g. for CLI dispatch in
-    __main__.py) doesn't pull in FastAPI / vLLM.
-    """
+class ScoreRequest(BaseModel):
+    papers: list[dict] = Field(
+        ...,
+        description=(
+            "Sharegpt-shaped rows. Each row must contain `conversations` "
+            "([{from: system|human|gpt, value: ...}, ...]). Optional: "
+            "`images` (list of paths or PIL bytes), `_metadata`."
+        ),
+    )
+
+
+class PaperScore(BaseModel):
+    p_accept: float
+    logp_accept: Optional[float] = None
+    logp_reject: Optional[float] = None
+    pred: Optional[str] = None
+
+
+class ScoreResponse(BaseModel):
+    scores: list[PaperScore]
+
+
+def _build_app(cfg):
+    """Construct the FastAPI app with cfg + Scorer captured in closures."""
     from fastapi import FastAPI, HTTPException
-    from pydantic import BaseModel, Field
 
     from .scoring import Scorer
-
-    # -------- Request / response shapes --------
-
-    class ScoreRequest(BaseModel):
-        papers: list[dict] = Field(
-            ...,
-            description=(
-                "Sharegpt-shaped rows. Each row must contain `conversations` "
-                "([{from: system|human|gpt, value: ...}, ...]). Optional: "
-                "`images` (list of paths or PIL bytes), `_metadata`."
-            ),
-        )
-
-    class PaperScore(BaseModel):
-        p_accept: float
-        logp_accept: Optional[float] = None
-        logp_reject: Optional[float] = None
-        pred: Optional[str] = None
-
-    class ScoreResponse(BaseModel):
-        scores: list[PaperScore]
-
-    # -------- App + lifespan --------
 
     app = FastAPI(title="paperlens-serve")
     state: dict = {}
