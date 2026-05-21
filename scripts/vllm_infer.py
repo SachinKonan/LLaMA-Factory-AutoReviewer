@@ -14,6 +14,7 @@
 
 import gc
 import json
+import os
 import time
 
 import av
@@ -70,6 +71,8 @@ def vllm_infer(
     video_maxlen: int = 128,
     batch_size: int = 1024,
     save_logprobs: bool = True,  # TODO: revert to False after optim_search sweep completes
+    positive_token: str = "Accept",
+    negative_token: str = "Reject",
 ):
     r"""Perform batch generation using vLLM engine, which supports tensor parallelism.
 
@@ -137,6 +140,16 @@ def vllm_infer(
     dataset_module = get_dataset(template_obj, model_args, data_args, training_args, "ppo", **tokenizer_module)
     train_dataset = dataset_module["train_dataset"]
 
+    # Resolve decision token IDs for logprob extraction
+    pos_token_id, neg_token_id = None, None
+    if save_logprobs:
+        pos_ids = tokenizer.encode(positive_token, add_special_tokens=False)
+        neg_ids = tokenizer.encode(negative_token, add_special_tokens=False)
+        assert len(pos_ids) == 1, f"'{positive_token}' encodes to {len(pos_ids)} tokens, expected 1"
+        assert len(neg_ids) == 1, f"'{negative_token}' encodes to {len(neg_ids)} tokens, expected 1"
+        pos_token_id, neg_token_id = pos_ids[0], neg_ids[0]
+        print(f"Decision token IDs: {positive_token}={pos_token_id}, {negative_token}={neg_token_id}")
+
     sampling_params = SamplingParams(
         repetition_penalty=generating_args.repetition_penalty or 1.0,  # repetition_penalty must > 0
         temperature=generating_args.temperature,
@@ -146,7 +159,7 @@ def vllm_infer(
         max_tokens=generating_args.max_new_tokens,
         skip_special_tokens=skip_special_tokens,
         seed=seed,
-        logprobs=1 if save_logprobs else None,
+        logprobs=5 if save_logprobs else None,
     )
     if model_args.adapter_name_or_path is not None:
         lora_request = LoRARequest("default", 1, model_args.adapter_name_or_path[0])
@@ -156,7 +169,26 @@ def vllm_infer(
     # Store all results in these lists
     all_prompts, all_preds, all_labels = [], [], []
     all_logprobs = [] if save_logprobs else None
+    all_logprob_accept = [] if save_logprobs else None
+    all_logprob_reject = [] if save_logprobs else None
     need_video_kwargs = _need_video_kwargs(template)
+
+    # Per-batch partial-output sink. If the SLURM job is killed mid-run we lose
+    # at most one batch (batch_size records). Atomic write via tmp + rename so a
+    # killed write never leaves a half-line.
+    partial_path = save_name + ".partial"
+
+    def _write_partial():
+        tmp = partial_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            for idx in range(len(all_preds)):
+                entry = {"prompt": all_prompts[idx], "predict": all_preds[idx], "label": all_labels[idx]}
+                if save_logprobs and all_logprobs is not None:
+                    entry["token_logprobs"] = all_logprobs[idx]
+                    entry["logprob_accept"] = all_logprob_accept[idx]
+                    entry["logprob_reject"] = all_logprob_reject[idx]
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        os.replace(tmp, partial_path)
 
     model_predict_start_time = time.time()
     # Add batch process to avoid the issue of too many files opened
@@ -231,23 +263,41 @@ def vllm_infer(
 
         if save_logprobs:
             batch_logprobs = []
+            batch_lp_accept = []
+            batch_lp_reject = []
             for result in results:
                 output = result.outputs[0]
                 token_lps = []
+                lp_accept = []
+                lp_reject = []
                 if output.logprobs is not None:
                     for i, step_lp in enumerate(output.logprobs):
                         if step_lp is not None and output.token_ids[i] in step_lp:
                             token_lps.append(step_lp[output.token_ids[i]].logprob)
                         else:
                             token_lps.append(None)
+                        # Extract Accept/Reject logprobs at every step
+                        if step_lp is not None:
+                            lp_accept.append(step_lp[pos_token_id].logprob if pos_token_id in step_lp else None)
+                            lp_reject.append(step_lp[neg_token_id].logprob if neg_token_id in step_lp else None)
+                        else:
+                            lp_accept.append(None)
+                            lp_reject.append(None)
                 batch_logprobs.append(token_lps)
+                batch_lp_accept.append(lp_accept)
+                batch_lp_reject.append(lp_reject)
             all_logprobs.extend(batch_logprobs)
+            all_logprob_accept.extend(batch_lp_accept)
+            all_logprob_reject.extend(batch_lp_reject)
 
         # Accumulate results
         all_prompts.extend(prompts)
         all_preds.extend(preds)
         all_labels.extend(labels)
         gc.collect()
+
+        # Checkpoint after each batch — survives SIGTERM/SIGKILL between batches.
+        _write_partial()
 
     model_predict_end_time = time.time()
     # Write all results at once outside the loop
@@ -256,7 +306,13 @@ def vllm_infer(
             entry = {"prompt": text, "predict": pred, "label": label}
             if save_logprobs and all_logprobs is not None:
                 entry["token_logprobs"] = all_logprobs[idx]
+                entry["logprob_accept"] = all_logprob_accept[idx]
+                entry["logprob_reject"] = all_logprob_reject[idx]
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    # Final write succeeded — drop the partial sink.
+    if os.path.exists(partial_path):
+        os.remove(partial_path)
 
     print("*" * 70)
     print(f"{len(all_prompts)} total generated results have been saved at {save_name}.")
