@@ -1,0 +1,32 @@
+{
+  "conversations": [
+    {
+      "from": "system",
+      "value": "You are an expert academic reviewer tasked with evaluating research papers."
+    },
+    {
+      "from": "human",
+      "value": "I am giving you a paper submitted to a top machine-learning venue. Predict its acceptance outcome.\n - Your answer will either be: \\boxed{Accept} or \\boxed{Reject}\n - Note: typical top-tier ML venues have ~25-30% acceptance rates\n\n# PAY ATTENTION TO FEATURES, TRANSFER LEARN FASTER CNNS\n\n## Abstract\nDeep convolutional neural networks are now widely deployed in vision applications, but the size of training data can bottleneck their performance. Transfer learning offers the chance for CNNs to learn with limited data samples by transferring knowledge from weights pre-trained on large datasets. On the other hand, blindly transferring all learned features from the source dataset brings unnecessary computation to CNNs on the target task. In this paper, we propose attentive feature distillation and selection (AFDS) that not only adjusts the strength of regularization introduced by transfer learning but also dynamically determines which are the important features to transfer. When deploying AFDS on ResNet-101, we achieve state-of-the-art computation reduction at the same accuracy budget, outperforming all existing transfer learning methods. On a  $10 \\times$  MACs reduction budget, transfer learned from ImageNet to Stanford Dogs 120, AFDS achieves an accuracy that is  $12.51\\%$  higher than its best competitor.\n\n<image> <image> <image> <image> <image> <image> <image> <image> <image>"
+    },
+    {
+      "from": "gpt",
+      "value": "Outcome: \\boxed{Accept}"
+    }
+  ],
+  "images": [
+    "page_1.png",
+    "page_2.png",
+    "page_3.png",
+    "page_4.png",
+    "page_5.png",
+    "page_6.png",
+    "page_7.png",
+    "page_8.png",
+    "page_9.png"
+  ],
+  "_metadata": {
+    "id": "iclr_ryxyCeHtPB",
+    "body_pages": 9,
+    "n_images": 9
+  }
+}

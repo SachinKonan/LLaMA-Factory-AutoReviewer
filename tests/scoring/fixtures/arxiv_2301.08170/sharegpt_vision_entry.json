@@ -1,0 +1,30 @@
+{
+  "conversations": [
+    {
+      "from": "system",
+      "value": "You are an expert academic reviewer tasked with evaluating research papers."
+    },
+    {
+      "from": "human",
+      "value": "I am giving you a paper submitted to a top machine-learning venue. Predict its acceptance outcome.\n - Your answer will either be: \\boxed{Accept} or \\boxed{Reject}\n - Note: typical top-tier ML venues have ~25-30% acceptance rates\n\n# ON THE VULNERABILITY OF BACKDOOR DEFENSES FOR FEDERATED LEARNING\n\n## Abstract\nFederated Learning (FL) is a popular distributed machine learning paradigm that enables jointly training a global model without sharing clients' data. However, its repetitive server-client communication gives room for backdoor attacks with aim to mislead the global model into a targeted misprediction when a specific trigger pattern is presented. In response to such backdoor threats on federated learning, various defense measures have been proposed. In this paper, we study whether the current defense mechanisms truly neutralize the backdoor threats from federated learning in a practical setting by proposing a new federated backdoor attack method for possible countermeasures. Different from traditional training (on triggered data) and rescaling (the malicious client model) based backdoor injection, the proposed backdoor attack framework (1) directly modifies (a small proportion of) local model weights to inject the backdoor trigger via sign flips; (2) jointly optimize the trigger pattern with the client model, thus is more persistent and stealthy for circumventing existing defenses. In a case study, we examine the strength and weaknesses of recent federated backdoor defenses from three major categories and provide suggestions to the practitioners when training federated models in practice.\n\n<image> <image> <image> <image> <image> <image> <image>"
+    },
+    {
+      "from": "gpt",
+      "value": "Outcome: \\boxed{Accept}"
+    }
+  ],
+  "images": [
+    "page_1.png",
+    "page_2.png",
+    "page_3.png",
+    "page_4.png",
+    "page_5.png",
+    "page_6.png",
+    "page_7.png"
+  ],
+  "_metadata": {
+    "id": "arxiv_2301.08170",
+    "body_pages": 7,
+    "n_images": 7
+  }
+}

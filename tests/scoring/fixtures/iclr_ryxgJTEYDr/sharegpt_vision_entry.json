@@ -1,0 +1,32 @@
+{
+  "conversations": [
+    {
+      "from": "system",
+      "value": "You are an expert academic reviewer tasked with evaluating research papers."
+    },
+    {
+      "from": "human",
+      "value": "I am giving you a paper submitted to a top machine-learning venue. Predict its acceptance outcome.\n - Your answer will either be: \\boxed{Accept} or \\boxed{Reject}\n - Note: typical top-tier ML venues have ~25-30% acceptance rates\n\n# REINFORCEMENT LEARNING WITH COMPETITIVE ENSEMBLES OF INFORMATION-CONSTRAINED PRIMITIVEIVES\n\n## Abstract\nReinforcement learning agents that operate in diverse and complex environments can benefit from the structured decomposition of their behavior. Often, this is addressed in the context of hierarchical reinforcement learning, where the aim is to decompose a policy into lower-level primitives or options, and a higher-level meta-policy that triggers the appropriate behaviors for a given situation. However, the meta-policy must still produce appropriate decisions in all states. In this work, we propose a policy design that decomposes into primitives, similarly to hierarchical reinforcement learning, but without a high-level meta-policy. Instead, each primitive can decide for themselves whether they wish to act in the current state. We use an information-theoretic mechanism for enabling this decentralized decision: each primitive chooses how much information it needs about the current state to make a decision and the primitive that requests the most information about the current state acts in the world. The primitives are regularized to use as little information as possible, which leads to natural competition and specialization. We experimentally demonstrate that this policy architecture improves over both flat and hierarchical policies in terms of generalization.\n\n<image> <image> <image> <image> <image> <image> <image> <image> <image>"
+    },
+    {
+      "from": "gpt",
+      "value": "Outcome: \\boxed{Accept}"
+    }
+  ],
+  "images": [
+    "page_1.png",
+    "page_2.png",
+    "page_3.png",
+    "page_4.png",
+    "page_5.png",
+    "page_6.png",
+    "page_7.png",
+    "page_8.png",
+    "page_9.png"
+  ],
+  "_metadata": {
+    "id": "iclr_ryxgJTEYDr",
+    "body_pages": 9,
+    "n_images": 9
+  }
+}

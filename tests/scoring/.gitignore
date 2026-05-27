@@ -1,0 +1,4 @@
+# Generation artifacts (SLURM logs + scratch work dirs). The fixtures/ and
+# expected_scores.json ARE committed; everything below is regenerable.
+runs/
+work_*/
