@@ -97,7 +97,7 @@ deepspeed = ["deepspeed>=0.10.0,<=0.16.9"]
 [project.scripts]
 llamafactory-cli = "llamafactory.cli:main"
 lmf = "llamafactory.cli:main"
-paperlens = "paperlens_cli.__main__:main"
+paperlenstraininfer = "paperlens_cli.__main__:main"
 
 [project.urls]
 Homepage = "https://github.com/hiyouga/LLaMA-Factory"

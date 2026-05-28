@@ -86,7 +86,7 @@ def _cmd_serve(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="paperlens",
+        prog="paperlenstraininfer",
         description="PaperLens deployment CLI",
     )
     sub = parser.add_subparsers(dest="command", required=True, metavar="<command>")
