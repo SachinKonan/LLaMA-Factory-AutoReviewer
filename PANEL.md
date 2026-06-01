@@ -1,7 +1,10 @@
 # Panel datasets, training & cross-domain evaluation
 
 ## TL;DR
-A single-image **panel** representation of a paper (5×2 grid of 10 page screenshots on a 2380×1512 canvas, **4,590 Qwen2.5-VL vision tokens / paper**) gets within ~2 pp of the existing 8-page vision baseline on ICLR (66.2% vs 68.4%) at **~2× cheaper inference FLOPs**, generalizes well to arxiv out-of-domain (67.5% with the *same* ICLR-trained model), and matches the 7B text-only baseline at **~1/5 the input-token cost**.
+A single-image **panel** representation of a paper (5×2 grid of 10 page screenshots on a 2380×1512 canvas, **4,590 Qwen2.5-VL vision tokens / paper**):
+- gets within ~2 pp of the existing 8-page vision baseline on ICLR (66.2% vs 68.4%) at **~2× cheaper FLOPs**,
+- **beats** 8-page out-of-domain on arxiv (67.5% vs 66.4%, same 2,458 papers / same prompt / same ckpt — also at ~2× cheaper FLOPs) and stays balanced (65.9 AccR / 69.1 RejR) while 8-page collapses to a reject-biased classifier (51.9 / 80.8),
+- and matches the 7B text-only baseline (66.0%) at **~1/5 the input-token cost**.
 
 ---
 
@@ -166,14 +169,30 @@ Headline observations:
 - **Epoch 2 generalizes better than epoch 4** on out-of-domain arxiv. Later checkpoints over-fit to ICLR-specific layout/language. In-domain the best is epoch 4; out-of-domain it's epoch 2.
 - **Per-venue gradient:** NeurIPS/ICLR/ICML (single-column, similar formatting) at 71–73% → CVPR/ACL/ICCV at 65–66% → AAAI/EccV (compact 2-column) at 58%. Visual distribution-shift maps cleanly onto layout family.
 
+#### 3b.i Head-to-head: panel vs 8-page cross-domain (same 2,458 papers, same prompt)
+
+Job 9054850 — ran the existing **8-page** ICLR vision checkpoint (`bz16_lr1e-6_vision/checkpoint-2648`) on `arxiv_50_50_21k_vision_wmetadata_filtered24480_test` (same paper IDs as `..._panel_test`, just 8-page format). Apples-to-apples with the panel cross-domain at the same epoch-2 ckpt:
+
+| | 8-page (~9,920 tok) | Panel (4,590 tok) | Δ |
+|---|---:|---:|---:|
+| **Overall Acc** | 66.4 | **67.5** | **+1.1 pp** |
+| Overall AccR / RejR | 51.9 / **80.8** | **65.9** / 69.1 | balance shift |
+| **y25up Acc (n=923)** | 66.1 | **67.2** | **+1.1 pp** |
+
+Per-venue (8-page → panel): neurips 67.6 → **71.3**, cvpr 66.1 → 66.3, acl 61.5 → **66.0**, aaai 58.9 → 57.9, iclr 74.4 → 72.7, icml 74.1 → 72.4, iccv 69.0 → 65.5, eccv 66.7 → 58.7, colm 58.3 → **62.5**, aistats 65.0 → 50.0, corl 85.7 → **92.9**.
+
+**Two findings:**
+1. **Panel is slightly *better* than 8-page cross-domain (+1.1 pp overall, +1.1 pp on y25up) at ~½ the vision tokens.** The "panel saves FLOPs at a small accuracy cost" story (true in-domain on ICLR: −2.2 pp) flips cleanly out-of-domain — panel saves FLOPs *and* generalizes better.
+2. **8-page transfers as a severely reject-biased classifier on arxiv (AccR 51.9 / RejR 80.8 — under-accepts everything).** Panel is far more balanced (65.9 / 69.1). The single-image input appears to be a more transferable feature for this task.
+
 ### 3c. 7B comparison + FLOPs
 
 All three baselines use Qwen2.5-(VL-)7B fine-tuned on the same train set; only the input representation differs.
 
-| Variant | Tokens/paper | Best ICLR test | Best arxiv test (this work) | LLM FLOPs / paper (≈) | Vision-tower FLOPs (≈) | **Total** |
+| Variant | Tokens/paper | Best ICLR test | Cross-domain arxiv test (e2 ckpt) | LLM FLOPs / paper (≈) | Vision-tower FLOPs (≈) | **Total** |
 |---|---:|---:|---:|---:|---:|---:|
 | Text 7B (Qwen2.5-7B) | ~24,480 | 66.0% | n/a | ~343 TF | 0 | **343 TF** |
-| Vision 7B 8-page | ~9,920 | **68.4%** | n/a | ~143 TF | ~13 TF | **~156 TF** |
+| Vision 7B 8-page | ~9,920 | **68.4%** | 66.4% | ~143 TF | ~13 TF | **~156 TF** |
 | **Panel 7B (this work)** | **4,590** | **66.2%** | **67.5%** | ~69 TF | ~6 TF | **~75 TF** |
 
 (FLOPs estimate: `2 · N_params · tokens` per forward pass. Vision-tower N≈675M per visual token; LLM N≈7B per total token.)
