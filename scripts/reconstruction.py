@@ -57,8 +57,8 @@ PROMPT_ICLR = (
 )
 
 # Default HF repo names. Override via --hf_text_repo / --hf_vision_repo.
-DEFAULT_TEXT_REPO = "paperlens/paperlens-text"
-DEFAULT_VISION_REPO = "paperlens/paperlens-vision"
+DEFAULT_TEXT_REPO = "skonan/PaperLens-Text"
+DEFAULT_VISION_REPO = "skonan/PaperLens-Vision"
 
 # Columns we need per matched row (everything except the heavy `images` blob).
 LIGHT_COLS = ["paper_id", "content", "metadata", "label"]
@@ -330,13 +330,18 @@ def reconstruct_key(key: str, key_meta: dict, dataset_info: dict, readers: dict,
     return len(rows_out)
 
 
-def _build_readers(args):
-    """Return {'text': {'arxiv': reader, 'iclr': reader}, 'vision': {...}}."""
-    print("[reconstruction] indexing HF references (columnar, no image decode) ...",
-          flush=True)
+def _build_readers(args, modalities):
+    """Return {'text': {'arxiv': reader, 'iclr': reader}, 'vision': {...}}.
+
+    `modalities` is the set of {'text','vision'} actually needed by the requested
+    keys -- we lazily load only those (so reconstructing a text-only key doesn't
+    download the 472GB vision dataset from the hub).
+    """
+    print(f"[reconstruction] indexing HF references for {sorted(modalities)} "
+          "(columnar, no image decode) ...", flush=True)
     readers: dict = {"text": {}, "vision": {}}
     if args.local_dir:
-        for modality in ("text", "vision"):
+        for modality in modalities:
             for sub in ("arxiv", "iclr"):
                 d = args.local_dir / modality / sub
                 parts = sorted(d.glob("*.parquet"))
@@ -346,23 +351,30 @@ def _build_readers(args):
                     from datasets import load_from_disk
                     readers[modality][sub] = _HubDatasetReader(load_from_disk(str(d)))
     else:
+        # Hub config names use a friendlier 'openreview-iclr' label; the internal
+        # subset key 'iclr' is kept for prompt selection / image dir naming.
+        HUB_NAME = {"arxiv": "arxiv", "iclr": "openreview-iclr"}
         from datasets import load_dataset
-        for sub in ("arxiv", "iclr"):
-            readers["text"][sub] = _HubDatasetReader(
-                load_dataset(args.hf_text_repo, name=sub, split="train"))
-            readers["vision"][sub] = _HubDatasetReader(
-                load_dataset(args.hf_vision_repo, name=sub, split="train"))
+        for modality in modalities:
+            repo = args.hf_text_repo if modality == "text" else args.hf_vision_repo
+            for sub in ("arxiv", "iclr"):
+                readers[modality][sub] = _HubDatasetReader(
+                    load_dataset(repo, name=HUB_NAME[sub], split="papers"))
     return readers
 
 
-def list_all_publishable_keys(local_dir: Path | None) -> list[str]:
-    """Read the manifest emitted by build_hf_release_datasets.py."""
-    if local_dir is None:
-        raise SystemExit(
-            "ERROR: --all requires --local_dir <hf_release_v2>; "
-            "the manifest is bundled with the local HF build."
-        )
-    manifest = json.loads((local_dir / "manifest.json").read_text())
+def load_manifest(args) -> dict:
+    """Load manifest.json: from --local_dir if given, otherwise download it from
+    the configured HF text-dataset repo (it's the same manifest text + vision share)."""
+    if args.local_dir:
+        return json.loads((args.local_dir / "manifest.json").read_text())
+    from huggingface_hub import hf_hub_download
+    p = hf_hub_download(repo_id=args.hf_text_repo, filename="manifest.json",
+                        repo_type="dataset")
+    return json.loads(Path(p).read_text())
+
+
+def list_all_publishable_keys(manifest: dict) -> list[str]:
     return sorted(manifest["keys"].keys())
 
 
@@ -396,11 +408,10 @@ def main() -> int:
         print(f"ERROR: need `datasets` + `pyarrow` + Pillow: {e}", file=sys.stderr)
         return 2
 
-    if args.local_dir is None:
-        raise SystemExit("ERROR: friendly-name mapping needs the release manifest; pass --local_dir")
-    manifest = json.loads((args.local_dir / "manifest.json").read_text())
     # Per-key reconstruction metadata: the friendly (name, split) the rows
     # reference, plus the original dataset_info columns mapping + file_name.
+    # Manifest comes from --local_dir or the hub (hf_hub_download).
+    manifest = load_manifest(args)
     key_meta = {
         k: {
             "ref": (v["release_name"], v["release_split"]),
@@ -410,9 +421,9 @@ def main() -> int:
         for k, v in manifest["keys"].items()
     }
 
-    readers = _build_readers(args)
-
-    keys = args.dataset_keys or list_all_publishable_keys(args.local_dir)
+    keys = args.dataset_keys or list_all_publishable_keys(manifest)
+    modalities = {modality_of(k) for k in keys}
+    readers = _build_readers(args, modalities)
     tags = []
     if args.dry_run:
         tags.append("dry-run")
