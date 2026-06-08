@@ -52,16 +52,16 @@ uv run hf download Qwen/Qwen2.5-VL-3B-Instruct
 
 # Released PaperLens SFT models (skip if you're training from scratch)
 # Full collection: https://huggingface.co/collections/skonan/paperlens-6a0c79da423c3a436b7f6b1a
-uv run hf download skonan/PaperLens-V-7B-arxiv     # 7B vision, arxiv-trained (default in configs/serve.yaml)
-uv run hf download skonan/PaperLens-V-3B-arxiv     # 3B vision (lower memory)
-uv run hf download skonan/PaperLens-T-7B-arxiv     # 7B text
+uv run hf download skonan/paperlens-7b-vision-arxiv     # 7B vision, arxiv-trained (default in configs/serve.yaml)
+uv run hf download skonan/paperlens-3b-vision-arxiv     # 3B vision (lower memory)
+uv run hf download skonan/paperlens-7b-text-arxiv     # 7B text
 # ...etc — 8 variants total (T/V × 3B/7B × arxiv/iclr)
 ```
 
 For inference + the reviewing/arxiv-server sibling tools, the **published
 PaperLens models are the default** — no local SFT checkpoint required.
 Point `configs/serve.yaml:ckpt_path` at any of the released repo ids above
-(it defaults to `skonan/PaperLens-V-7B-arxiv`).
+(it defaults to `skonan/paperlens-7b-vision-arxiv`).
 
 ---
 
