@@ -36,6 +36,33 @@ results table) install the optional extra:
 uv pip install portkey-ai
 ```
 
+### One-time warmup: download base models + released PaperLens checkpoints
+
+The training sbatches set `TRANSFORMERS_OFFLINE=1 HF_HUB_OFFLINE=1` for speed
+and reproducibility — which means the model bytes must already sit in your HF
+cache (`$HF_HOME`). Do this once before the first slurm submit:
+
+```bash
+# Base Qwen models — pick the sizes you'll train
+uv run hf download Qwen/Qwen2.5-7B-Instruct
+uv run hf download Qwen/Qwen2.5-VL-7B-Instruct
+# 3B / 14B / 32B / VL-3B / VL-32B as needed
+uv run hf download Qwen/Qwen2.5-3B-Instruct
+uv run hf download Qwen/Qwen2.5-VL-3B-Instruct
+
+# Released PaperLens SFT models (skip if you're training from scratch)
+# Full collection: https://huggingface.co/collections/skonan/paperlens-6a0c79da423c3a436b7f6b1a
+uv run hf download skonan/PaperLens-V-7B-arxiv     # 7B vision, arxiv-trained (default in configs/serve.yaml)
+uv run hf download skonan/PaperLens-V-3B-arxiv     # 3B vision (lower memory)
+uv run hf download skonan/PaperLens-T-7B-arxiv     # 7B text
+# ...etc — 8 variants total (T/V × 3B/7B × arxiv/iclr)
+```
+
+For inference + the reviewing/arxiv-server sibling tools, the **published
+PaperLens models are the default** — no local SFT checkpoint required.
+Point `configs/serve.yaml:ckpt_path` at any of the released repo ids above
+(it defaults to `skonan/PaperLens-V-7B-arxiv`).
+
 ---
 
 ## Environment

@@ -1,0 +1,44 @@
+name: reconstruction smoke test
+
+# Smoke-test that scripts/reconstruction.py can fetch the HF manifest and
+# materialize a small test split end-to-end. The byte-identical round-trip
+# test that compares against a local hf_release_v2 mirror is maintainer-only
+# and runs out-of-band (see AGENTS.md "Maintainer notes").
+
+on:
+  push:
+    branches: [published-branch, main]
+    paths:
+      - "scripts/reconstruction.py"
+      - "src/paperlens_cli/**"
+      - ".github/workflows/reconstruction_smoke.yml"
+  pull_request:
+    branches: [published-branch, main]
+    paths:
+      - "scripts/reconstruction.py"
+      - "src/paperlens_cli/**"
+
+jobs:
+  reconstruct:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: install deps
+        run: |
+          pip install --upgrade pip
+          pip install "datasets>=2.20" "huggingface_hub>=0.24" "pyarrow>=15" Pillow
+      - name: reconstruct one small text split (dry-run, hub-native)
+        env:
+          HF_HUB_DOWNLOAD_TIMEOUT: "60"
+        run: |
+          python scripts/reconstruction.py \
+            --dataset_keys arxiv_50_50_21k_text_wmetadata_filtered24480_y24up_test \
+            --dry-run
+      - name: assert sharegpt + dataset_info.json exist
+        run: |
+          test -s data/arxiv_50_50_21k_text_wmetadata_filtered24480_y24up_test/data.json
+          test -s data/dataset_info.json

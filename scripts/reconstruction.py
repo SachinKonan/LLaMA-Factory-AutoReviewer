@@ -1,35 +1,26 @@
 """Reconstruct LlamaFactory-formatted local datasets from the PaperLens HF release.
 
-The PaperLens HF datasets are content stores: one row per unique paper, with
-title + content + metadata + a `references: list[(release_name, release_split)]`
-field that names every dataset_info.json entry the paper belongs to. This script
-filters by (release_name, release_split) -- looked up per internal key from the
-release manifest -- and re-materializes the original sharegpt data.json files
-(and per-paper image PNGs for vision) into ``data/<key>/``, registering each
-rebuilt key in ``data/dataset_info.json``.
-
-Round-trip is byte-identical for conv[1] (system + human + gpt turns), images
-(stored as raw PNG bytes via the HF Image() feature), and ``_metadata``.
-See scripts/tests/test_reconstruction.py.
-
-Filtering is *lazy and columnar*: the (name, split) -> row-index map is built by
-reading ONLY the parquet `references` column (Arrow is columnar, so image bytes
-are never read from disk for the scan). Only the matched rows are then
-materialized -- and image bytes are read decode-free (raw PNG), so we never pay
-the PIL decode/re-encode cost.
+Hub-native by default: pulls the manifest + parquet shards from
+``skonan/PaperLens-Text`` and ``skonan/PaperLens-Vision`` on the HF Hub.
+Pass ``--local_dir`` only when re-running against an offline mirror.
 
 Usage:
 
-    # Reconstruct the canonical 4-cell eval datasets
-    python scripts/reconstruction.py --local_dir /scratch/.../hf_release_v2 --dataset_keys \\
+    # Reconstruct the canonical 4-cell eval datasets (hub-native)
+    python scripts/reconstruction.py --dataset_keys \\
         arxiv_50_50_21k_text_wmetadata_filtered24480_y24up_test \\
         iclr_2020_2023_2025_2026_85_5_10_balanced_original_text_labelfix_v7_filtered_y25up_test
 
-    # Rebuild everything (large -- writes the full image tree for vision keys)
-    python scripts/reconstruction.py --local_dir /scratch/.../hf_release_v2 --all
+    # Rebuild everything (large; writes the full vision image tree)
+    python scripts/reconstruction.py --all
 
-    # Validate data.json only, without writing the ~300GB image tree
-    python scripts/reconstruction.py --local_dir /scratch/.../hf_release_v2 --all --dry-run
+    # Validate data.json only, skip the ~300 GB image tree
+    python scripts/reconstruction.py --all --dry-run
+
+Round-trip is byte-identical for conv[1] + ``_metadata`` + image bytes;
+filtering is columnar (only the parquet ``references`` column is scanned
+to build the per-key row-index map) so the image bytes are never decoded
+during the scan.
 """
 from __future__ import annotations
 

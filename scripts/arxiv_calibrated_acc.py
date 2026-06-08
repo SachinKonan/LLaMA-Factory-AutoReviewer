@@ -13,13 +13,14 @@ Venue rollup: acl + emnlp + naacl => "acl_family" (per user note: same
 conference family treated as one for threshold purposes).
 """
 from __future__ import annotations
+import pathlib
 import json
 import math
 from collections import defaultdict
 from pathlib import Path
 
 # ---------- config ----------
-ROOT = Path("/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer")
+ROOT = pathlib.Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results/cross_conference_arxiv_y24up"
 DATA = ROOT / "data"
 

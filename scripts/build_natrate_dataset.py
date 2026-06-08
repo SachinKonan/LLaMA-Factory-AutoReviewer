@@ -23,12 +23,13 @@ Writes 3 datasets:
 and registers them in data/dataset_info.json.
 """
 from __future__ import annotations
+import pathlib
 import json
 import random
 from collections import defaultdict
 from pathlib import Path
 
-DATA = Path("/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/data")
+DATA = pathlib.Path(__file__).resolve().parents[1] / "data"
 SEED = 42
 
 ACCEPT_RATE = {

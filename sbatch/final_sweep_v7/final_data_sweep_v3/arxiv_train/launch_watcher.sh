@@ -21,7 +21,7 @@
 #   small_text   small_vision   large_text   large_vision
 
 set -e
-cd /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer
+cd "${SLURM_SUBMIT_DIR:-.}"
 source .venv/bin/activate
 mkdir -p logs/auto_inference
 

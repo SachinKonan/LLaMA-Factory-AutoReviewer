@@ -22,7 +22,7 @@ eval_dataset: placeholder
 do_eval: false
 template: qwen2_vl
 cutoff_len: 24480
-media_dir: /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/data/images
+media_dir: data/images
 overwrite_cache: true
 preprocessing_num_workers: 16
 dataloader_num_workers: 4

@@ -19,13 +19,14 @@ Run:
     .venv/bin/python scripts/iclr_arxiv_calibrated_eval.py
 """
 from __future__ import annotations
+import pathlib
 
 import json
 import math
 from collections import defaultdict
 from pathlib import Path
 
-ROOT = Path("/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer")
+ROOT = pathlib.Path(__file__).resolve().parents[1]
 RES  = ROOT / "results/final_sweep_v7_datasweepv3/optim_search_2026"
 DATA = ROOT / "data"
 CKPT = 1322

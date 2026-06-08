@@ -10,12 +10,13 @@ Writes new directories under data/ that mirror the existing _train layout, ready
 to be referenced from data/dataset_info.json.
 """
 
+import pathlib
 import json
 import os
 import random
 from collections import defaultdict
 
-DATA_ROOT = "/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer/data"
+DATA_ROOT = str(pathlib.Path(__file__).resolve().parents[1] / "data")
 
 MODALITIES = {
     "text": {

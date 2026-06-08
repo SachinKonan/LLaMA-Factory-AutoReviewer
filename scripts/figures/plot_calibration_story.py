@@ -11,6 +11,7 @@ Source data: ICLR + arxiv y24up text cross-eval at ckpt 1322.
 Computation logic mirrors scripts/iclr_arxiv_calibrated_eval.py.
 """
 from __future__ import annotations
+import pathlib
 
 import json
 import math
@@ -28,7 +29,7 @@ mpl.rcParams.update({
 })
 LSIZE, TSIZE, TICK = 18, 18, 14
 
-ROOT = Path("/scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer")
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 RES  = ROOT / "results/final_sweep_v7_datasweepv3/optim_search_2026"
 DATA = ROOT / "data"
 OUT  = ROOT / "tmp_latex_dir/figures"

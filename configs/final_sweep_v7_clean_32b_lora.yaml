@@ -1,5 +1,5 @@
 ### model
-model_name_or_path: /scratch/gpfs/ZHUANGL/sk7524/hf/hub/models--Qwen--Qwen2.5-32B-Instruct/snapshots/5ede1c97bbab6ce5cda5812749b4c0bdf79b18dd
+model_name_or_path: Qwen/Qwen2.5-32B-Instruct
 trust_remote_code: true
 flash_attn: fa2
 enable_liger_kernel: true

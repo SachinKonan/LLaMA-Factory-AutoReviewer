@@ -36,9 +36,10 @@ The two human-facing docs:
 
 1. **Do not refactor `src/llamafactory/`.** It's upstream LLaMA-Factory; small patches OK, rewrites are not.
 2. **Every training sbatch's watcher must hit all 4 eval cells** (`arxiv_{test,val}` + `iclr_{test,val}`). The figure scripts assume `results/<run>/<cell>/finetuned-ckpt-<step>.jsonl` exists for all four; if you skip a cell you'll break figures silently.
-3. **Reconstruction round-trip is byte-identical.** `scripts/tests/test_reconstruction.py` guards conv[1] + `_metadata` equality. Don't change the sharegpt schema without updating the test and re-running.
+3. **Reconstruction round-trip is byte-identical.** The CI smoke test (`.github/workflows/reconstruction_smoke.yml`) catches obvious regressions. The full byte-identical round-trip is maintainer-only (run against a local `hf_release_v2/` mirror with `PAPERLENS_HF_LOCAL_DIR` set).
 4. **HF cache + vLLM cache must live on scratch, not `$HOME`.** Set `HF_HOME` and `VLLM_CACHE_ROOT` before launching slurm jobs — see [Environment](README.md#environment) in the README.
 5. **No q4 stratified subsetting anywhere.** The legacy q4 paths (subsample_dataset.py, agent_q4) were deleted; the API + agent baselines run on the **full** `*_test` set.
+6. **Don't hardcode `/scratch/...` paths.** Sbatches use `cd "${SLURM_SUBMIT_DIR:-.}"`; scripts resolve the repo root via `Path(__file__).resolve().parents[1]`. Anything user-specific belongs behind an env var.
 
 ---
 

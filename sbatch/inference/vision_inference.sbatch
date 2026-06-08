@@ -22,7 +22,7 @@
 #   TRAIN_DATASET - (Optional) Training dataset name for eval metrics
 
 set -e
-cd /scratch/gpfs/ZHUANGL/sk7524/LLaMA-Factory-AutoReviewer
+cd "${SLURM_SUBMIT_DIR:-.}"
 source .venv/bin/activate
 export TRANSFORMERS_OFFLINE=1
 
