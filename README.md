@@ -9,12 +9,12 @@ page images (vision). Built on top of [LLaMA-Factory](https://github.com/hiyouga
 - **Released datasets** (4 splits per modality + domain):
   - [paperlens/paperlens-text](https://huggingface.co/datasets/paperlens/paperlens-text) — subsets `arxiv` + `iclr`
   - [paperlens/paperlens-vision](https://huggingface.co/datasets/paperlens/paperlens-vision) — subsets `arxiv` + `iclr` (image-bytes embedded)
-- **Sibling tool**: [paperlens-arxiv-server](../tools/paperlens-arxiv-server) — stacks the
-  PaperLens reranker on top of arxiv_retriever for accept-prob-ranked search.
+- **Sibling tools**:
+  - [paperlens-reviewing](../tools/paperlens-reviewing) — interactive UI for scoring a single paper (PDF / LaTeX dir / arXiv link) with optional agentic-review pass.
+  - [paperlens-arxiv-server](../tools/paperlens-arxiv-server) — stacks the PaperLens reranker on top of arxiv_retriever for accept-prob-ranked search.
 
 See [`EXPERIMENTS.md`](EXPERIMENTS.md) for the experiment → sbatch → figure-script
-mapping, and [`docs/objective_analysis.md`](docs/objective_analysis.md) for the
-full paper-style analysis writeup.
+mapping. Agent-friendly pointer files at the repo root: [`AGENTS.md`](AGENTS.md) and [`CLAUDE.md`](CLAUDE.md).
 
 ---
 
@@ -29,6 +29,32 @@ uv pip install -e ".[torch,metrics,deepspeed,liger-kernel]"
 
 System deps: CUDA-capable GPU (vLLM + FSDP2 require A100 / H100 / H200), TeX
 Live (only for re-rendering paper figures via `scripts/figures/`).
+
+For the **PortKey API baselines** (frontier-model comparison rows in the main
+results table) install the optional extra:
+```bash
+uv pip install portkey-ai
+```
+
+---
+
+## Environment
+
+The training + inference scripts read these env vars; export them in your
+shell or your slurm sbatch before launching anything. Required vs optional
+is called out per variable.
+
+| Var | Required for | Purpose |
+|---|---|---|
+| `HF_HOME` | every script that loads HF models or datasets | HuggingFace cache root. Defaults to `~/.cache/huggingface` — override on slurm to point at a shared scratch path so dataset/model bytes are cached once, not per-job. |
+| `HF_HUB_OFFLINE=1` | optional | Skip network hits on hub after first download. Every shipped sbatch sets this. |
+| `TRANSFORMERS_OFFLINE=1` | optional | Same idea for the transformers library's HF lookups. Every shipped sbatch sets this. |
+| `VLLM_CACHE_ROOT` | vLLM inference (`scripts/vllm_infer.py`, `scripts/run_inference.py`) | Where vLLM caches compiled engine artifacts. Point at scratch on slurm. |
+| `WANDB_API_KEY` | training (optional) | If set, `accelerate launch` logs to wandb. `WANDB_DISABLED=1` to silence. |
+| `PORTKEY_API_KEY` | PortKey API baselines (`scripts/frontier_memory_probe.py`, future `api_baseline_infer.py`) | Auth for the PortKey gateway that routes to Claude / GPT-5.4 / Gemini-3.1-Pro. |
+| `GEMINI_API_KEY` | Vertex AI batch path (`scripts/gemini_batch_*.py`) | Alternative cheaper batch path for Gemini-only runs (50% of online cost). PortKey is the canonical multi-provider path. |
+| `PAPERLENS_HF_LOCAL_DIR` | `scripts/reconstruction.py` (optional) | Override the HF cache resolution to read released datasets from a local mirror dir. Useful on slurm with restricted egress. |
+| `PAPERLENS_TEST_CKPT_PATH` | `scripts/tests/test_serve_idempotency.py` (optional) | Local checkpoint path the serve-idempotency test loads. Skips the test when unset. |
 
 ---
 
@@ -125,6 +151,8 @@ paperlens-training-and-inference/
 │   ├── vllm_infer.py, eval_training_ckpt.py
 │   ├── calibration_posthoc.py
 │   ├── iclr_calibrated_acc_2526.py, arxiv_calibrated_acc.py
+│   ├── gemini_batch_*.py             # Vertex AI batch path (Gemini-only, 50% cost)
+│   ├── frontier_memory_probe.py      # PortKey-gateway memory-probe experiment
 │   ├── figures/                      # Paper figure generators (matplotlib + scipy)
 │   ├── tests/test_reconstruction.py  # Round-trip integrity test
 │   └── stat_utils/, convert_ckpt/, api_example/  # LLaMA-Factory stock helpers
@@ -132,8 +160,9 @@ paperlens-training-and-inference/
 │   ├── final_sweep_v7_clean[_3b|_14b|_32b|_32b_lora{,_r128}].yaml  # Text 3B/7B/14B/32B
 │   ├── final_sweep_v7_vision[_3b|_32b|_32b_lora{,_r128}].yaml      # Vision VL variants
 │   └── fsdp2_{1,2,4,8}gpu_config.yaml                              # Accelerate FSDP2
-├── coding_agents/             # Coding-agent eval harness (codex + claude-code)
-└── docs/                      # Paper-style analysis + figures
+├── AGENTS.md / CLAUDE.md      # LLM/agent pointer files for repo navigation
+├── README.md                  # this file
+└── EXPERIMENTS.md             # paper-result → sbatch → figure mapping
 ```
 
 ---

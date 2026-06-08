@@ -110,36 +110,45 @@ The 100% baseline comes from category 3's full ICLR runs.
 
 ---
 
-## 5. Coding-agent + API baseline experiments
+## 5. PortKey frontier-model API baselines
 
-LLM-judge baselines that run the same paper-acceptance task via:
-- **Coding agents**: codex CLI + claude-code CLI (with shell + file tools, no internet)
-- **API baselines**: PortKey-routed Gemini / GPT-5.4 single-shot inference
+LLM-judge baselines for the main results table. Each frontier model receives
+the same single-shot `\boxed{rating, decision}` prompt over the full standard
+`*_test` set, routed through the **PortKey gateway** so Claude / GPT-5.4 /
+Gemini-3.1-Pro all share one transport + one set of retry semantics.
 
-Both operate on the **full** standard `*_test` datasets (no q4 stratified
-subsetting). The harness lives in `coding_agents/`; the PortKey runner is
-deferred (the original q4-flavored runner used `inference_results/` paths
-that don't ship with this repo — TODO: rewrite for full-test mode).
+**Dependency**: `pip install portkey-ai`, then `export PORTKEY_API_KEY=...`
+(see [Environment](README.md#environment) for the full env-var table).
+The PortKey pattern lives in `scripts/frontier_memory_probe.py` (a sibling
+memory-probe experiment); reuse `call_portkey(client, model, prompt,
+max_tokens)` and `reasoning_kwargs(model)` from there.
 
 **Reconstruct test data**:
 ```bash
 python scripts/reconstruction.py --dataset_keys \
     arxiv_50_50_21k_text_wmetadata_filtered24480_y24up_test \
-    iclr_2020_2023_2025_2026_85_5_10_balanced_original_text_labelfix_v7_filtered_y25up_test
+    arxiv_50_50_21k_vision_wmetadata_filtered24480_y24up_test \
+    iclr_2020_2023_2025_2026_85_5_10_balanced_original_text_labelfix_v7_filtered_y25up_test \
+    iclr_2020_2023_2025_2026_85_5_10_balanced_original_vision_labelfix_v7_filtered_filtered24480_y25up_test
 ```
 
-**Coding-agent eval**:
-- `coding_agents/main.py` — CLI entrypoint
-- `coding_agents/review_pipeline.py` — paper rendering + agent prompt + result merging
-- `coding_agents/AGENTS.override.md` — system prompt the agents see in the workspace
+**Runner**:
+- `scripts/api_baseline_infer.py` (**TODO** — not yet in tree). Should emit
+  one jsonl row per `(model, dataset_key, paper_id)` with fields matching
+  the local SFT jsonls (`pred`, `gold`, `logp_accept`, `logp_reject`) so the
+  same calibration + accuracy scripts work unchanged. Reuse the parsing
+  helpers from `scripts/grade_agent_predictions.py` for `\boxed{}` parsing.
 
-**API baseline (TODO — runner not in tree)**:
-- Reuses the system prompt from `coding_agents/AGENTS.override.md`
-- Output format: `\boxed{rating, decision}` parsed from each response
+**Cheap Gemini-only alternative**:
+- `scripts/gemini_batch_submit.py` / `gemini_batch_retrieve.py` /
+  `gemini_batch_review.py` — Vertex AI batch prediction with GCS image URIs
+  (50% cost savings vs online). Doesn't go through PortKey, doesn't cover
+  Claude or GPT — kept for the Gemini-specific cross-check rows.
 
 **Grading + figures**:
 - `scripts/grade_agent_predictions.py` — parse + score `\boxed{}` outputs vs gold labels
-- `scripts/figures/generate_codex_vs_*.py` if/when added
+- `scripts/figures/generate_calibration.py` and the rest of category 2 read
+  the resulting jsonls the same way they read SFT jsonls.
 
 ---
 
