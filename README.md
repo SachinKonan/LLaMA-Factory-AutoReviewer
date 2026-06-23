@@ -119,6 +119,50 @@ python scripts/build_text_panel_dataset.py   # text-with-panel rows
 
 ---
 
+## Cluster configuration
+
+The shipped sbatches are wired for **Princeton della** — `ailab` for training,
+`pli` (with `--account=llm_explore`) for the auto-fired inference jobs. **Edit
+the `#SBATCH --partition` / `--account` / time / mem / `--gres=gpu:N` lines for
+your own cluster before submitting anything.**
+
+What the headers look like today:
+
+```bash
+# sbatch/final_sweep_v7/.../arxiv_train/small/text_arxiv_21k_7b_ailab.sbatch  (training)
+#!/bin/bash
+#SBATCH --job-name=paperlens_arxiv21k_text_7b
+#SBATCH --time=14:00:00
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=200G
+#SBATCH --gres=gpu:4
+#SBATCH --partition=ailab                  # ← change for your training partition
+#SBATCH --output=logs/training/arxiv21k_text_7b/%j.out
+#SBATCH --error=logs/training/arxiv21k_text_7b/%j.err
+```
+
+```bash
+# sbatch/inference/text_inference.sbatch  (auto-fired by the in-job watcher)
+#!/bin/bash
+#SBATCH --job-name=auto_infer_text
+#SBATCH --time=4:00:00
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=200G
+#SBATCH --gres=gpu:1
+#SBATCH --partition=pli                    # ← change for your inference partition
+#SBATCH --account=llm_explore              # ← remove or change for your cluster
+#SBATCH --output=logs/auto_inference/%j.out
+#SBATCH --error=logs/auto_inference/%j.err
+```
+
+Grep every `#SBATCH --partition` / `--account` line in one shot:
+
+```bash
+grep -rn "^#SBATCH --partition\|^#SBATCH --account" sbatch/
+```
+
+---
+
 ## Quick start: training
 
 All training sbatches share a canonical template — set a few vars, source the
@@ -128,8 +172,8 @@ common header. Example: train Qwen2.5-7B (text) on arxiv-21k:
 sbatch sbatch/final_sweep_v7/final_data_sweep_v3/arxiv_train/small/text_arxiv_21k_7b_ailab.sbatch
 ```
 
-The in-job watcher (`scripts/auto_infer_watcher.py`) fires PLI inference on
-4 cells per checkpoint:
+The in-job watcher (`scripts/auto_infer_watcher.py`) fires inference on
+4 cells per checkpoint (using the inference sbatch above):
 
 - `arxiv_50_50_21k_*_y24up_test` (in-distribution test, arxiv)
 - `arxiv_50_50_21k_*_y24up_validation` (in-distribution val, arxiv)
@@ -170,7 +214,7 @@ paperlens-training-and-inference/
 ├── sbatch/
 │   ├── _common/canonical.sh   # Shared training pipeline (every train sbatch sources this)
 │   ├── final_sweep_v7/        # Training sbatches (small/, large/, scaling/, data_scaling/)
-│   └── inference/             # text_inference.sbatch, vision_inference.sbatch (PLI 1-GPU)
+│   └── inference/             # text_inference.sbatch, vision_inference.sbatch (single-GPU; edit partition for your cluster)
 ├── scripts/
 │   ├── reconstruction.py             # HF release -> local data/<key>/data.json
 │   ├── build_panel_*.py              # Rebuild panel views locally from base data
