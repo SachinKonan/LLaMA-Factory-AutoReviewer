@@ -122,9 +122,9 @@ python scripts/build_text_panel_dataset.py   # text-with-panel rows
 ## Cluster configuration
 
 The shipped sbatches are wired for **Princeton della** — `ailab` for training,
-`pli` (with `--account=llm_explore`) for the auto-fired inference jobs. **Edit
-the `#SBATCH --partition` / `--account` / time / mem / `--gres=gpu:N` lines for
-your own cluster before submitting anything.**
+`pli` for the auto-fired inference jobs. **Edit the `#SBATCH --partition` /
+time / mem / `--gres=gpu:N` lines (add `--account=…` / `--qos=…` if your
+cluster requires them) before submitting anything.**
 
 What the headers look like today:
 
@@ -150,15 +150,8 @@ What the headers look like today:
 #SBATCH --mem=200G
 #SBATCH --gres=gpu:1
 #SBATCH --partition=pli                    # ← change for your inference partition
-#SBATCH --account=llm_explore              # ← remove or change for your cluster
 #SBATCH --output=logs/auto_inference/%j.out
 #SBATCH --error=logs/auto_inference/%j.err
-```
-
-Grep every `#SBATCH --partition` / `--account` line in one shot:
-
-```bash
-grep -rn "^#SBATCH --partition\|^#SBATCH --account" sbatch/
 ```
 
 ---

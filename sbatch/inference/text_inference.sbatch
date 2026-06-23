@@ -5,7 +5,6 @@
 #SBATCH --mem=200G
 #SBATCH --gres=gpu:1
 #SBATCH --partition=pli
-#SBATCH --account=llm_explore
 #SBATCH --output=logs/auto_inference/%j.out
 #SBATCH --error=logs/auto_inference/%j.err
 
